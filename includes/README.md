@@ -1,1 +1,0 @@
-in this folder you can see the the file that can use again like footer or header

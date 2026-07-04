@@ -3,7 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>InigoSync</title>
+    <title>IñigoSync | Iñigos Sports Center</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Inter:wght@400;500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="../Style/LandingPage.css">
 </head>
 <body>
@@ -14,32 +17,199 @@
             <img src="../assets/NavBar/more.png" alt="Open menu">
         </label>
         <div class="logo-nav">
-            <div class="logo-text">InigoSync</div>
+            <div class="logo-text">IñigoSync</div>
         </div>
         <nav class="nav-menu">
             <ul>
                 <li><a href="#" class="active">Home</a></li>
-                <li><a href="#">Courts</a></li>
-                <li><a href="#">Pricing</a></li>
+                <li><a href="#courts">Courts</a></li>
+                <li><a href="#pricing">Pricing</a></li>
+                <li><a href="#about">About</a></li>
             </ul>
         </nav>
         <a href="#" class="book-now">Book Now</a>
     </header>
 
+    <main>
 
-    <main class="hero">
-        <div class="content-container">
-            <img src="../assets/Logo/Logo.png" alt="InigoSync Logo" class="hero-logo">
-            <p class="hero-description">
-                A dynamic sports destination designed for athletes, teams, and community events.
-                Enjoy modern facilities, competitive courts, and a premium game-day experience.
-            </p>
-            <div class="cta-buttons">
-                <a href="#" class="cta-button">View Courts</a>
-                <a href="#" class="cta-button secondary">Join Today</a>
+        <!-- HERO -->
+        <section class="hero">
+            <div class="content-container">
+                <img src="../assets/Logo/Logo.png" alt="Iñigos logo" class="hero-logo">
+                <p class="eyebrow">Iñigos Sports Center · Brgy. Bocohan, Lucena City · Est. 2011</p>
+                <h1 class="hero-title">Your court.<br>Your time.<br><span class="accent">No double bookings.</span></h1>
+                <p class="hero-description">
+                    Check real-time availability, reserve your slot, and pay online —
+                    no more waiting on Messenger replies to find out if the court is free.
+                </p>
+                <div class="cta-buttons">
+                    <a href="#courts" class="cta-button">View Courts</a>
+                    <a href="#" class="cta-button secondary">Book Now</a>
+                </div>
             </div>
-        </div>
+
+            <!-- SIGNATURE ELEMENT: Live court status ticker -->
+            <div class="ticker-wrap" aria-label="Live court availability">
+                <div class="ticker-track">
+                    <span class="ticker-item"><span class="dot available"></span>BASKETBALL — AVAILABLE 2:00–3:00 PM</span>
+                    <span class="ticker-item"><span class="dot booked"></span>BADMINTON 1 — BOOKED UNTIL 4:00 PM</span>
+                    <span class="ticker-item"><span class="dot available"></span>VOLLEYBALL — AVAILABLE NOW</span>
+                    <span class="ticker-item"><span class="dot available"></span>PICKLEBALL — AVAILABLE 3:00–5:00 PM</span>
+                    <span class="ticker-item"><span class="dot booked"></span>BOWLING LANE 2 — BOOKED UNTIL 6:00 PM</span>
+                    <span class="ticker-item"><span class="dot available"></span>BADMINTON 2 — AVAILABLE NOW</span>
+                    <!-- duplicated for seamless loop -->
+                    <span class="ticker-item"><span class="dot available"></span>BASKETBALL — AVAILABLE 2:00–3:00 PM</span>
+                    <span class="ticker-item"><span class="dot booked"></span>BADMINTON 1 — BOOKED UNTIL 4:00 PM</span>
+                    <span class="ticker-item"><span class="dot available"></span>VOLLEYBALL — AVAILABLE NOW</span>
+                    <span class="ticker-item"><span class="dot available"></span>PICKLEBALL — AVAILABLE 3:00–5:00 PM</span>
+                    <span class="ticker-item"><span class="dot booked"></span>BOWLING LANE 2 — BOOKED UNTIL 6:00 PM</span>
+                    <span class="ticker-item"><span class="dot available"></span>BADMINTON 2 — AVAILABLE NOW</span>
+                </div>
+            </div>
+        </section>
+
+        <!-- ABOUT -->
+        <section class="about reveal" id="about">
+            <div class="section-inner about-grid">
+                <div class="about-copy">
+                    <p class="eyebrow">Since 2011</p>
+                    <h2 class="section-title">A Lucena staple, now running on its own system.</h2>
+                    <p class="body-text">
+                        Iñigos Sports Center has hosted games, leagues, and walk-in play in Brgy. Bocohan
+                        for over a decade. What used to run on Messenger threads and a printed calendar
+                        now runs through IñigoSync — so every booking, every payment, and every court
+                        update lands in one place instead of five different phones.
+                    </p>
+                </div>
+                <div class="about-stats">
+                    <div class="stat">
+                        <span class="stat-number">5</span>
+                        <span class="stat-label">Sports facilities</span>
+                    </div>
+                    <div class="stat">
+                        <span class="stat-number">2011</span>
+                        <span class="stat-label">Serving Lucena since</span>
+                    </div>
+                    <div class="stat">
+                        <span class="stat-number">24/7</span>
+                        <span class="stat-label">Online booking access</span>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- COURTS & PRICING -->
+        <section class="courts reveal" id="courts">
+            <div class="section-inner">
+                <p class="eyebrow">Courts &amp; Pricing</p>
+                <h2 class="section-title">Five courts. One calendar.</h2>
+                <p class="body-text section-intro">
+                    Rates and hours shown below are placeholders — swap in Iñigos Sports Center's
+                    actual pricing before this goes live.
+                </p>
+
+                <div class="court-grid">
+                    <article class="court-card">
+                        <div class="court-icon" aria-hidden="true">
+                            <svg viewBox="0 0 48 48"><circle cx="24" cy="24" r="20" fill="none" stroke="currentColor" stroke-width="2.5"/><path d="M24 4v40M4 24h40M9 9c6 6 6 26 0 30M39 9c-6 6-6 26 0 30" fill="none" stroke="currentColor" stroke-width="2"/></svg>
+                        </div>
+                        <h3>Basketball</h3>
+                        <p class="court-rate">₱300 <span>/ hour</span></p>
+                        <p class="court-note">Full court · indoor</p>
+                    </article>
+
+                    <article class="court-card">
+                        <div class="court-icon" aria-hidden="true">
+                            <svg viewBox="0 0 48 48"><rect x="4" y="20" width="40" height="8" fill="none" stroke="currentColor" stroke-width="2.5"/><line x1="24" y1="6" x2="24" y2="42" stroke="currentColor" stroke-width="2"/></svg>
+                        </div>
+                        <h3>Volleyball</h3>
+                        <p class="court-rate">₱250 <span>/ hour</span></p>
+                        <p class="court-note">Net &amp; markers included</p>
+                    </article>
+
+                    <article class="court-card">
+                        <div class="court-icon" aria-hidden="true">
+                            <svg viewBox="0 0 48 48"><rect x="6" y="18" width="36" height="4" fill="none" stroke="currentColor" stroke-width="2.5"/><circle cx="14" cy="30" r="4" fill="none" stroke="currentColor" stroke-width="2"/><line x1="14" y1="18" x2="14" y2="26" stroke="currentColor" stroke-width="2"/></svg>
+                        </div>
+                        <h3>Badminton</h3>
+                        <p class="court-rate">₱200 <span>/ hour</span></p>
+                        <p class="court-note">2 courts available</p>
+                    </article>
+
+                    <article class="court-card">
+                        <div class="court-icon" aria-hidden="true">
+                            <svg viewBox="0 0 48 48"><circle cx="24" cy="16" r="8" fill="none" stroke="currentColor" stroke-width="2.5"/><path d="M6 42c0-8 8-12 18-12s18 4 18 12" fill="none" stroke="currentColor" stroke-width="2"/></svg>
+                        </div>
+                        <h3>Bowling</h3>
+                        <p class="court-rate">₱150 <span>/ game</span></p>
+                        <p class="court-note">2 lanes · shoes included</p>
+                    </article>
+
+                    <article class="court-card">
+                        <div class="court-icon" aria-hidden="true">
+                            <svg viewBox="0 0 48 48"><rect x="8" y="14" width="32" height="20" rx="2" fill="none" stroke="currentColor" stroke-width="2.5"/><line x1="24" y1="14" x2="24" y2="34" stroke="currentColor" stroke-width="2"/></svg>
+                        </div>
+                        <h3>Pickleball</h3>
+                        <p class="court-rate">₱220 <span>/ hour</span></p>
+                        <p class="court-note">Newly added court</p>
+                    </article>
+
+                    <a href="#" class="court-card court-card-cta">
+                        <span>See full schedule<br>&amp; book a slot →</span>
+                    </a>
+                </div>
+            </div>
+        </section>
+
+        <!-- WHY BOOK ONLINE -->
+        <section class="features reveal" id="pricing">
+            <div class="section-inner">
+                <p class="eyebrow">Why book through IñigoSync</p>
+                <h2 class="section-title">Built around the problems Messenger booking couldn't solve.</h2>
+
+                <div class="feature-grid">
+                    <div class="feature-card">
+                        <span class="feature-tag">Real-time</span>
+                        <h3>See the actual schedule</h3>
+                        <p>Court availability updates the moment someone books — no more asking staff to check a paper calendar.</p>
+                    </div>
+                    <div class="feature-card">
+                        <span class="feature-tag">Locked slots</span>
+                        <h3>No double bookings</h3>
+                        <p>Once a slot is confirmed, it's locked in the system. Two customers can't be given the same time by mistake.</p>
+                    </div>
+                    <div class="feature-card">
+                        <span class="feature-tag">Flexible</span>
+                        <h3>Pay how you like</h3>
+                        <p>Downpayment or full payment, via GCash or cash on-site — your choice at checkout.</p>
+                    </div>
+                    <div class="feature-card">
+                        <span class="feature-tag">Fair policy</span>
+                        <h3>30-minute grace period</h3>
+                        <p>Arrive within 30 minutes of your slot. After that, the court reopens for other customers — clearly stated upfront.</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- CTA FOOTER -->
+        <section class="cta-footer reveal">
+            <div class="section-inner cta-footer-inner">
+                <h2 class="section-title">Ready to lock in your slot?</h2>
+                <p class="body-text">Skip the back-and-forth. Book your court in a few taps.</p>
+                <a href="#" class="cta-button">Book Now</a>
+            </div>
+        </section>
+
     </main>
 
+    <footer class="site-footer">
+        <div class="section-inner footer-inner">
+            <div class="logo-text">IñigoSync</div>
+            <p>Iñigos Sports Center · Brgy. Bocohan, Diversion Road, Lucena City</p>
+        </div>
+    </footer>
+
+    <script src="../includes/landingPage.js"></script>
 </body>
 </html>
