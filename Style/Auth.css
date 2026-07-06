@@ -1,0 +1,296 @@
+/* ==========================================================================
+   IñigoSync — Auth Modal (Login / Sign Up)
+   Uses the same design tokens defined in LandingPage.css :root
+   ========================================================================== */
+
+.auth-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 100;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+    background: rgba(10, 8, 6, 0.72);
+    backdrop-filter: blur(6px);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.25s ease;
+}
+
+.auth-overlay[data-open] {
+    opacity: 1;
+    pointer-events: auto;
+}
+
+.auth-overlay[hidden] {
+    display: flex; /* overridden by JS toggling [data-open]; keep flex for transition */
+    opacity: 0;
+    pointer-events: none;
+}
+
+body.auth-lock {
+    overflow: hidden;
+}
+
+.auth-modal {
+    position: relative;
+    width: 100%;
+    max-width: 420px;
+    max-height: calc(100vh - 48px);
+    overflow-y: auto;
+    background: var(--color-bg-elevated);
+    border: 1px solid var(--color-line);
+    border-radius: 20px;
+    padding: 40px 36px 32px;
+    box-shadow: 0 24px 60px rgba(0, 0, 0, 0.45);
+    transform: translateY(16px) scale(0.98);
+    opacity: 0;
+    transition: transform 0.28s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.22s ease;
+}
+
+.auth-overlay[data-open] .auth-modal {
+    transform: translateY(0) scale(1);
+    opacity: 1;
+}
+
+.auth-close {
+    position: absolute;
+    top: 18px;
+    right: 18px;
+    width: 34px;
+    height: 34px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(244, 239, 230, 0.06);
+    border: 1px solid var(--color-line);
+    border-radius: 50%;
+    color: var(--color-ink-dim);
+    cursor: pointer;
+    transition: background 0.2s, color 0.2s;
+}
+
+.auth-close:hover {
+    background: rgba(244, 239, 230, 0.12);
+    color: var(--color-ink);
+}
+
+.auth-brand {
+    text-align: center;
+    margin-bottom: 24px;
+}
+
+.auth-brand .logo-text {
+    font-size: 1.5rem;
+}
+
+.auth-tagline {
+    font-size: 0.85rem;
+    color: var(--color-ink-faint);
+    margin-top: 4px;
+}
+
+/* Tabs */
+.auth-tabs {
+    display: flex;
+    background: var(--color-bg-card);
+    border: 1px solid var(--color-line);
+    border-radius: 999px;
+    padding: 4px;
+    margin-bottom: 28px;
+}
+
+.auth-tab {
+    flex: 1;
+    padding: 10px 0;
+    border-radius: 999px;
+    border: none;
+    background: transparent;
+    color: var(--color-ink-faint);
+    font-family: var(--font-body);
+    font-weight: 600;
+    font-size: 0.92rem;
+    cursor: pointer;
+    transition: background 0.2s, color 0.2s;
+}
+
+.auth-tab.is-active {
+    background: var(--color-primary);
+    color: #14110d;
+}
+
+/* Forms */
+.auth-form {
+    display: none;
+    flex-direction: column;
+    gap: 18px;
+}
+
+.auth-form.is-active {
+    display: flex;
+}
+
+.auth-heading {
+    font-family: var(--font-display);
+    font-weight: 600;
+    font-size: 1.3rem;
+    margin-bottom: 2px;
+}
+
+.auth-field {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.auth-label {
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--color-ink-faint);
+}
+
+.auth-field input {
+    width: 100%;
+    background: var(--color-bg-card);
+    border: 1px solid var(--color-line);
+    border-radius: 10px;
+    padding: 13px 14px;
+    color: var(--color-ink);
+    font-family: var(--font-body);
+    font-size: 0.95rem;
+    transition: border-color 0.2s;
+}
+
+.auth-field input::placeholder {
+    color: var(--color-ink-faint);
+}
+
+.auth-field input:focus {
+    outline: none;
+    border-color: var(--color-primary);
+}
+
+.auth-input-wrap {
+    position: relative;
+    display: flex;
+    align-items: center;
+}
+
+.auth-input-wrap input {
+    padding-right: 44px;
+}
+
+.auth-toggle-visibility {
+    position: absolute;
+    right: 10px;
+    width: 30px;
+    height: 30px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: transparent;
+    border: none;
+    color: var(--color-ink-faint);
+    cursor: pointer;
+    border-radius: 8px;
+    transition: color 0.2s, background 0.2s;
+}
+
+.auth-toggle-visibility:hover {
+    color: var(--color-ink);
+    background: rgba(244, 239, 230, 0.08);
+}
+
+.auth-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 0.85rem;
+}
+
+.auth-checkbox {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    font-size: 0.85rem;
+    color: var(--color-ink-dim);
+    cursor: pointer;
+}
+
+.auth-checkbox input {
+    margin-top: 2px;
+    accent-color: var(--color-primary);
+}
+
+.auth-terms {
+    line-height: 1.4;
+}
+
+.auth-link {
+    background: none;
+    border: none;
+    padding: 0;
+    color: var(--color-primary);
+    font-family: var(--font-body);
+    font-size: inherit;
+    font-weight: 600;
+    text-decoration: none;
+    cursor: pointer;
+}
+
+.auth-link:hover {
+    color: var(--color-primary-dim);
+    text-decoration: underline;
+}
+
+.auth-submit {
+    margin-top: 4px;
+    width: 100%;
+    padding: 14px 0;
+    border: none;
+    border-radius: 999px;
+    background: var(--color-primary);
+    color: #14110d;
+    font-family: var(--font-body);
+    font-weight: 700;
+    font-size: 1rem;
+    cursor: pointer;
+    transition: background 0.2s, transform 0.2s;
+}
+
+.auth-submit:hover {
+    background: var(--color-primary-dim);
+    transform: translateY(-1px);
+}
+
+.auth-switch {
+    text-align: center;
+    font-size: 0.88rem;
+    color: var(--color-ink-faint);
+}
+
+/* Field-level validation state */
+.auth-field.has-error input {
+    border-color: var(--color-alert);
+}
+
+.auth-field-error {
+    font-size: 0.78rem;
+    color: var(--color-alert);
+    display: none;
+}
+
+.auth-field.has-error .auth-field-error {
+    display: block;
+}
+
+/* Responsive */
+@media (max-width: 480px) {
+    .auth-modal {
+        padding: 32px 22px 26px;
+        border-radius: 16px;
+    }
+}
