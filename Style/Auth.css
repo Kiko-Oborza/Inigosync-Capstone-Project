@@ -1,5 +1,5 @@
 /* ==========================================================================
-   IñigoSync — Auth Modal (Login / Sign Up)
+   IñigoSync — Auth Modal (Login / Sign Up / Admin)
    Uses the same design tokens defined in LandingPage.css :root
    ========================================================================== */
 
@@ -99,6 +99,12 @@ body.auth-lock {
     border-radius: 999px;
     padding: 4px;
     margin-bottom: 28px;
+}
+
+/* Log In / Sign Up tabs are hidden while the Admin panel is active
+   (Admin login is intentionally login-only, no registration tab). */
+.auth-tabs[hidden] {
+    display: none;
 }
 
 .auth-tab {

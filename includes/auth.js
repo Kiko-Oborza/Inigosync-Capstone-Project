@@ -1,13 +1,19 @@
-// IñigoSync — Login / Sign up modal controller
+// IñigoSync — Login / Sign up / Admin modal controller
 // Handles: opening the modal from any [data-auth-open] trigger,
 // closing via backdrop/close button/Escape, switching between
-// the Log In and Sign Up panels, and password show/hide toggles.
+// the Log In, Sign Up, and Admin panels, and password show/hide toggles.
+//
+// Note: the Admin panel is login-only — the Log In / Sign Up tab bar is
+// automatically hidden whenever the Admin panel is active, and the Admin
+// panel itself has no sign-up/registration link, only a "back to customer
+// login" link.
 
 document.addEventListener('DOMContentLoaded', () => {
     const overlay = document.querySelector('[data-auth-overlay]');
     if (!overlay) return;
 
     const modal = overlay.querySelector('.auth-modal');
+    const authTabsEl = overlay.querySelector('[data-auth-tabs]');
     const tabs = overlay.querySelectorAll('[data-auth-tab]');
     const panels = overlay.querySelectorAll('[data-auth-panel]');
     let lastFocusedEl = null;
@@ -23,6 +29,12 @@ document.addEventListener('DOMContentLoaded', () => {
         panels.forEach((panel) => {
             panel.classList.toggle('is-active', panel.dataset.authPanel === name);
         });
+
+        // Customers can switch between Log In / Sign Up, but the Admin
+        // panel is login-only, so hide that tab bar while it's active.
+        if (authTabsEl) {
+            authTabsEl.hidden = name === 'admin';
+        }
     }
 
     function openModal(panelName) {
@@ -70,7 +82,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (e.key === 'Escape' && !overlay.hidden) closeModal();
     });
 
-    // Tab / inline switch links
+    // Tab / inline switch links (Log In ↔ Sign Up ↔ Admin ↔ back to Log In)
     tabs.forEach((tab) => {
         tab.addEventListener('click', () => setActivePanel(tab.dataset.authTab));
     });
@@ -88,6 +100,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Basic client-side validation feedback + placeholder submit handling.
     // Wire this up to the real auth endpoint once the backend is ready.
+    // (This also covers the Admin panel — its mode resolves to "admin".)
     panels.forEach((form) => {
         form.addEventListener('submit', (e) => {
             e.preventDefault();
@@ -100,7 +113,9 @@ document.addEventListener('DOMContentLoaded', () => {
             const mode = form.dataset.authPanel;
             console.log(`[auth] ${mode} submitted`, Object.fromEntries(new FormData(form)));
 
-            // TODO: replace with real API call (fetch to backend auth endpoint)
+            // TODO: replace with real API call (fetch to backend auth endpoint).
+            // Admin submissions should hit a separate admin-auth endpoint/role
+            // check on the backend, not the customer registration/login one.
             closeModal();
         });
     });

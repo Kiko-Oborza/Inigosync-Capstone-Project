@@ -212,7 +212,7 @@
     </footer>
 
     <!-- ==========================================================================
-         AUTH MODAL — Login / Sign up
+         AUTH MODAL — Login / Sign up / Admin
          ========================================================================== -->
     <div class="auth-overlay" id="authOverlay" data-auth-overlay hidden>
         <div class="auth-modal" role="dialog" aria-modal="true" aria-labelledby="authModalTitle">
@@ -226,7 +226,8 @@
                 <p class="auth-tagline">Book your court in a few taps.</p>
             </div>
 
-            <div class="auth-tabs" role="tablist">
+            <!-- Log In / Sign Up tabs — hidden automatically while the Admin panel is active -->
+            <div class="auth-tabs" data-auth-tabs role="tablist">
                 <button type="button" class="auth-tab is-active" data-auth-tab="login" role="tab" aria-selected="true">Log In</button>
                 <button type="button" class="auth-tab" data-auth-tab="signup" role="tab" aria-selected="false">Sign Up</button>
             </div>
@@ -261,6 +262,7 @@
                 <button type="submit" class="auth-submit">Log In</button>
 
                 <p class="auth-switch">Don't have an account? <button type="button" class="auth-link" data-auth-tab="signup">Sign up</button></p>
+                <p class="auth-switch">Are you a staff member or the owner? <button type="button" class="auth-link" data-auth-tab="admin">Log in as Admin</button></p>
             </form>
 
             <!-- SIGN UP FORM -->
@@ -300,6 +302,31 @@
                 <button type="submit" class="auth-submit">Create Account</button>
 
                 <p class="auth-switch">Already have an account? <button type="button" class="auth-link" data-auth-tab="login">Log in</button></p>
+            </form>
+
+            <!-- ADMIN LOGIN FORM — intentionally has no Sign Up / registration option -->
+            <form class="auth-form" data-auth-panel="admin" novalidate>
+                <h2 class="auth-heading">Admin Login</h2>
+                <p class="auth-tagline" style="margin-bottom: 18px;">For Iñigos Sports Center staff and management only.</p>
+
+                <label class="auth-field">
+                    <span class="auth-label">Admin email address</span>
+                    <input type="email" name="admin-email" placeholder="admin@inigossportscenter.com" autocomplete="username" required>
+                </label>
+
+                <label class="auth-field">
+                    <span class="auth-label">Password</span>
+                    <div class="auth-input-wrap">
+                        <input type="password" name="admin-password" placeholder="••••••••" autocomplete="current-password" required>
+                        <button type="button" class="auth-toggle-visibility" data-toggle-password aria-label="Show password">
+                            <svg viewBox="0 0 24 24" width="18" height="18"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7z" fill="none" stroke="currentColor" stroke-width="1.6"/><circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="1.6"/></svg>
+                        </button>
+                    </div>
+                </label>
+
+                <button type="submit" class="auth-submit">Log In as Admin</button>
+
+                <p class="auth-switch"><button type="button" class="auth-link" data-auth-tab="login">← Back to customer login</button></p>
             </form>
 
         </div>
