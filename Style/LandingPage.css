@@ -112,7 +112,7 @@ a {
    Header / Nav
    ========================================================================== */
 header {
-    position: absolute;
+    position: fixed;
     top: 0;
     width: 100%;
     display: flex;
@@ -171,9 +171,10 @@ nav ul li a:hover {
     color: var(--color-primary);
 }
 
-nav ul li a.active {
+nav ul li a.active{
     color: var(--color-primary);
 }
+
 
 .login-btn,
 .book-now,
@@ -594,12 +595,16 @@ nav ul li a.active {
 
 @media (max-width: 768px) {
     header {
-        position: relative;
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
         padding: 16px 20px;
         flex-direction: row;
         justify-content: center;
         align-items: center;
         gap: 10px;
+        z-index: 5;
     }
 
     .menu-toggle {
