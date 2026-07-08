@@ -1,1 +1,2 @@
-in this folder its containingconfigurations for database like api and other stuffs
+This folder contains configuration notes and small client-side helpers used by the project.
+

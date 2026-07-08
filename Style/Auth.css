@@ -278,6 +278,34 @@ body.auth-lock {
     color: var(--color-ink-faint);
 }
 
+/* Divider between the credential form and the Google button */
+.auth-divider {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin: -4px 0;
+    color: var(--color-ink-faint);
+    font-size: 0.78rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.auth-divider::before,
+.auth-divider::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: var(--color-line);
+}
+
+/* Google Identity Services renders its own iframe/button inside this
+   container — center it and let it size to the modal's content width. */
+.auth-google-btn {
+    display: flex;
+    justify-content: center;
+    min-height: 40px;
+}
+
 /* Field-level validation state */
 .auth-field.has-error input {
     border-color: var(--color-alert);

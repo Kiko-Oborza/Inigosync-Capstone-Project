@@ -119,4 +119,77 @@ document.addEventListener('DOMContentLoaded', () => {
             closeModal();
         });
     });
+
+    // ------------------------------------------------------------------
+    // Google Sign-In / Sign-Up (customer accounts only — the Admin panel
+    // stays credential-only on purpose, so no Google button is rendered
+    // there).
+    //
+    // IMPORTANT SETUP STEPS before this works:
+    //   1. Create an OAuth 2.0 Client ID (Web application) in the Google
+    //      Cloud Console and add your site's origin(s) to
+    //      "Authorized JavaScript origins".
+    //   2. Paste that client ID into GOOGLE_CLIENT_ID below.
+    //   3. Build a backend endpoint (e.g. POST /api/auth/google) that
+    //      receives the ID token from handleGoogleCredential(), verifies
+    //      it server-side with Google's token info / a Google auth
+    //      library, then creates the user record (if new) or logs them
+    //      in, and starts a session. Never trust a decoded token on the
+    //      client for real authentication — decoding here is only to
+    //      preview the profile info you'll get back.
+    // ------------------------------------------------------------------
+    const GOOGLE_CLIENT_ID = 'YOUR_GOOGLE_CLIENT_ID.apps.googleusercontent.com';
+
+    function handleGoogleCredential(response) {
+        // response.credential is a signed JWT ID token from Google.
+        // TODO: send it to your backend instead of using it directly:
+        //   fetch('/api/auth/google', {
+        //     method: 'POST',
+        //     headers: { 'Content-Type': 'application/json' },
+        //     body: JSON.stringify({ credential: response.credential })
+        //   })
+        //   .then((res) => res.json())
+        //   .then((data) => { /* handle session/redirect */ });
+        console.log('[auth] Google credential received', response.credential);
+        closeModal();
+    }
+
+    function renderGoogleButtons() {
+        if (!window.google || !google.accounts || !google.accounts.id) return false;
+        if (GOOGLE_CLIENT_ID.startsWith('YOUR_GOOGLE_CLIENT_ID')) {
+            console.warn('[auth] Set GOOGLE_CLIENT_ID in includes/auth.js before Google Sign-In will work.');
+        }
+
+        google.accounts.id.initialize({
+            client_id: GOOGLE_CLIENT_ID,
+            callback: handleGoogleCredential,
+        });
+
+        overlay.querySelectorAll('[data-google-btn]').forEach((container) => {
+            container.innerHTML = '';
+            google.accounts.id.renderButton(container, {
+                type: 'standard',
+                theme: 'outline',
+                size: 'large',
+                shape: 'pill',
+                text: container.id === 'google-signin-signup' ? 'signup_with' : 'continue_with',
+                logo_alignment: 'left',
+                width: 340,
+            });
+        });
+
+        return true;
+    }
+
+    // The Google script tag is loaded with async/defer, so it may not be
+    // ready yet at DOMContentLoaded — poll briefly until it is.
+    if (!renderGoogleButtons()) {
+        let attempts = 0;
+        const poll = window.setInterval(() => {
+            attempts += 1;
+            if (renderGoogleButtons() || attempts > 50) {
+                window.clearInterval(poll);
+            }
+        }, 100);
+    }
 });

@@ -9,6 +9,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Inter:wght@400;500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="../Style/LandingPage.css">
     <link rel="stylesheet" href="../Style/Auth.css">
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
 </head>
 <body>
 
@@ -261,7 +262,10 @@
 
                 <button type="submit" class="auth-submit">Log In</button>
 
-                
+                <div class="auth-divider"><span>or</span></div>
+
+                <div class="auth-google-btn" id="google-signin-login" data-google-btn></div>
+
                 <p class="auth-switch">Are you a staff member or the owner? <button type="button" class="auth-link" data-auth-tab="admin">Log in as Admin</button></p>
             </form>
 
@@ -300,6 +304,10 @@
                 </label>
 
                 <button type="submit" class="auth-submit">Create Account</button>
+
+                <div class="auth-divider"><span>or</span></div>
+
+                <div class="auth-google-btn" id="google-signin-signup" data-google-btn></div>
 
             </form>
 
