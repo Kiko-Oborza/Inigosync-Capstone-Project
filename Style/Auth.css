@@ -1,5 +1,5 @@
 /* ==========================================================================
-   IñigoSync — Auth Modal (Login / Sign Up / Admin)
+   IñigoSync — Auth Modal (Login / Sign Up / Verify OTP / Admin)
    Uses the same design tokens defined in LandingPage.css :root
    ========================================================================== */
 
@@ -101,8 +101,8 @@ body.auth-lock {
     margin-bottom: 28px;
 }
 
-/* Log In / Sign Up tabs are hidden while the Admin panel is active
-   (Admin login is intentionally login-only, no registration tab). */
+/* Log In / Sign Up tabs are hidden while the Admin or Verify panel is active
+   (Admin login is login-only; Verify is a one-off step after Sign Up). */
 .auth-tabs[hidden] {
     display: none;
 }
@@ -321,10 +321,75 @@ body.auth-lock {
     display: block;
 }
 
+/* ==========================================================================
+   OTP Verification
+   ========================================================================== */
+.auth-otp-row {
+    display: flex;
+    gap: 10px;
+    justify-content: space-between;
+}
+
+.auth-otp-box {
+    width: 100%;
+    aspect-ratio: 1;
+    text-align: center;
+    font-family: var(--font-mono);
+    font-size: 1.4rem;
+    background: var(--color-bg-card);
+    border: 1px solid var(--color-line);
+    border-radius: 10px;
+    color: var(--color-ink);
+    transition: border-color 0.2s, transform 0.15s;
+}
+
+.auth-otp-box:focus {
+    outline: none;
+    border-color: var(--color-primary);
+    transform: translateY(-1px);
+}
+
+.auth-otp-box.is-filled {
+    border-color: var(--color-primary-dim);
+}
+
+.auth-otp-error {
+    display: none;
+    font-size: 0.82rem;
+    color: var(--color-alert);
+    margin-top: -8px;
+}
+
+.auth-otp-error.is-visible {
+    display: block;
+}
+
+.auth-switch [data-otp-timer] {
+    color: var(--color-ink-faint);
+    font-family: var(--font-mono);
+    font-size: 0.82rem;
+    margin-left: 4px;
+}
+
+.auth-switch [data-otp-resend][disabled] {
+    color: var(--color-ink-faint);
+    cursor: not-allowed;
+    text-decoration: none;
+    pointer-events: none;
+}
+
 /* Responsive */
 @media (max-width: 480px) {
     .auth-modal {
         padding: 32px 22px 26px;
         border-radius: 16px;
+    }
+
+    .auth-otp-row {
+        gap: 6px;
+    }
+
+    .auth-otp-box {
+        font-size: 1.1rem;
     }
 }

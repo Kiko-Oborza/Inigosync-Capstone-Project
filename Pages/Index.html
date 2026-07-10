@@ -213,7 +213,7 @@
     </footer>
 
     <!-- ==========================================================================
-         AUTH MODAL — Login / Sign up / Admin
+         AUTH MODAL — Login / Sign up / Verify OTP / Admin
          ========================================================================== -->
     <div class="auth-overlay" id="authOverlay" data-auth-overlay hidden>
         <div class="auth-modal" role="dialog" aria-modal="true" aria-labelledby="authModalTitle">
@@ -227,7 +227,7 @@
                 <p class="auth-tagline">Book your court in a few taps.</p>
             </div>
 
-            <!-- Log In / Sign Up tabs — hidden automatically while the Admin panel is active -->
+            <!-- Log In / Sign Up tabs — hidden automatically while the Admin or Verify panel is active -->
             <div class="auth-tabs" data-auth-tabs role="tablist">
                 <button type="button" class="auth-tab is-active" data-auth-tab="login" role="tab" aria-selected="true">Log In</button>
                 <button type="button" class="auth-tab" data-auth-tab="signup" role="tab" aria-selected="false">Sign Up</button>
@@ -309,6 +309,35 @@
 
                 <div class="auth-google-btn" id="google-signin-signup" data-google-btn></div>
 
+            </form>
+
+            <!-- OTP VERIFICATION PANEL — shown automatically after Sign Up is submitted -->
+            <form class="auth-form" data-auth-panel="verify" novalidate>
+                <h2 class="auth-heading">Verify your email</h2>
+                <p class="auth-tagline" style="margin-bottom: 18px;">
+                    Enter the 6-digit code we sent to <strong data-verify-email>your email</strong>.
+                </p>
+
+                <div class="auth-otp-row" data-otp-row>
+                    <input type="text" inputmode="numeric" pattern="[0-9]*" maxlength="1" class="auth-otp-box" data-otp-box aria-label="Digit 1">
+                    <input type="text" inputmode="numeric" pattern="[0-9]*" maxlength="1" class="auth-otp-box" data-otp-box aria-label="Digit 2">
+                    <input type="text" inputmode="numeric" pattern="[0-9]*" maxlength="1" class="auth-otp-box" data-otp-box aria-label="Digit 3">
+                    <input type="text" inputmode="numeric" pattern="[0-9]*" maxlength="1" class="auth-otp-box" data-otp-box aria-label="Digit 4">
+                    <input type="text" inputmode="numeric" pattern="[0-9]*" maxlength="1" class="auth-otp-box" data-otp-box aria-label="Digit 5">
+                    <input type="text" inputmode="numeric" pattern="[0-9]*" maxlength="1" class="auth-otp-box" data-otp-box aria-label="Digit 6">
+                </div>
+
+                <p class="auth-otp-error" data-otp-error>That code didn't match. Please try again.</p>
+
+                <button type="submit" class="auth-submit">Verify &amp; Continue</button>
+
+                <p class="auth-switch">
+                    Didn't get a code?
+                    <button type="button" class="auth-link" data-otp-resend>Resend code</button>
+                    <span data-otp-timer></span>
+                </p>
+
+                <p class="auth-switch"><button type="button" class="auth-link" data-auth-tab="signup">← Back to sign up</button></p>
             </form>
 
             <!-- ADMIN LOGIN FORM — intentionally has no Sign Up / registration option -->

@@ -1,12 +1,13 @@
-// IñigoSync — Login / Sign up / Admin modal controller
+// IñigoSync — Login / Sign up / OTP Verify / Admin modal controller
 // Handles: opening the modal from any [data-auth-open] trigger,
 // closing via backdrop/close button/Escape, switching between
-// the Log In, Sign Up, and Admin panels, and password show/hide toggles.
+// the Log In, Sign Up, Verify (OTP), and Admin panels, and password
+// show/hide toggles.
 //
 // Note: the Admin panel is login-only — the Log In / Sign Up tab bar is
-// automatically hidden whenever the Admin panel is active, and the Admin
-// panel itself has no sign-up/registration link, only a "back to customer
-// login" link.
+// automatically hidden whenever the Admin or Verify panel is active. The
+// Verify panel is a one-off step shown right after Sign Up is submitted;
+// it has no tab of its own and is only reached programmatically.
 
 document.addEventListener('DOMContentLoaded', () => {
     const overlay = document.querySelector('[data-auth-overlay]');
@@ -31,9 +32,10 @@ document.addEventListener('DOMContentLoaded', () => {
         });
 
         // Customers can switch between Log In / Sign Up, but the Admin
-        // panel is login-only, so hide that tab bar while it's active.
+        // panel is login-only and the Verify panel is a one-off step, so
+        // hide the tab bar while either is active.
         if (authTabsEl) {
-            authTabsEl.hidden = name === 'admin';
+            authTabsEl.hidden = name === 'admin' || name === 'verify';
         }
     }
 
@@ -99,7 +101,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     // Basic client-side validation feedback + placeholder submit handling.
-    // Wire this up to the real auth endpoint once the backend is ready.
+    // Wire this up to the real auth endpoints once the backend is ready.
     // (This also covers the Admin panel — its mode resolves to "admin".)
     panels.forEach((form) => {
         form.addEventListener('submit', (e) => {
@@ -111,19 +113,114 @@ document.addEventListener('DOMContentLoaded', () => {
             }
 
             const mode = form.dataset.authPanel;
-            console.log(`[auth] ${mode} submitted`, Object.fromEntries(new FormData(form)));
+            const data = Object.fromEntries(new FormData(form));
+            console.log(`[auth] ${mode} submitted`, data);
 
-            // TODO: replace with real API call (fetch to backend auth endpoint).
+            // TODO: replace with real API calls once the backend is ready.
             // Admin submissions should hit a separate admin-auth endpoint/role
             // check on the backend, not the customer registration/login one.
+
+            if (mode === 'signup') {
+                // Don't log the customer in yet — send them to email
+                // verification first. TODO: trigger the real "send OTP"
+                // API call here once the backend endpoint exists.
+                const emailLabel = overlay.querySelector('[data-verify-email]');
+                if (emailLabel) emailLabel.textContent = data.email || 'your email';
+                setActivePanel('verify');
+                startOtpFlow();
+                return;
+            }
+
+            if (mode === 'verify') {
+                // Placeholder only — no real code is checked yet.
+                // TODO: send the entered code to a "verify OTP" endpoint,
+                // then closeModal() (or log the user in) on success.
+                return;
+            }
+
+            // login / admin
             closeModal();
         });
     });
 
     // ------------------------------------------------------------------
-    // Google Sign-In / Sign-Up (customer accounts only — the Admin panel
-    // stays credential-only on purpose, so no Google button is rendered
-    // there).
+    // OTP verification UI (design/demo only — no real code is checked yet)
+    // ------------------------------------------------------------------
+    const otpBoxes = Array.from(overlay.querySelectorAll('[data-otp-box]'));
+    const otpError = overlay.querySelector('[data-otp-error]');
+    const otpResendBtn = overlay.querySelector('[data-otp-resend]');
+    const otpTimerEl = overlay.querySelector('[data-otp-timer]');
+    let otpTimerId = null;
+
+    function startOtpFlow() {
+        otpBoxes.forEach((box) => {
+            box.value = '';
+            box.classList.remove('is-filled');
+        });
+        if (otpError) otpError.classList.remove('is-visible');
+        if (otpBoxes[0]) otpBoxes[0].focus();
+        startResendCountdown(30);
+    }
+
+    function startResendCountdown(seconds) {
+        if (otpTimerId) window.clearInterval(otpTimerId);
+        let remaining = seconds;
+        if (otpResendBtn) otpResendBtn.disabled = true;
+
+        const tick = () => {
+            if (otpTimerEl) otpTimerEl.textContent = `Resend available in ${remaining}s`;
+            if (remaining <= 0) {
+                window.clearInterval(otpTimerId);
+                if (otpTimerEl) otpTimerEl.textContent = '';
+                if (otpResendBtn) otpResendBtn.disabled = false;
+                return;
+            }
+            remaining -= 1;
+        };
+
+        tick();
+        otpTimerId = window.setInterval(tick, 1000);
+    }
+
+    otpBoxes.forEach((box, index) => {
+        box.addEventListener('input', () => {
+            box.value = box.value.replace(/[^0-9]/g, '').slice(0, 1);
+            box.classList.toggle('is-filled', box.value.length === 1);
+            if (box.value && otpBoxes[index + 1]) otpBoxes[index + 1].focus();
+        });
+
+        box.addEventListener('keydown', (e) => {
+            if (e.key === 'Backspace' && !box.value && otpBoxes[index - 1]) {
+                otpBoxes[index - 1].focus();
+            }
+        });
+
+        box.addEventListener('paste', (e) => {
+            const pasted = (e.clipboardData || window.clipboardData).getData('text').replace(/[^0-9]/g, '');
+            if (!pasted) return;
+            e.preventDefault();
+            pasted.split('').slice(0, otpBoxes.length).forEach((digit, i) => {
+                if (otpBoxes[i]) {
+                    otpBoxes[i].value = digit;
+                    otpBoxes[i].classList.add('is-filled');
+                }
+            });
+            const next = otpBoxes[Math.min(pasted.length, otpBoxes.length - 1)];
+            if (next) next.focus();
+        });
+    });
+
+    if (otpResendBtn) {
+        otpResendBtn.addEventListener('click', () => {
+            console.log('[auth] resend OTP requested (placeholder)');
+            startResendCountdown(30);
+        });
+    }
+
+    // ------------------------------------------------------------------
+    // Google Sign-In / Sign-Up (customer accounts only — the Admin and
+    // Verify panels stay credential-only on purpose, so no Google button
+    // is rendered there).
     //
     // IMPORTANT SETUP STEPS before this works:
     //   1. Create an OAuth 2.0 Client ID (Web application) in the Google
