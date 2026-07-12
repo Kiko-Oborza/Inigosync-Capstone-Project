@@ -1,0 +1,878 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>My Dashboard | IñigoSync</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Inter:wght@400;500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="../Style/LandingPage.css">
+    <link rel="stylesheet" href="../Style/Dashboard.css">
+</head>
+<body class="dash-body">
+
+    <div class="dash-shell">
+
+        <!-- Mobile scrim (click to close sidebar) -->
+        <div class="dash-sidebar-scrim" data-dash-scrim></div>
+
+        <!-- ================= SIDEBAR ================= -->
+        <aside class="dash-sidebar" data-dash-sidebar>
+            <div class="dash-sidebar-brand">
+                <img src="../assets/Logo/Logo.png" alt="Iñigos logo">
+                <div class="logo-text">IñigoSync</div>
+            </div>
+
+            <ul class="dash-nav">
+                <li>
+                    <button type="button" class="dash-nav-link is-active" data-dash-nav="overview">
+                        <svg viewBox="0 0 24 24" fill="none"><rect x="3" y="3" width="8" height="8" rx="1.5" stroke="currentColor" stroke-width="1.8"/><rect x="13" y="3" width="8" height="5" rx="1.5" stroke="currentColor" stroke-width="1.8"/><rect x="13" y="12" width="8" height="9" rx="1.5" stroke="currentColor" stroke-width="1.8"/><rect x="3" y="15" width="8" height="6" rx="1.5" stroke="currentColor" stroke-width="1.8"/></svg>
+                        Dashboard
+                    </button>
+                </li>
+                <li>
+                    <button type="button" class="dash-nav-link" data-dash-nav="courts">
+                        <svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.8"/><path d="M12 3v18M3 12h18M6 6c3 3 3 9 0 12M18 6c-3 3-3 9 0 12" stroke="currentColor" stroke-width="1.6"/></svg>
+                        Courts
+                    </button>
+                </li>
+                <li>
+                    <button type="button" class="dash-nav-link" data-dash-nav="booking">
+                        <svg viewBox="0 0 24 24" fill="none"><rect x="3.5" y="4.5" width="17" height="16" rx="2" stroke="currentColor" stroke-width="1.8"/><path d="M3.5 9.5h17M8 3v3M16 3v3" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path d="M8 14.5l2.3 2.3L16 12" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                        Book a Court
+                    </button>
+                </li>
+                <li>
+                    <button type="button" class="dash-nav-link" data-dash-nav="bookings">
+                        <svg viewBox="0 0 24 24" fill="none"><path d="M5 4h11l3 3v13a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M8 10h8M8 14h8M8 18h5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+                        My Bookings
+                    </button>
+                </li>
+                <li>
+                    <button type="button" class="dash-nav-link" data-dash-nav="receipts">
+                        <svg viewBox="0 0 24 24" fill="none"><path d="M6 2.5h12v19l-2.5-1.5L13 21l-1-1.5-1 1.5-2.5-1.5L6 21.5z" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><path d="M9 8h6M9 11.5h6M9 15h3.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+                        Receipts
+                    </button>
+                </li>
+
+                <div class="dash-nav-divider"></div>
+
+                <li>
+                    <button type="button" class="dash-nav-link" data-dash-nav="profile">
+                        <svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="8" r="4" stroke="currentColor" stroke-width="1.8"/><path d="M4 20c1.5-4 5-6 8-6s6.5 2 8 6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+                        Profile
+                    </button>
+                </li>
+                <li>
+                    <button type="button" class="dash-nav-link" data-dash-nav="settings">
+                        <svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="3.2" stroke="currentColor" stroke-width="1.8"/><path d="M19.4 13.5a7.6 7.6 0 0 0 0-3l2-1.4-2-3.4-2.3.8a7.6 7.6 0 0 0-2.6-1.5L14 2.5h-4l-.5 2.5a7.6 7.6 0 0 0-2.6 1.5l-2.3-.8-2 3.4 2 1.4a7.6 7.6 0 0 0 0 3l-2 1.4 2 3.4 2.3-.8a7.6 7.6 0 0 0 2.6 1.5l.5 2.5h4l.5-2.5a7.6 7.6 0 0 0 2.6-1.5l2.3.8 2-3.4z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>
+                        Account Settings
+                    </button>
+                </li>
+            </ul>
+
+            <div class="dash-sidebar-foot">
+                <div class="dash-nav-divider"></div>
+                <button type="button" class="dash-nav-link dash-logout" data-dash-logout>
+                    <svg viewBox="0 0 24 24" fill="none"><path d="M9 21H5a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><path d="M16 17l5-5-5-5M21 12H9" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                    Log Out
+                </button>
+            </div>
+        </aside>
+
+        <!-- ================= MAIN ================= -->
+        <div class="dash-main">
+
+            <!-- TOPBAR -->
+            <header class="dash-topbar">
+                <div style="display:flex; align-items:center; gap:14px;">
+                    <button type="button" class="dash-mobile-toggle" data-dash-mobile-toggle aria-label="Open menu">
+                        <svg viewBox="0 0 24 24" width="18" height="18" fill="none"><path d="M4 6h16M4 12h16M4 18h16" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+                    </button>
+                    <div class="dash-topbar-title">
+                        <h1 data-dash-title>Dashboard</h1>
+                        <p data-dash-subtitle>Welcome back, here's what's happening with your bookings.</p>
+                    </div>
+                </div>
+
+                <div class="dash-topbar-actions">
+                    <button type="button" class="dash-icon-btn" aria-label="Notifications">
+                        <svg viewBox="0 0 24 24" fill="none"><path d="M18 8.5c0-3.5-2.7-6-6-6s-6 2.5-6 6c0 6-2.5 7.5-2.5 7.5h17S18 14.5 18 8.5z" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><path d="M9.7 19a2.3 2.3 0 0 0 4.6 0" stroke="currentColor" stroke-width="1.7"/></svg>
+                        <span class="dash-badge-dot"></span>
+                    </button>
+
+                    <div class="dash-profile" data-dash-profile>
+                        <button type="button" class="dash-profile-trigger" data-dash-profile-trigger>
+                            <div class="dash-avatar">JD</div>
+                            <div class="dash-profile-name">
+                                <strong>Juan Dela Cruz</strong>
+                                <span>Customer</span>
+                            </div>
+                            <svg class="dash-caret" viewBox="0 0 24 24" fill="none"><path d="M6 9l6 6 6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                        </button>
+
+                        <div class="dash-profile-menu">
+                            <button type="button" data-dash-nav="profile">
+                                <svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="8" r="4" stroke="currentColor" stroke-width="1.8"/><path d="M4 20c1.5-4 5-6 8-6s6.5 2 8 6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+                                View Profile
+                            </button>
+                            <button type="button" data-dash-nav="settings">
+                                <svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="3.2" stroke="currentColor" stroke-width="1.8"/><path d="M19.4 13.5a7.6 7.6 0 0 0 0-3l2-1.4-2-3.4-2.3.8a7.6 7.6 0 0 0-2.6-1.5L14 2.5h-4l-.5 2.5a7.6 7.6 0 0 0-2.6 1.5l-2.3-.8-2 3.4 2 1.4a7.6 7.6 0 0 0 0 3l-2 1.4 2 3.4 2.3-.8a7.6 7.6 0 0 0 2.6 1.5l.5 2.5h4l.5-2.5a7.6 7.6 0 0 0 2.6-1.5l2.3.8 2-3.4z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg>
+                                Account Settings
+                            </button>
+                            <button type="button" class="dash-logout" data-dash-logout>
+                                <svg viewBox="0 0 24 24" fill="none"><path d="M9 21H5a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><path d="M16 17l5-5-5-5M21 12H9" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                                Log Out
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </header>
+
+            <!-- CONTENT -->
+            <main class="dash-content">
+
+                <!-- ============================================================
+                     OVERVIEW PANEL
+                     ============================================================ -->
+                <section class="dash-panel is-active" data-dash-panel="overview">
+
+                    <div class="dash-stat-grid">
+                        <div class="dash-stat-card">
+                            <div class="dash-stat-icon">
+                                <svg viewBox="0 0 24 24" fill="none"><rect x="3.5" y="4.5" width="17" height="16" rx="2" stroke="currentColor" stroke-width="1.8"/><path d="M3.5 9.5h17M8 3v3M16 3v3" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+                            </div>
+                            <span class="dash-stat-value">3</span>
+                            <span class="dash-stat-label">Upcoming bookings</span>
+                        </div>
+                        <div class="dash-stat-card">
+                            <div class="dash-stat-icon">
+                                <svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.8"/><path d="M8 12.5l2.5 2.5L16 9.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                            </div>
+                            <span class="dash-stat-value">4</span>
+                            <span class="dash-stat-label">Courts available now</span>
+                        </div>
+                        <div class="dash-stat-card">
+                            <div class="dash-stat-icon">
+                                <svg viewBox="0 0 24 24" fill="none"><path d="M4 19V10M10 19V5M16 19v-7M22 19H2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                            </div>
+                            <span class="dash-stat-value">7</span>
+                            <span class="dash-stat-label">Bookings this month</span>
+                        </div>
+                        <div class="dash-stat-card">
+                            <div class="dash-stat-icon">
+                                <svg viewBox="0 0 24 24" fill="none"><path d="M12 2v20M17 6.5c0-2-2.2-3.5-5-3.5s-5 1.5-5 3.5 2.2 3 5 3.5 5 1.5 5 3.5-2.2 3.5-5 3.5-5-1.5-5-3.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+                            </div>
+                            <span class="dash-stat-value">₱4,150</span>
+                            <span class="dash-stat-label">Total spent</span>
+                        </div>
+                    </div>
+
+                    <div class="dash-grid-2">
+                        <div class="dash-card">
+                            <div class="dash-card-head">
+                                <h3>Upcoming reservations</h3>
+                                <button type="button" class="dash-link-btn" data-dash-nav="bookings">View all</button>
+                            </div>
+
+                            <div class="dash-res-row">
+                                <div class="dash-res-icon">
+                                    <svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.8"/><path d="M12 3v18M3 12h18M6 6c3 3 3 9 0 12M18 6c-3 3-3 9 0 12" stroke="currentColor" stroke-width="1.4"/></svg>
+                                </div>
+                                <div class="dash-res-info">
+                                    <h4>Basketball — Full Court</h4>
+                                    <p>Today · 6:00 PM – 7:00 PM</p>
+                                </div>
+                                <span class="dash-status confirmed">Confirmed</span>
+                            </div>
+
+                            <div class="dash-res-row">
+                                <div class="dash-res-icon">
+                                    <svg viewBox="0 0 24 24" fill="none"><rect x="6" y="9" width="12" height="4" rx="1" stroke="currentColor" stroke-width="1.6"/><line x1="12" y1="3" x2="12" y2="21" stroke="currentColor" stroke-width="1.4"/></svg>
+                                </div>
+                                <div class="dash-res-info">
+                                    <h4>Badminton — Court 2</h4>
+                                    <p>Jul 14 · 5:00 PM – 6:00 PM</p>
+                                </div>
+                                <span class="dash-status pending">Pending</span>
+                            </div>
+
+                            <div class="dash-res-row">
+                                <div class="dash-res-icon">
+                                    <svg viewBox="0 0 24 24" fill="none"><rect x="6" y="9" width="12" height="6" rx="1" stroke="currentColor" stroke-width="1.6"/></svg>
+                                </div>
+                                <div class="dash-res-info">
+                                    <h4>Pickleball — Court 1</h4>
+                                    <p>Jul 16 · 3:00 PM – 4:00 PM</p>
+                                </div>
+                                <span class="dash-status confirmed">Confirmed</span>
+                            </div>
+
+                            <div class="dash-quick-actions" style="margin-top: 20px;">
+                                <button type="button" class="dash-quick-btn" data-dash-nav="booking">
+                                    <svg viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+                                    Book a court
+                                </button>
+                                <button type="button" class="dash-quick-btn" data-dash-nav="receipts">
+                                    <svg viewBox="0 0 24 24" fill="none"><path d="M6 2.5h12v19l-2.5-1.5L13 21l-1-1.5-1 1.5-2.5-1.5L6 21.5z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg>
+                                    View receipts
+                                </button>
+                            </div>
+                        </div>
+
+                        <div style="display:flex; flex-direction:column; gap:20px;">
+                            <div class="dash-card">
+                                <div class="dash-card-head">
+                                    <h3>Calendar</h3>
+                                </div>
+                                <div class="dash-cal">
+                                    <div class="dash-cal-nav">
+                                        <button type="button" class="dash-cal-nav-btn" data-dash-cal-prev aria-label="Previous month">
+                                            <svg viewBox="0 0 24 24" width="14" height="14" fill="none"><path d="M15 6l-6 6 6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                                        </button>
+                                        <span data-dash-cal-label>July 2026</span>
+                                        <button type="button" class="dash-cal-nav-btn" data-dash-cal-next aria-label="Next month">
+                                            <svg viewBox="0 0 24 24" width="14" height="14" fill="none"><path d="M9 6l6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                                        </button>
+                                    </div>
+                                    <div class="dash-cal-grid">
+                                        <span class="dash-cal-dow">S</span><span class="dash-cal-dow">M</span><span class="dash-cal-dow">T</span><span class="dash-cal-dow">W</span><span class="dash-cal-dow">T</span><span class="dash-cal-dow">F</span><span class="dash-cal-dow">S</span>
+                                        <button type="button" class="dash-cal-day is-muted">28</button>
+                                        <button type="button" class="dash-cal-day is-muted">29</button>
+                                        <button type="button" class="dash-cal-day is-muted">30</button>
+                                        <button type="button" class="dash-cal-day">1</button>
+                                        <button type="button" class="dash-cal-day">2</button>
+                                        <button type="button" class="dash-cal-day">3</button>
+                                        <button type="button" class="dash-cal-day">4</button>
+                                        <button type="button" class="dash-cal-day">5</button>
+                                        <button type="button" class="dash-cal-day">6</button>
+                                        <button type="button" class="dash-cal-day">7</button>
+                                        <button type="button" class="dash-cal-day">8</button>
+                                        <button type="button" class="dash-cal-day">9</button>
+                                        <button type="button" class="dash-cal-day">10</button>
+                                        <button type="button" class="dash-cal-day">11</button>
+                                        <button type="button" class="dash-cal-day is-today has-booking">12</button>
+                                        <button type="button" class="dash-cal-day has-booking">13</button>
+                                        <button type="button" class="dash-cal-day">14</button>
+                                        <button type="button" class="dash-cal-day">15</button>
+                                        <button type="button" class="dash-cal-day has-booking">16</button>
+                                        <button type="button" class="dash-cal-day">17</button>
+                                        <button type="button" class="dash-cal-day">18</button>
+                                        <button type="button" class="dash-cal-day">19</button>
+                                        <button type="button" class="dash-cal-day">20</button>
+                                        <button type="button" class="dash-cal-day">21</button>
+                                        <button type="button" class="dash-cal-day">22</button>
+                                        <button type="button" class="dash-cal-day">23</button>
+                                        <button type="button" class="dash-cal-day">24</button>
+                                        <button type="button" class="dash-cal-day">25</button>
+                                        <button type="button" class="dash-cal-day">26</button>
+                                        <button type="button" class="dash-cal-day">27</button>
+                                        <button type="button" class="dash-cal-day">28</button>
+                                        <button type="button" class="dash-cal-day">29</button>
+                                        <button type="button" class="dash-cal-day">30</button>
+                                        <button type="button" class="dash-cal-day">31</button>
+                                        <button type="button" class="dash-cal-day is-muted">1</button>
+                                        <button type="button" class="dash-cal-day is-muted">2</button>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="dash-card">
+                                <div class="dash-card-head">
+                                    <h3>Live availability</h3>
+                                </div>
+                                <div class="dash-avail-list">
+                                    <div class="dash-avail-row">
+                                        <span class="dash-avail-name"><span class="dot available"></span>Basketball</span>
+                                        <span class="dash-avail-time">Available 2:00–3:00 PM</span>
+                                    </div>
+                                    <div class="dash-avail-row">
+                                        <span class="dash-avail-name"><span class="dot booked"></span>Badminton 1</span>
+                                        <span class="dash-avail-time">Booked until 4:00 PM</span>
+                                    </div>
+                                    <div class="dash-avail-row">
+                                        <span class="dash-avail-name"><span class="dot available"></span>Volleyball</span>
+                                        <span class="dash-avail-time">Available now</span>
+                                    </div>
+                                    <div class="dash-avail-row">
+                                        <span class="dash-avail-name"><span class="dot available"></span>Pickleball</span>
+                                        <span class="dash-avail-time">Available 3:00–5:00 PM</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- ============================================================
+                     COURTS / COURT INFORMATION PANEL
+                     ============================================================ -->
+                <section class="dash-panel" data-dash-panel="courts">
+                    <div class="dash-panel-head">
+                        <div>
+                            <h2>Courts</h2>
+                            <p>Check rates, features, and real-time availability before you book.</p>
+                        </div>
+                        <div class="dash-filter-row">
+                            <button type="button" class="dash-chip is-active" data-dash-chip>All</button>
+                            <button type="button" class="dash-chip" data-dash-chip>Available now</button>
+                            <button type="button" class="dash-chip" data-dash-chip>Indoor</button>
+                        </div>
+                    </div>
+
+                    <div class="dash-court-grid">
+                        <article class="dash-court-card">
+                            <div class="dash-court-media">
+                                <svg viewBox="0 0 48 48" fill="none"><circle cx="24" cy="24" r="20" stroke="currentColor" stroke-width="2.5"/><path d="M24 4v40M4 24h40M9 9c6 6 6 26 0 30M39 9c-6 6-6 26 0 30" stroke="currentColor" stroke-width="2"/></svg>
+                                <span class="dash-status confirmed">Available</span>
+                            </div>
+                            <div class="dash-court-body">
+                                <h3>Basketball</h3>
+                                <div class="dash-court-rating">
+                                    <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l2.9 6.6 7.1.6-5.4 4.7 1.7 6.9-6.3-3.8-6.3 3.8 1.7-6.9L2 9.2l7.1-.6z"/></svg>
+                                    <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l2.9 6.6 7.1.6-5.4 4.7 1.7 6.9-6.3-3.8-6.3 3.8 1.7-6.9L2 9.2l7.1-.6z"/></svg>
+                                    <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l2.9 6.6 7.1.6-5.4 4.7 1.7 6.9-6.3-3.8-6.3 3.8 1.7-6.9L2 9.2l7.1-.6z"/></svg>
+                                    <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l2.9 6.6 7.1.6-5.4 4.7 1.7 6.9-6.3-3.8-6.3 3.8 1.7-6.9L2 9.2l7.1-.6z"/></svg>
+                                    <span>4.8 (120)</span>
+                                </div>
+                                <p class="dash-court-rate">₱300 <span>/ hour</span></p>
+                                <div class="dash-court-tags"><span>Full court</span><span>Indoor</span><span>Scoreboard</span></div>
+                                <div class="dash-court-actions">
+                                    <button type="button" class="dash-btn-secondary">Details</button>
+                                    <button type="button" class="dash-btn-primary" data-dash-book-court="Basketball" data-dash-book-rate="300">Book Now</button>
+                                </div>
+                            </div>
+                        </article>
+
+                        <article class="dash-court-card">
+                            <div class="dash-court-media">
+                                <svg viewBox="0 0 48 48" fill="none"><rect x="4" y="20" width="40" height="8" stroke="currentColor" stroke-width="2.5"/><line x1="24" y1="6" x2="24" y2="42" stroke="currentColor" stroke-width="2"/></svg>
+                                <span class="dash-status confirmed">Available</span>
+                            </div>
+                            <div class="dash-court-body">
+                                <h3>Volleyball</h3>
+                                <div class="dash-court-rating">
+                                    <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l2.9 6.6 7.1.6-5.4 4.7 1.7 6.9-6.3-3.8-6.3 3.8 1.7-6.9L2 9.2l7.1-.6z"/></svg>
+                                    <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l2.9 6.6 7.1.6-5.4 4.7 1.7 6.9-6.3-3.8-6.3 3.8 1.7-6.9L2 9.2l7.1-.6z"/></svg>
+                                    <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l2.9 6.6 7.1.6-5.4 4.7 1.7 6.9-6.3-3.8-6.3 3.8 1.7-6.9L2 9.2l7.1-.6z"/></svg>
+                                    <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l2.9 6.6 7.1.6-5.4 4.7 1.7 6.9-6.3-3.8-6.3 3.8 1.7-6.9L2 9.2l7.1-.6z"/></svg>
+                                    <span>4.6 (84)</span>
+                                </div>
+                                <p class="dash-court-rate">₱250 <span>/ hour</span></p>
+                                <div class="dash-court-tags"><span>Net included</span><span>Indoor</span></div>
+                                <div class="dash-court-actions">
+                                    <button type="button" class="dash-btn-secondary">Details</button>
+                                    <button type="button" class="dash-btn-primary" data-dash-book-court="Volleyball" data-dash-book-rate="250">Book Now</button>
+                                </div>
+                            </div>
+                        </article>
+
+                        <article class="dash-court-card">
+                            <div class="dash-court-media">
+                                <svg viewBox="0 0 48 48" fill="none"><rect x="6" y="18" width="36" height="4" stroke="currentColor" stroke-width="2.5"/><circle cx="14" cy="30" r="4" stroke="currentColor" stroke-width="2"/><line x1="14" y1="18" x2="14" y2="26" stroke="currentColor" stroke-width="2"/></svg>
+                                <span class="dash-status cancelled">Booked</span>
+                            </div>
+                            <div class="dash-court-body">
+                                <h3>Badminton — Court 1</h3>
+                                <div class="dash-court-rating">
+                                    <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l2.9 6.6 7.1.6-5.4 4.7 1.7 6.9-6.3-3.8-6.3 3.8 1.7-6.9L2 9.2l7.1-.6z"/></svg>
+                                    <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l2.9 6.6 7.1.6-5.4 4.7 1.7 6.9-6.3-3.8-6.3 3.8 1.7-6.9L2 9.2l7.1-.6z"/></svg>
+                                    <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l2.9 6.6 7.1.6-5.4 4.7 1.7 6.9-6.3-3.8-6.3 3.8 1.7-6.9L2 9.2l7.1-.6z"/></svg>
+                                    <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l2.9 6.6 7.1.6-5.4 4.7 1.7 6.9-6.3-3.8-6.3 3.8 1.7-6.9L2 9.2l7.1-.6z"/></svg>
+                                    <span>4.9 (66)</span>
+                                </div>
+                                <p class="dash-court-rate">₱200 <span>/ hour</span></p>
+                                <div class="dash-court-tags"><span>Indoor</span><span>Rackets for rent</span></div>
+                                <div class="dash-court-actions">
+                                    <button type="button" class="dash-btn-secondary">Details</button>
+                                    <button type="button" class="dash-btn-primary" disabled>Booked until 4PM</button>
+                                </div>
+                            </div>
+                        </article>
+
+                        <article class="dash-court-card">
+                            <div class="dash-court-media">
+                                <svg viewBox="0 0 48 48" fill="none"><circle cx="24" cy="16" r="8" stroke="currentColor" stroke-width="2.5"/><path d="M6 42c0-8 8-12 18-12s18 4 18 12" stroke="currentColor" stroke-width="2"/></svg>
+                                <span class="dash-status confirmed">Available</span>
+                            </div>
+                            <div class="dash-court-body">
+                                <h3>Bowling</h3>
+                                <div class="dash-court-rating">
+                                    <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l2.9 6.6 7.1.6-5.4 4.7 1.7 6.9-6.3-3.8-6.3 3.8 1.7-6.9L2 9.2l7.1-.6z"/></svg>
+                                    <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l2.9 6.6 7.1.6-5.4 4.7 1.7 6.9-6.3-3.8-6.3 3.8 1.7-6.9L2 9.2l7.1-.6z"/></svg>
+                                    <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l2.9 6.6 7.1.6-5.4 4.7 1.7 6.9-6.3-3.8-6.3 3.8 1.7-6.9L2 9.2l7.1-.6z"/></svg>
+                                    <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l2.9 6.6 7.1.6-5.4 4.7 1.7 6.9-6.3-3.8-6.3 3.8 1.7-6.9L2 9.2l7.1-.6z"/></svg>
+                                    <span>4.5 (41)</span>
+                                </div>
+                                <p class="dash-court-rate">₱150 <span>/ game</span></p>
+                                <div class="dash-court-tags"><span>2 lanes</span><span>Shoes included</span></div>
+                                <div class="dash-court-actions">
+                                    <button type="button" class="dash-btn-secondary">Details</button>
+                                    <button type="button" class="dash-btn-primary" data-dash-book-court="Bowling" data-dash-book-rate="150">Book Now</button>
+                                </div>
+                            </div>
+                        </article>
+
+                        <article class="dash-court-card">
+                            <div class="dash-court-media">
+                                <svg viewBox="0 0 48 48" fill="none"><rect x="8" y="14" width="32" height="20" rx="2" stroke="currentColor" stroke-width="2.5"/><line x1="24" y1="14" x2="24" y2="34" stroke="currentColor" stroke-width="2"/></svg>
+                                <span class="dash-status confirmed">Available</span>
+                            </div>
+                            <div class="dash-court-body">
+                                <h3>Pickleball</h3>
+                                <div class="dash-court-rating">
+                                    <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l2.9 6.6 7.1.6-5.4 4.7 1.7 6.9-6.3-3.8-6.3 3.8 1.7-6.9L2 9.2l7.1-.6z"/></svg>
+                                    <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l2.9 6.6 7.1.6-5.4 4.7 1.7 6.9-6.3-3.8-6.3 3.8 1.7-6.9L2 9.2l7.1-.6z"/></svg>
+                                    <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l2.9 6.6 7.1.6-5.4 4.7 1.7 6.9-6.3-3.8-6.3 3.8 1.7-6.9L2 9.2l7.1-.6z"/></svg>
+                                    <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l2.9 6.6 7.1.6-5.4 4.7 1.7 6.9-6.3-3.8-6.3 3.8 1.7-6.9L2 9.2l7.1-.6z"/></svg>
+                                    <span>4.7 (29)</span>
+                                </div>
+                                <p class="dash-court-rate">₱220 <span>/ hour</span></p>
+                                <div class="dash-court-tags"><span>Newly added</span><span>Indoor</span></div>
+                                <div class="dash-court-actions">
+                                    <button type="button" class="dash-btn-secondary">Details</button>
+                                    <button type="button" class="dash-btn-primary" data-dash-book-court="Pickleball" data-dash-book-rate="220">Book Now</button>
+                                </div>
+                            </div>
+                        </article>
+                    </div>
+                </section>
+
+                <!-- ============================================================
+                     BOOKING MANAGEMENT PANEL
+                     ============================================================ -->
+                <section class="dash-panel" data-dash-panel="booking">
+                    <div class="dash-panel-head">
+                        <div>
+                            <h2>Book a Court</h2>
+                            <p>Select a court, date, and time slot to reserve your schedule.</p>
+                        </div>
+                    </div>
+
+                    <div class="dash-grid-2">
+                        <div class="dash-card">
+                            <div class="dash-form-group">
+                                <span class="dash-form-label">Court</span>
+                                <select class="dash-select" data-dash-book-select>
+                                    <option value="Basketball" data-rate="300">Basketball — ₱300/hr</option>
+                                    <option value="Volleyball" data-rate="250">Volleyball — ₱250/hr</option>
+                                    <option value="Badminton" data-rate="200">Badminton — ₱200/hr</option>
+                                    <option value="Bowling" data-rate="150">Bowling — ₱150/game</option>
+                                    <option value="Pickleball" data-rate="220">Pickleball — ₱220/hr</option>
+                                </select>
+                            </div>
+
+                            <div class="dash-form-group">
+                                <span class="dash-form-label">Date</span>
+                                <input type="date" class="dash-input" data-dash-book-date value="2026-07-14">
+                            </div>
+
+                            <div class="dash-form-group">
+                                <span class="dash-form-label">Available time slots</span>
+                                <div class="dash-slot-grid">
+                                    <button type="button" class="dash-slot" data-dash-slot>8:00 AM</button>
+                                    <button type="button" class="dash-slot" data-dash-slot>9:00 AM</button>
+                                    <button type="button" class="dash-slot is-unavailable" disabled>10:00 AM</button>
+                                    <button type="button" class="dash-slot" data-dash-slot>11:00 AM</button>
+                                    <button type="button" class="dash-slot is-unavailable" disabled>1:00 PM</button>
+                                    <button type="button" class="dash-slot" data-dash-slot>2:00 PM</button>
+                                    <button type="button" class="dash-slot" data-dash-slot>3:00 PM</button>
+                                    <button type="button" class="dash-slot" data-dash-slot>4:00 PM</button>
+                                    <button type="button" class="dash-slot is-unavailable" disabled>5:00 PM</button>
+                                    <button type="button" class="dash-slot" data-dash-slot>6:00 PM</button>
+                                    <button type="button" class="dash-slot" data-dash-slot>7:00 PM</button>
+                                    <button type="button" class="dash-slot" data-dash-slot>8:00 PM</button>
+                                </div>
+                            </div>
+
+                            <div class="dash-form-group">
+                                <span class="dash-form-label">Payment option</span>
+                                <div class="dash-payment-options">
+                                    <label class="dash-payment-option is-selected" data-dash-payment-option>
+                                        <span class="dash-payment-option-head">
+                                            <input type="radio" name="payment-option" checked data-dash-payment="downpayment">
+                                            Downpayment
+                                        </span>
+                                        <p>Pay 50% now, balance on-site.</p>
+                                    </label>
+                                    <label class="dash-payment-option" data-dash-payment-option>
+                                        <span class="dash-payment-option-head">
+                                            <input type="radio" name="payment-option" data-dash-payment="full">
+                                            Full Payment
+                                        </span>
+                                        <p>Pay the total amount now.</p>
+                                    </label>
+                                </div>
+                            </div>
+
+                            <div class="dash-notice">
+                                <svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.7"/><path d="M12 8v5M12 16h.01" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/></svg>
+                                <span>Bookings have a 30-minute grace period. Arrive within 30 minutes of your slot, or it will be automatically cancelled and reopened — payments for auto-cancelled bookings are non-refundable.</span>
+                            </div>
+                        </div>
+
+                        <div class="dash-card dash-summary">
+                            <h3 style="font-family: var(--font-display); font-weight:600; font-size:1.05rem;">Booking Summary</h3>
+
+                            <div class="dash-summary-row"><span>Court</span><strong data-dash-summary-court>Basketball</strong></div>
+                            <div class="dash-summary-row"><span>Date</span><strong data-dash-summary-date>Jul 14, 2026</strong></div>
+                            <div class="dash-summary-row"><span>Time</span><strong data-dash-summary-time>— Select a slot —</strong></div>
+                            <div class="dash-summary-row"><span>Rate</span><strong data-dash-summary-rate>₱300 / hr</strong></div>
+
+                            <div class="dash-summary-divider"></div>
+
+                            <div class="dash-summary-row"><span>Payment type</span><strong data-dash-summary-payment>Downpayment (50%)</strong></div>
+
+                            <div class="dash-summary-divider"></div>
+
+                            <div class="dash-summary-total">
+                                <span>Amount due now</span>
+                                <span data-dash-summary-total>₱150.00</span>
+                            </div>
+
+                            <button type="button" class="dash-btn-primary" data-dash-book-submit disabled>Select a time slot to continue</button>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- ============================================================
+                     MY BOOKINGS PANEL
+                     ============================================================ -->
+                <section class="dash-panel" data-dash-panel="bookings">
+                    <div class="dash-panel-head">
+                        <div>
+                            <h2>My Bookings</h2>
+                            <p>Track the status of every reservation you've made.</p>
+                        </div>
+                        <div class="dash-filter-row">
+                            <button type="button" class="dash-chip is-active" data-dash-chip>All</button>
+                            <button type="button" class="dash-chip" data-dash-chip>Pending</button>
+                            <button type="button" class="dash-chip" data-dash-chip>Confirmed</button>
+                            <button type="button" class="dash-chip" data-dash-chip>Completed</button>
+                            <button type="button" class="dash-chip" data-dash-chip>Cancelled</button>
+                        </div>
+                    </div>
+
+                    <div class="dash-notice">
+                        <svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.7"/><path d="M12 8v5M12 16h.01" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/></svg>
+                        <span>Remember the 30-minute grace period — bookings not honored within 30 minutes of the start time are automatically cancelled and marked non-refundable.</span>
+                    </div>
+
+                    <div class="dash-card">
+                        <div class="dash-table-wrap">
+                            <table class="dash-table">
+                                <thead>
+                                    <tr>
+                                        <th>Court</th>
+                                        <th>Date</th>
+                                        <th>Time</th>
+                                        <th>Amount</th>
+                                        <th>Status</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr>
+                                        <td class="dash-cell-main">Basketball — Full Court</td>
+                                        <td>Jul 12, 2026</td>
+                                        <td>6:00 PM – 7:00 PM</td>
+                                        <td>₱300.00</td>
+                                        <td><span class="dash-status confirmed">Confirmed</span></td>
+                                        <td>
+                                            <div class="dash-table-actions">
+                                                <button type="button" class="dash-mini-btn" data-dash-nav="receipts">Receipt</button>
+                                                <button type="button" class="dash-mini-btn is-danger">Cancel</button>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td class="dash-cell-main">Badminton — Court 2</td>
+                                        <td>Jul 14, 2026</td>
+                                        <td>5:00 PM – 6:00 PM</td>
+                                        <td>₱100.00</td>
+                                        <td><span class="dash-status pending">Pending</span></td>
+                                        <td>
+                                            <div class="dash-table-actions">
+                                                <button type="button" class="dash-mini-btn" data-dash-nav="receipts">Receipt</button>
+                                                <button type="button" class="dash-mini-btn is-danger">Cancel</button>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td class="dash-cell-main">Pickleball — Court 1</td>
+                                        <td>Jul 16, 2026</td>
+                                        <td>3:00 PM – 4:00 PM</td>
+                                        <td>₱220.00</td>
+                                        <td><span class="dash-status confirmed">Confirmed</span></td>
+                                        <td>
+                                            <div class="dash-table-actions">
+                                                <button type="button" class="dash-mini-btn" data-dash-nav="receipts">Receipt</button>
+                                                <button type="button" class="dash-mini-btn is-danger">Cancel</button>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td class="dash-cell-main">Volleyball</td>
+                                        <td>Jul 3, 2026</td>
+                                        <td>4:00 PM – 5:00 PM</td>
+                                        <td>₱250.00</td>
+                                        <td><span class="dash-status completed">Completed</span></td>
+                                        <td>
+                                            <div class="dash-table-actions">
+                                                <button type="button" class="dash-mini-btn" data-dash-nav="receipts">Receipt</button>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td class="dash-cell-main">Bowling — Lane 2</td>
+                                        <td>Jun 28, 2026</td>
+                                        <td>6:00 PM – 7:00 PM</td>
+                                        <td>₱150.00</td>
+                                        <td><span class="dash-status cancelled">Cancelled</span></td>
+                                        <td>
+                                            <div class="dash-table-actions">
+                                                <button type="button" class="dash-mini-btn" data-dash-nav="receipts">Receipt</button>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- ============================================================
+                     RECEIPTS / INVOICE PANEL
+                     ============================================================ -->
+                <section class="dash-panel" data-dash-panel="receipts">
+                    <div class="dash-panel-head">
+                        <div>
+                            <h2>Receipts</h2>
+                            <p>Payment records and invoices for your completed bookings.</p>
+                        </div>
+                    </div>
+
+                    <div class="dash-receipt-grid">
+                        <div class="dash-receipt-card">
+                            <div class="dash-receipt-top">
+                                <div>
+                                    <h4>Basketball — Full Court</h4>
+                                    <p>Receipt No. RCPT-000241</p>
+                                </div>
+                                <span class="dash-status confirmed">Downpayment</span>
+                            </div>
+                            <div class="dash-receipt-rows">
+                                <div class="dash-summary-row"><span>Customer</span><strong>Juan Dela Cruz</strong></div>
+                                <div class="dash-summary-row"><span>Date issued</span><strong>Jul 12, 2026</strong></div>
+                                <div class="dash-summary-row"><span>Schedule</span><strong>Jul 12, 6:00–7:00 PM</strong></div>
+                                <div class="dash-summary-divider"></div>
+                                <div class="dash-summary-total"><span>Total</span><span>₱150.00</span></div>
+                            </div>
+                            <div class="dash-receipt-actions">
+                                <button type="button" class="dash-btn-secondary">View</button>
+                                <button type="button" class="dash-btn-secondary">Download</button>
+                            </div>
+                        </div>
+
+                        <div class="dash-receipt-card">
+                            <div class="dash-receipt-top">
+                                <div>
+                                    <h4>Volleyball</h4>
+                                    <p>Receipt No. RCPT-000198</p>
+                                </div>
+                                <span class="dash-status completed">Full Payment</span>
+                            </div>
+                            <div class="dash-receipt-rows">
+                                <div class="dash-summary-row"><span>Customer</span><strong>Juan Dela Cruz</strong></div>
+                                <div class="dash-summary-row"><span>Date issued</span><strong>Jul 3, 2026</strong></div>
+                                <div class="dash-summary-row"><span>Schedule</span><strong>Jul 3, 4:00–5:00 PM</strong></div>
+                                <div class="dash-summary-divider"></div>
+                                <div class="dash-summary-total"><span>Total</span><span>₱250.00</span></div>
+                            </div>
+                            <div class="dash-receipt-actions">
+                                <button type="button" class="dash-btn-secondary">View</button>
+                                <button type="button" class="dash-btn-secondary">Download</button>
+                            </div>
+                        </div>
+
+                        <div class="dash-receipt-card">
+                            <div class="dash-receipt-top">
+                                <div>
+                                    <h4>Pickleball — Court 1</h4>
+                                    <p>Receipt No. RCPT-000255</p>
+                                </div>
+                                <span class="dash-status confirmed">Downpayment</span>
+                            </div>
+                            <div class="dash-receipt-rows">
+                                <div class="dash-summary-row"><span>Customer</span><strong>Juan Dela Cruz</strong></div>
+                                <div class="dash-summary-row"><span>Date issued</span><strong>Jul 10, 2026</strong></div>
+                                <div class="dash-summary-row"><span>Schedule</span><strong>Jul 16, 3:00–4:00 PM</strong></div>
+                                <div class="dash-summary-divider"></div>
+                                <div class="dash-summary-total"><span>Total</span><span>₱110.00</span></div>
+                            </div>
+                            <div class="dash-receipt-actions">
+                                <button type="button" class="dash-btn-secondary">View</button>
+                                <button type="button" class="dash-btn-secondary">Download</button>
+                            </div>
+                        </div>
+
+                        <div class="dash-receipt-card">
+                            <div class="dash-receipt-top">
+                                <div>
+                                    <h4>Bowling — Lane 2</h4>
+                                    <p>Receipt No. RCPT-000177</p>
+                                </div>
+                                <span class="dash-status cancelled">Non-refundable</span>
+                            </div>
+                            <div class="dash-receipt-rows">
+                                <div class="dash-summary-row"><span>Customer</span><strong>Juan Dela Cruz</strong></div>
+                                <div class="dash-summary-row"><span>Date issued</span><strong>Jun 28, 2026</strong></div>
+                                <div class="dash-summary-row"><span>Schedule</span><strong>Jun 28, 6:00–7:00 PM</strong></div>
+                                <div class="dash-summary-divider"></div>
+                                <div class="dash-summary-total"><span>Total</span><span>₱150.00</span></div>
+                            </div>
+                            <div class="dash-receipt-actions">
+                                <button type="button" class="dash-btn-secondary">View</button>
+                                <button type="button" class="dash-btn-secondary">Download</button>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- ============================================================
+                     PROFILE PANEL
+                     ============================================================ -->
+                <section class="dash-panel" data-dash-panel="profile">
+                    <div class="dash-panel-head">
+                        <div>
+                            <h2>My Profile</h2>
+                            <p>Your personal details and booking history at a glance.</p>
+                        </div>
+                    </div>
+
+                    <div class="dash-card">
+                        <div class="dash-profile-card">
+                            <div class="dash-avatar">JD</div>
+                            <div class="dash-profile-card-info">
+                                <h3>Juan Dela Cruz</h3>
+                                <p>Customer since July 2026</p>
+                            </div>
+                        </div>
+
+                        <div class="dash-profile-meta" style="margin-top: 24px;">
+                            <div class="dash-profile-meta-item">
+                                <span>Email address</span>
+                                <span>juan.delacruz@email.com</span>
+                            </div>
+                            <div class="dash-profile-meta-item">
+                                <span>Mobile number</span>
+                                <span>0912 345 6789</span>
+                            </div>
+                            <div class="dash-profile-meta-item">
+                                <span>Member since</span>
+                                <span>July 2026</span>
+                            </div>
+                            <div class="dash-profile-meta-item">
+                                <span>Total bookings</span>
+                                <span>12</span>
+                            </div>
+                            <div class="dash-profile-meta-item">
+                                <span>Completed</span>
+                                <span>9</span>
+                            </div>
+                            <div class="dash-profile-meta-item">
+                                <span>Cancelled</span>
+                                <span>1</span>
+                            </div>
+                        </div>
+
+                        <div class="dash-form-actions" style="margin-top: 28px;">
+                            <button type="button" class="dash-btn-ghost" data-dash-logout>Log Out</button>
+                            <button type="button" class="dash-btn-save" data-dash-nav="settings">Edit Profile</button>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- ============================================================
+                     ACCOUNT SETTINGS PANEL
+                     ============================================================ -->
+                <section class="dash-panel" data-dash-panel="settings">
+                    <div class="dash-panel-head">
+                        <div>
+                            <h2>Account Settings</h2>
+                            <p>Update your personal details and manage your password.</p>
+                        </div>
+                    </div>
+
+                    <div class="dash-card">
+                        <div class="dash-card-head">
+                            <h3>Personal Information</h3>
+                        </div>
+                        <div class="dash-settings-grid">
+                            <div class="dash-form-group">
+                                <span class="dash-form-label">Full name</span>
+                                <input type="text" class="dash-input" value="Juan Dela Cruz">
+                            </div>
+                            <div class="dash-form-group">
+                                <span class="dash-form-label">Email address</span>
+                                <input type="email" class="dash-input" value="juan.delacruz@email.com">
+                            </div>
+                            <div class="dash-form-group">
+                                <span class="dash-form-label">Mobile number</span>
+                                <input type="tel" class="dash-input" value="0912 345 6789">
+                            </div>
+                        </div>
+                        <div class="dash-form-actions">
+                            <button type="button" class="dash-btn-ghost">Cancel</button>
+                            <button type="button" class="dash-btn-save" data-dash-settings-save>Save Changes</button>
+                        </div>
+                    </div>
+
+                    <div class="dash-card">
+                        <div class="dash-card-head">
+                            <h3>Change Password</h3>
+                        </div>
+                        <div class="dash-form-group">
+                            <span class="dash-form-label">Current password</span>
+                            <div class="dash-input-wrap">
+                                <input type="password" class="dash-input" placeholder="••••••••">
+                                <button type="button" class="dash-toggle-visibility" data-dash-toggle-password aria-label="Show password">
+                                    <svg viewBox="0 0 24 24" width="18" height="18"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7z" fill="none" stroke="currentColor" stroke-width="1.6"/><circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="1.6"/></svg>
+                                </button>
+                            </div>
+                        </div>
+                        <div class="dash-settings-grid">
+                            <div class="dash-form-group">
+                                <span class="dash-form-label">New password</span>
+                                <div class="dash-input-wrap">
+                                    <input type="password" class="dash-input" placeholder="Create a new password">
+                                    <button type="button" class="dash-toggle-visibility" data-dash-toggle-password aria-label="Show password">
+                                        <svg viewBox="0 0 24 24" width="18" height="18"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7z" fill="none" stroke="currentColor" stroke-width="1.6"/><circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="1.6"/></svg>
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="dash-form-group">
+                                <span class="dash-form-label">Confirm new password</span>
+                                <div class="dash-input-wrap">
+                                    <input type="password" class="dash-input" placeholder="Re-enter new password">
+                                    <button type="button" class="dash-toggle-visibility" data-dash-toggle-password aria-label="Show password">
+                                        <svg viewBox="0 0 24 24" width="18" height="18"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7z" fill="none" stroke="currentColor" stroke-width="1.6"/><circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="1.6"/></svg>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="dash-form-actions">
+                            <button type="button" class="dash-btn-ghost">Cancel</button>
+                            <button type="button" class="dash-btn-save" data-dash-settings-save>Update Password</button>
+                        </div>
+                    </div>
+                </section>
+
+            </main>
+        </div>
+    </div>
+
+    <script src="../includes/dashboard.js"></script>
+</body>
+</html>
