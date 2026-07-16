@@ -1,0 +1,649 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Staff Dashboard | IñigoSync</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Inter:wght@400;500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../Style/staff_dashboard.css">
+</head>
+<body class="staff-body">
+
+<div class="staff-shell">
+
+    <!-- Mobile scrim -->
+    <div class="staff-sidebar-scrim" data-staff-scrim></div>
+
+    <!-- ================= SIDEBAR ================= -->
+    <aside class="staff-sidebar" data-staff-sidebar>
+        <div class="staff-sidebar-brand">
+            <div class="staff-logo-dot">IS</div>
+            <div class="staff-logo-text">IñigoSync</div>
+        </div>
+        <p class="staff-role-tag">Staff Portal</p>
+
+        <ul class="staff-nav">
+            <li>
+                <button type="button" class="staff-nav-link is-active" data-staff-nav="overview">
+                    <svg viewBox="0 0 24 24" fill="none"><rect x="3.5" y="4.5" width="17" height="16" rx="2" stroke="currentColor" stroke-width="1.8"/><path d="M3.5 9.5h17M8 3v3M16 3v3" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path d="M8 14.5l2.3 2.3L16 12" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                    Booking Overview
+                    <span class="staff-nav-badge" data-staff-pending-badge>4</span>
+                </button>
+            </li>
+            <li>
+                <button type="button" class="staff-nav-link" data-staff-nav="walkin">
+                    <svg viewBox="0 0 24 24" fill="none"><circle cx="9" cy="8" r="3.4" stroke="currentColor" stroke-width="1.8"/><path d="M2.5 20c1.2-3.6 4-5.6 6.5-5.6s5.3 2 6.5 5.6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path d="M17 5v6M14 8h6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+                    Walk-In Management
+                </button>
+            </li>
+            <li>
+                <button type="button" class="staff-nav-link" data-staff-nav="schedule">
+                    <svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.8"/><path d="M12 3v18M3 12h18M6 6c3 3 3 9 0 12M18 6c-3 3-3 9 0 12" stroke="currentColor" stroke-width="1.5"/></svg>
+                    Court Schedule
+                </button>
+            </li>
+            <li>
+                <button type="button" class="staff-nav-link" data-staff-nav="transactions">
+                    <svg viewBox="0 0 24 24" fill="none"><path d="M6 2.5h12v19l-2.5-1.5L13 21l-1-1.5-1 1.5-2.5-1.5L6 21.5z" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><path d="M9 8h6M9 11.5h6M9 15h3.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+                    Transaction Records
+                </button>
+            </li>
+
+            <div class="staff-nav-divider"></div>
+
+            <li>
+                <button type="button" class="staff-nav-link" data-staff-nav="profile">
+                    <svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="8" r="4" stroke="currentColor" stroke-width="1.8"/><path d="M4 20c1.5-4 5-6 8-6s6.5 2 8 6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+                    Staff Profile
+                </button>
+            </li>
+        </ul>
+
+        <div class="staff-sidebar-foot">
+            <div class="staff-nav-divider"></div>
+            <button type="button" class="staff-nav-link staff-logout" data-staff-logout>
+                <svg viewBox="0 0 24 24" fill="none"><path d="M9 21H5a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><path d="M16 17l5-5-5-5M21 12H9" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                Log Out
+            </button>
+        </div>
+    </aside>
+
+    <!-- ================= MAIN ================= -->
+    <div class="staff-main">
+
+        <!-- TOPBAR -->
+        <header class="staff-topbar">
+            <div class="staff-topbar-left">
+                <button type="button" class="staff-mobile-toggle" data-staff-mobile-toggle aria-label="Open menu">
+                    <svg viewBox="0 0 24 24" width="18" height="18" fill="none"><path d="M4 6h16M4 12h16M4 18h16" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+                </button>
+                <div class="staff-topbar-title">
+                    <h1 data-staff-title>Booking Overview</h1>
+                    <p data-staff-subtitle>Today's reservations and walk-ins at a glance.</p>
+                </div>
+            </div>
+
+            <div class="staff-topbar-actions">
+                <div class="staff-clock"><span class="dot"></span><span data-staff-clock>Thu, Jul 16 · 9:00 AM</span></div>
+
+                <button type="button" class="staff-icon-btn" aria-label="Notifications">
+                    <svg viewBox="0 0 24 24" fill="none"><path d="M18 8.5c0-3.5-2.7-6-6-6s-6 2.5-6 6c0 6-2.5 7.5-2.5 7.5h17S18 14.5 18 8.5z" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><path d="M9.7 19a2.3 2.3 0 0 0 4.6 0" stroke="currentColor" stroke-width="1.7"/></svg>
+                    <span class="staff-badge-dot"></span>
+                </button>
+
+                <div class="staff-profile" data-staff-profile>
+                    <button type="button" class="staff-profile-trigger" data-staff-profile-trigger>
+                        <div class="staff-avatar">RD</div>
+                        <div class="staff-profile-name">
+                            <strong>Rosalinda Driz</strong>
+                            <span>Staff</span>
+                        </div>
+                        <svg class="staff-caret" viewBox="0 0 24 24" fill="none"><path d="M6 9l6 6 6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                    </button>
+
+                    <div class="staff-profile-menu">
+                        <button type="button" data-staff-nav="profile">
+                            <svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="8" r="4" stroke="currentColor" stroke-width="1.8"/><path d="M4 20c1.5-4 5-6 8-6s6.5 2 8 6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+                            View Profile
+                        </button>
+                        <button type="button" class="staff-logout" data-staff-logout>
+                            <svg viewBox="0 0 24 24" fill="none"><path d="M9 21H5a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><path d="M16 17l5-5-5-5M21 12H9" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                            Log Out
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <!-- CONTENT -->
+        <main class="staff-content">
+
+            <!-- ============================================================
+                 BOOKING OVERVIEW PANEL
+                 ============================================================ -->
+            <section class="staff-panel is-active" data-staff-panel="overview">
+
+                <div class="staff-stat-grid">
+                    <div class="staff-stat-card">
+                        <div class="staff-stat-icon">
+                            <svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.8"/><path d="M12 7v5l3.5 2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+                        </div>
+                        <span class="staff-stat-value">4</span>
+                        <span class="staff-stat-label">Pending confirmations</span>
+                    </div>
+                    <div class="staff-stat-card">
+                        <div class="staff-stat-icon">
+                            <svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.8"/><path d="M8 12.5l2.5 2.5L16 9.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                        </div>
+                        <span class="staff-stat-value">9</span>
+                        <span class="staff-stat-label">Confirmed today</span>
+                    </div>
+                    <div class="staff-stat-card">
+                        <div class="staff-stat-icon">
+                            <svg viewBox="0 0 24 24" fill="none"><circle cx="9" cy="8" r="3" stroke="currentColor" stroke-width="1.8"/><path d="M3 19c1-3 3.5-4.6 6-4.6s5 1.6 6 4.6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path d="M16 5v5M13.5 7.5h5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+                        </div>
+                        <span class="staff-stat-value">5</span>
+                        <span class="staff-stat-label">Walk-ins today</span>
+                    </div>
+                    <div class="staff-stat-card">
+                        <div class="staff-stat-icon">
+                            <svg viewBox="0 0 24 24" fill="none"><path d="M12 2v20M17 6.5c0-2-2.2-3.5-5-3.5s-5 1.5-5 3.5 2.2 3 5 3.5 5 1.5 5 3.5-2.2 3.5-5 3.5-5-1.5-5-3.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+                        </div>
+                        <span class="staff-stat-value">₱6,420</span>
+                        <span class="staff-stat-label">Revenue today</span>
+                    </div>
+                </div>
+
+                <div class="staff-notice">
+                    <svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.7"/><path d="M12 8v5M12 16h.01" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/></svg>
+                    <span>Verify submitted payment proof before confirming a booking. Unconfirmed reservations still honor the 30-minute grace period once their slot starts.</span>
+                </div>
+
+                <div class="staff-card">
+                    <div class="staff-card-head">
+                        <h3>Today's Reservations</h3>
+                        <div class="staff-toolbar">
+                            <div class="staff-search-wrap">
+                                <svg viewBox="0 0 24 24" fill="none"><circle cx="11" cy="11" r="7" stroke="currentColor" stroke-width="1.8"/><path d="M21 21l-4.3-4.3" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+                                <input type="text" class="staff-search" placeholder="Search customer or court…" data-staff-search="overview">
+                            </div>
+                            <div class="staff-filter-row" data-staff-filter-group="overview">
+                                <button type="button" class="staff-chip is-active" data-staff-chip data-staff-filter="all">All</button>
+                                <button type="button" class="staff-chip" data-staff-chip data-staff-filter="pending">Pending</button>
+                                <button type="button" class="staff-chip" data-staff-chip data-staff-filter="confirmed">Confirmed</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="staff-table-wrap">
+                        <table class="staff-table" data-staff-table="overview">
+                            <thead>
+                                <tr>
+                                    <th>Customer</th>
+                                    <th>Court</th>
+                                    <th>Time</th>
+                                    <th>Payment</th>
+                                    <th>Status</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr data-status="pending">
+                                    <td class="staff-cell-main">Maria Santos<span class="staff-cell-sub">0917 234 5566</span></td>
+                                    <td>Basketball — Full Court</td>
+                                    <td>2:00 PM – 3:00 PM</td>
+                                    <td>GCash — Downpayment</td>
+                                    <td><span class="staff-status pending">Pending</span></td>
+                                    <td>
+                                        <div class="staff-table-actions">
+                                            <button type="button" class="staff-mini-btn is-primary" data-staff-confirm>Confirm</button>
+                                            <button type="button" class="staff-mini-btn is-danger" data-staff-cancel>Cancel</button>
+                                        </div>
+                                    </td>
+                                </tr>
+                                <tr data-status="pending">
+                                    <td class="staff-cell-main">Carlo Reyes<span class="staff-cell-sub">0928 771 0043</span></td>
+                                    <td>Badminton — Court 2</td>
+                                    <td>4:00 PM – 5:00 PM</td>
+                                    <td>GCash — Full Payment</td>
+                                    <td><span class="staff-status pending">Pending</span></td>
+                                    <td>
+                                        <div class="staff-table-actions">
+                                            <button type="button" class="staff-mini-btn is-primary" data-staff-confirm>Confirm</button>
+                                            <button type="button" class="staff-mini-btn is-danger" data-staff-cancel>Cancel</button>
+                                        </div>
+                                    </td>
+                                </tr>
+                                <tr data-status="confirmed">
+                                    <td class="staff-cell-main">Ana Lopez<span class="staff-cell-sub">0939 552 1187</span></td>
+                                    <td>Pickleball — Court 1</td>
+                                    <td>3:00 PM – 4:00 PM</td>
+                                    <td>Cash — Downpayment</td>
+                                    <td><span class="staff-status confirmed">Confirmed</span></td>
+                                    <td>
+                                        <div class="staff-table-actions">
+                                            <button type="button" class="staff-mini-btn" data-staff-timein>Time-In</button>
+                                        </div>
+                                    </td>
+                                </tr>
+                                <tr data-status="confirmed">
+                                    <td class="staff-cell-main">Iñigo Ramos<span class="staff-cell-sub">0917 002 8834</span></td>
+                                    <td>Volleyball Court</td>
+                                    <td>5:00 PM – 6:00 PM</td>
+                                    <td>GCash — Full Payment</td>
+                                    <td><span class="staff-status confirmed">Confirmed</span></td>
+                                    <td>
+                                        <div class="staff-table-actions">
+                                            <button type="button" class="staff-mini-btn" data-staff-timein>Time-In</button>
+                                        </div>
+                                    </td>
+                                </tr>
+                                <tr data-status="pending">
+                                    <td class="staff-cell-main">Julius Tan<span class="staff-cell-sub">0910 445 2291</span></td>
+                                    <td>Bowling — Lane 1</td>
+                                    <td>6:00 PM – 7:00 PM</td>
+                                    <td>Cash on-site</td>
+                                    <td><span class="staff-status pending">Pending</span></td>
+                                    <td>
+                                        <div class="staff-table-actions">
+                                            <button type="button" class="staff-mini-btn is-primary" data-staff-confirm>Confirm</button>
+                                            <button type="button" class="staff-mini-btn is-danger" data-staff-cancel>Cancel</button>
+                                        </div>
+                                    </td>
+                                </tr>
+                                <tr data-status="pending">
+                                    <td class="staff-cell-main">Bea Villanueva<span class="staff-cell-sub">0921 340 7712</span></td>
+                                    <td>Badminton — Court 1</td>
+                                    <td>7:00 PM – 8:00 PM</td>
+                                    <td>GCash — Downpayment</td>
+                                    <td><span class="staff-status pending">Pending</span></td>
+                                    <td>
+                                        <div class="staff-table-actions">
+                                            <button type="button" class="staff-mini-btn is-primary" data-staff-confirm>Confirm</button>
+                                            <button type="button" class="staff-mini-btn is-danger" data-staff-cancel>Cancel</button>
+                                        </div>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+
+            <!-- ============================================================
+                 WALK-IN MANAGEMENT PANEL
+                 ============================================================ -->
+            <section class="staff-panel" data-staff-panel="walkin">
+                <div class="staff-panel-head">
+                    <div>
+                        <h2>Walk-In Management</h2>
+                        <p>Record walk-in customers, assign an open slot, and process on-the-spot payment.</p>
+                    </div>
+                </div>
+
+                <div class="staff-grid-2">
+                    <div class="staff-card">
+                        <div class="staff-card-head"><h3>New Walk-In Booking</h3></div>
+
+                        <div class="staff-form-row">
+                            <div class="staff-form-group">
+                                <span class="staff-form-label">Customer name</span>
+                                <input type="text" class="staff-input" placeholder="Juan Dela Cruz" data-staff-walkin-name>
+                            </div>
+                            <div class="staff-form-group">
+                                <span class="staff-form-label">Mobile number</span>
+                                <input type="tel" class="staff-input" placeholder="09XX XXX XXXX" data-staff-walkin-mobile>
+                            </div>
+                        </div>
+
+                        <div class="staff-form-row">
+                            <div class="staff-form-group">
+                                <span class="staff-form-label">Court / Sport</span>
+                                <select class="staff-select" data-staff-walkin-court>
+                                    <option value="Basketball" data-rate="300" data-unit="hour">Basketball — ₱300/hr</option>
+                                    <option value="Volleyball" data-rate="250" data-unit="hour">Volleyball — ₱250/hr</option>
+                                    <option value="Badminton" data-rate="200" data-unit="hour">Badminton — ₱200/hr</option>
+                                    <option value="Bowling" data-rate="150" data-unit="game">Bowling — ₱150/game</option>
+                                    <option value="Pickleball" data-rate="220" data-unit="hour">Pickleball — ₱220/hr</option>
+                                </select>
+                            </div>
+                            <div class="staff-form-group">
+                                <span class="staff-form-label">Duration</span>
+                                <select class="staff-select" data-staff-walkin-duration>
+                                    <option value="1">1 hour / game</option>
+                                    <option value="2">2 hours / games</option>
+                                    <option value="3">3 hours / games</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div class="staff-form-group">
+                            <span class="staff-form-label">Start time</span>
+                            <input type="time" class="staff-input" value="14:00" data-staff-walkin-time>
+                        </div>
+
+                        <div class="staff-form-group">
+                            <span class="staff-form-label">Payment method</span>
+                            <div class="staff-payment-options">
+                                <label class="staff-payment-option is-selected" data-staff-payment-option>
+                                    <span class="staff-payment-option-head">
+                                        <input type="radio" name="staff-payment" checked data-staff-payment="cash">
+                                        Cash
+                                    </span>
+                                    <p>Collected on-site by staff.</p>
+                                </label>
+                                <label class="staff-payment-option" data-staff-payment-option>
+                                    <span class="staff-payment-option-head">
+                                        <input type="radio" name="staff-payment" data-staff-payment="gcash">
+                                        GCash
+                                    </span>
+                                    <p>Scan QR or manual reference entry.</p>
+                                </label>
+                            </div>
+                        </div>
+
+                        <div class="staff-notice">
+                            <svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.7"/><path d="M12 8v5M12 16h.01" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/></svg>
+                            <span>A receipt is generated automatically once payment is recorded. Double-check the court and time before confirming — this slot will lock immediately.</span>
+                        </div>
+                    </div>
+
+                    <div class="staff-card staff-summary">
+                        <h3 style="font-family: var(--font-display); font-weight:600; font-size:1.05rem;">Walk-In Summary</h3>
+
+                        <div class="staff-summary-row"><span>Customer</span><strong data-staff-walkin-summary-name>—</strong></div>
+                        <div class="staff-summary-row"><span>Court</span><strong data-staff-walkin-summary-court>Basketball</strong></div>
+                        <div class="staff-summary-row"><span>Start time</span><strong data-staff-walkin-summary-time>2:00 PM</strong></div>
+                        <div class="staff-summary-row"><span>Duration</span><strong data-staff-walkin-summary-duration>1 hour / game</strong></div>
+
+                        <div class="staff-summary-divider"></div>
+
+                        <div class="staff-summary-row"><span>Payment method</span><strong data-staff-walkin-summary-payment>Cash</strong></div>
+
+                        <div class="staff-summary-divider"></div>
+
+                        <div class="staff-summary-total">
+                            <span>Amount due</span>
+                            <span data-staff-walkin-summary-total>₱300.00</span>
+                        </div>
+
+                        <button type="button" class="staff-btn-primary" data-staff-walkin-submit>Record Booking &amp; Generate Receipt</button>
+
+                        <div class="staff-recent-list" data-staff-recent-walkins style="margin-top: 8px;">
+                            <p class="staff-form-label" style="margin-bottom: -2px;">Recent walk-ins</p>
+                            <div class="staff-recent-row">
+                                <div class="staff-recent-icon">
+                                    <svg viewBox="0 0 24 24" fill="none"><circle cx="24" cy="24" r="20" stroke="currentColor" stroke-width="2.5" transform="scale(0.4)"/></svg>
+                                </div>
+                                <div class="staff-recent-info">
+                                    <h4>Mark Angelo — Bowling Lane 1</h4>
+                                    <p>12:30 PM · ₱150.00 · Cash</p>
+                                </div>
+                                <span class="staff-status walkin">Walk-in</span>
+                            </div>
+                            <div class="staff-recent-row">
+                                <div class="staff-recent-icon">
+                                    <svg viewBox="0 0 24 24" fill="none"><circle cx="24" cy="24" r="20" stroke="currentColor" stroke-width="2.5" transform="scale(0.4)"/></svg>
+                                </div>
+                                <div class="staff-recent-info">
+                                    <h4>Trisha Uy — Badminton Court 2</h4>
+                                    <p>11:00 AM · ₱200.00 · GCash</p>
+                                </div>
+                                <span class="staff-status walkin">Walk-in</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- ============================================================
+                 COURT SCHEDULE PANEL
+                 ============================================================ -->
+            <section class="staff-panel" data-staff-panel="schedule">
+                <div class="staff-panel-head">
+                    <div>
+                        <h2>Court Schedule</h2>
+                        <p>Calendar view of every court so you can spot open slots at a glance.</p>
+                    </div>
+                    <div class="staff-legend">
+                        <span><span class="dot available"></span>Available</span>
+                        <span><span class="dot booked"></span>Booked / Reserved</span>
+                        <span><span class="dot walkin"></span>Walk-in</span>
+                    </div>
+                </div>
+
+                <div class="staff-card">
+                    <div class="staff-card-head">
+                        <h3>Today · Thursday, July 16, 2026</h3>
+                        <div class="staff-sport-tabs" data-staff-sport-tabs>
+                            <button type="button" class="staff-chip is-active" data-staff-chip data-staff-sport="all">All Courts</button>
+                            <button type="button" class="staff-chip" data-staff-chip data-staff-sport="basketball">Basketball</button>
+                            <button type="button" class="staff-chip" data-staff-chip data-staff-sport="volleyball">Volleyball</button>
+                            <button type="button" class="staff-chip" data-staff-chip data-staff-sport="badminton">Badminton</button>
+                            <button type="button" class="staff-chip" data-staff-chip data-staff-sport="bowling">Bowling</button>
+                            <button type="button" class="staff-chip" data-staff-chip data-staff-sport="pickleball">Pickleball</button>
+                        </div>
+                    </div>
+
+                    <div class="staff-schedule-grid" data-staff-schedule-grid>
+                        <div></div>
+                        <div class="staff-schedule-head">Basketball</div>
+                        <div class="staff-schedule-head">Volleyball</div>
+                        <div class="staff-schedule-head">Badminton</div>
+                        <div class="staff-schedule-head">Bowling</div>
+                        <div class="staff-schedule-head">Pickleball</div>
+                        <div class="staff-schedule-head">Badminton 2</div>
+
+                        <div class="staff-schedule-time">8 AM</div>
+                        <div class="staff-schedule-cell is-available" data-sport="basketball">Open</div>
+                        <div class="staff-schedule-cell is-available" data-sport="volleyball">Open</div>
+                        <div class="staff-schedule-cell is-booked" data-sport="badminton">C. Reyes</div>
+                        <div class="staff-schedule-cell is-available" data-sport="bowling">Open</div>
+                        <div class="staff-schedule-cell is-available" data-sport="pickleball">Open</div>
+                        <div class="staff-schedule-cell is-available" data-sport="badminton">Open</div>
+
+                        <div class="staff-schedule-time">10 AM</div>
+                        <div class="staff-schedule-cell is-booked" data-sport="basketball">M. Cruz</div>
+                        <div class="staff-schedule-cell is-available" data-sport="volleyball">Open</div>
+                        <div class="staff-schedule-cell is-available" data-sport="badminton">Open</div>
+                        <div class="staff-schedule-cell is-walkin" data-sport="bowling">Walk-in</div>
+                        <div class="staff-schedule-cell is-available" data-sport="pickleball">Open</div>
+                        <div class="staff-schedule-cell is-booked" data-sport="badminton">A. Lopez</div>
+
+                        <div class="staff-schedule-time">12 PM</div>
+                        <div class="staff-schedule-cell is-available" data-sport="basketball">Open</div>
+                        <div class="staff-schedule-cell is-booked" data-sport="volleyball">I. Ramos</div>
+                        <div class="staff-schedule-cell is-available" data-sport="badminton">Open</div>
+                        <div class="staff-schedule-cell is-walkin" data-sport="bowling">M. Angelo</div>
+                        <div class="staff-schedule-cell is-available" data-sport="pickleball">Open</div>
+                        <div class="staff-schedule-cell is-available" data-sport="badminton">Open</div>
+
+                        <div class="staff-schedule-time">2 PM</div>
+                        <div class="staff-schedule-cell is-booked" data-sport="basketball">M. Santos</div>
+                        <div class="staff-schedule-cell is-available" data-sport="volleyball">Open</div>
+                        <div class="staff-schedule-cell is-available" data-sport="badminton">Open</div>
+                        <div class="staff-schedule-cell is-available" data-sport="bowling">Open</div>
+                        <div class="staff-schedule-cell is-booked" data-sport="pickleball">A. Lopez</div>
+                        <div class="staff-schedule-cell is-available" data-sport="badminton">Open</div>
+
+                        <div class="staff-schedule-time">4 PM</div>
+                        <div class="staff-schedule-cell is-available" data-sport="basketball">Open</div>
+                        <div class="staff-schedule-cell is-available" data-sport="volleyball">Open</div>
+                        <div class="staff-schedule-cell is-booked" data-sport="badminton">C. Reyes</div>
+                        <div class="staff-schedule-cell is-available" data-sport="bowling">Open</div>
+                        <div class="staff-schedule-cell is-available" data-sport="pickleball">Open</div>
+                        <div class="staff-schedule-cell is-walkin" data-sport="badminton">T. Uy</div>
+
+                        <div class="staff-schedule-time">6 PM</div>
+                        <div class="staff-schedule-cell is-available" data-sport="basketball">Open</div>
+                        <div class="staff-schedule-cell is-booked" data-sport="volleyball">I. Ramos</div>
+                        <div class="staff-schedule-cell is-booked" data-sport="badminton">B. Villanueva</div>
+                        <div class="staff-schedule-cell is-booked" data-sport="bowling">J. Tan</div>
+                        <div class="staff-schedule-cell is-available" data-sport="pickleball">Open</div>
+                        <div class="staff-schedule-cell is-available" data-sport="badminton">Open</div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- ============================================================
+                 TRANSACTION RECORDS PANEL
+                 ============================================================ -->
+            <section class="staff-panel" data-staff-panel="transactions">
+                <div class="staff-panel-head">
+                    <div>
+                        <h2>Transaction Records</h2>
+                        <p>Searchable audit trail of every payment processed today and in past sessions.</p>
+                    </div>
+                </div>
+
+                <div class="staff-card">
+                    <div class="staff-card-head">
+                        <h3>All Transactions</h3>
+                        <div class="staff-toolbar">
+                            <div class="staff-search-wrap">
+                                <svg viewBox="0 0 24 24" fill="none"><circle cx="11" cy="11" r="7" stroke="currentColor" stroke-width="1.8"/><path d="M21 21l-4.3-4.3" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+                                <input type="text" class="staff-search" placeholder="Search customer, court, or ref no…" data-staff-search="transactions">
+                            </div>
+                            <div class="staff-filter-row" data-staff-filter-group="transactions">
+                                <button type="button" class="staff-chip is-active" data-staff-chip data-staff-filter="all">All</button>
+                                <button type="button" class="staff-chip" data-staff-chip data-staff-filter="cash">Cash</button>
+                                <button type="button" class="staff-chip" data-staff-chip data-staff-filter="gcash">GCash</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="staff-table-wrap">
+                        <table class="staff-table" data-staff-table="transactions">
+                            <thead>
+                                <tr>
+                                    <th>Timestamp</th>
+                                    <th>Customer</th>
+                                    <th>Court</th>
+                                    <th>Amount</th>
+                                    <th>Method</th>
+                                    <th>Status</th>
+                                    <th>Recorded By</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr data-method="gcash">
+                                    <td>Jul 16, 9:12 AM</td>
+                                    <td class="staff-cell-main">Maria Santos</td>
+                                    <td>Basketball — Full Court</td>
+                                    <td>₱150.00</td>
+                                    <td>GCash <span class="staff-cell-sub">Ref# GC-88213</span></td>
+                                    <td><span class="staff-status paid">Paid</span></td>
+                                    <td>R. Driz</td>
+                                </tr>
+                                <tr data-method="cash">
+                                    <td>Jul 16, 11:02 AM</td>
+                                    <td class="staff-cell-main">Trisha Uy</td>
+                                    <td>Badminton — Court 2</td>
+                                    <td>₱200.00</td>
+                                    <td>Cash</td>
+                                    <td><span class="staff-status paid">Paid</span></td>
+                                    <td>R. Driz</td>
+                                </tr>
+                                <tr data-method="cash">
+                                    <td>Jul 16, 12:30 PM</td>
+                                    <td class="staff-cell-main">Mark Angelo</td>
+                                    <td>Bowling — Lane 1</td>
+                                    <td>₱150.00</td>
+                                    <td>Cash</td>
+                                    <td><span class="staff-status paid">Paid</span></td>
+                                    <td>R. Driz</td>
+                                </tr>
+                                <tr data-method="gcash">
+                                    <td>Jul 16, 1:45 PM</td>
+                                    <td class="staff-cell-main">Ana Lopez</td>
+                                    <td>Pickleball — Court 1</td>
+                                    <td>₱110.00</td>
+                                    <td>GCash <span class="staff-cell-sub">Ref# GC-88240</span></td>
+                                    <td><span class="staff-status paid">Paid</span></td>
+                                    <td>R. Driz</td>
+                                </tr>
+                                <tr data-method="gcash">
+                                    <td>Jul 15, 6:20 PM</td>
+                                    <td class="staff-cell-main">Julius Tan</td>
+                                    <td>Bowling — Lane 1</td>
+                                    <td>₱150.00</td>
+                                    <td>GCash <span class="staff-cell-sub">Ref# GC-87990</span></td>
+                                    <td><span class="staff-status cancelled">Non-refundable</span></td>
+                                    <td>R. Driz</td>
+                                </tr>
+                                <tr data-method="cash">
+                                    <td>Jul 15, 4:10 PM</td>
+                                    <td class="staff-cell-main">Carlo Reyes</td>
+                                    <td>Badminton — Court 1</td>
+                                    <td>₱200.00</td>
+                                    <td>Cash</td>
+                                    <td><span class="staff-status paid">Paid</span></td>
+                                    <td>R. Driz</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+
+            <!-- ============================================================
+                 STAFF PROFILE PANEL
+                 ============================================================ -->
+            <section class="staff-panel" data-staff-panel="profile">
+                <div class="staff-panel-head">
+                    <div>
+                        <h2>Staff Profile</h2>
+                        <p>Your basic account information as recorded by Iñigos Sports Center.</p>
+                    </div>
+                </div>
+
+                <div class="staff-card">
+                    <div class="staff-profile-card">
+                        <div class="staff-avatar">RD</div>
+                        <div class="staff-profile-card-info">
+                            <h3>Rosalinda Driz</h3>
+                            <p>Staff · Iñigos Sports Center since 2011</p>
+                        </div>
+                    </div>
+
+                    <div class="staff-profile-meta">
+                        <div class="staff-profile-meta-item">
+                            <span>Email address</span>
+                            <span>tsrosem8@gmail.com</span>
+                        </div>
+                        <div class="staff-profile-meta-item">
+                            <span>Contact number</span>
+                            <span>0917 000 0000</span>
+                        </div>
+                        <div class="staff-profile-meta-item">
+                            <span>Assigned courts</span>
+                            <span>All courts</span>
+                        </div>
+                        <div class="staff-profile-meta-item">
+                            <span>Bookings confirmed today</span>
+                            <span>9</span>
+                        </div>
+                        <div class="staff-profile-meta-item">
+                            <span>Walk-ins recorded today</span>
+                            <span>5</span>
+                        </div>
+                        <div class="staff-profile-meta-item">
+                            <span>Shift</span>
+                            <span>8:00 AM – 8:00 PM</span>
+                        </div>
+                    </div>
+
+                    <div class="staff-form-actions" style="margin-top: 28px;">
+                        <button type="button" class="staff-btn-ghost" data-staff-logout>Log Out</button>
+                    </div>
+                </div>
+            </section>
+
+        </main>
+    </div>
+</div>
+<script src="../includes/staff_dashboard.js"></script>
+</body>
+</html>
