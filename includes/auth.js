@@ -264,15 +264,29 @@ document.addEventListener('DOMContentLoaded', () => {
 
         overlay.querySelectorAll('[data-google-btn]').forEach((container) => {
             container.innerHTML = '';
-            google.accounts.id.renderButton(container, {
-                type: 'standard',
-                theme: 'outline',
-                size: 'large',
-                shape: 'pill',
-                text: container.id === 'google-signin-signup' ? 'signup_with' : 'continue_with',
-                logo_alignment: 'left',
-                width: 340,
+
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.className = 'auth-google-button';
+            button.innerHTML = `
+                <span class="auth-google-icon" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
+                        <path fill="#4285F4" d="M21.6 12.23c0-.78-.07-1.53-.2-2.25H12v4.26h5.38a4.6 4.6 0 0 1-2 3.02v2.5h3.24c1.9-1.75 2.98-4.32 2.98-7.53z"></path>
+                        <path fill="#34A853" d="M12 22c2.7 0 4.96-.9 6.62-2.43l-3.24-2.5c-.9.6-2.04.96-3.38.96-2.6 0-4.8-1.75-5.59-4.1H3.07v2.58A10 10 0 0 0 12 22z"></path>
+                        <path fill="#FBBC05" d="M6.41 13.93A5.98 5.98 0 0 1 6.41 8.07V5.49H3.07a10 10 0 0 0 0 16.88l3.34-2.44z"></path>
+                        <path fill="#EA4335" d="M12 6.04c1.47 0 2.79.5 3.83 1.49l2.87-2.87A9.96 9.96 0 0 0 12 2a10 10 0 0 0-8.93 5.49l3.34 2.44C7.2 7.79 9.4 6.04 12 6.04z"></path>
+                    </svg>
+                </span>
+                <span>Login / Sign up with Google</span>
+            `;
+
+            button.addEventListener('click', () => {
+                if (window.google?.accounts?.id) {
+                    google.accounts.id.prompt();
+                }
             });
+
+            container.appendChild(button);
         });
 
         return true;
