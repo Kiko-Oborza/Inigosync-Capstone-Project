@@ -124,12 +124,29 @@ header {
     z-index: 5;
 }
 
+.logo-brand {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.7rem;
+    min-width: 0;
+}
+
+.logo-image {
+    display: block;
+    width: clamp(42px, 3.2vw, 56px);
+    height: auto;
+    max-height: 56px;
+    object-fit: contain;
+    flex-shrink: 0;
+}
+
 .logo-text {
     font-family: var(--font-display);
     color: var(--color-primary);
     font-size: 1.4rem;
     font-weight: 700;
     letter-spacing: 0.02em;
+    line-height: 1;
 }
 
 .menu-toggle-checkbox {
@@ -594,6 +611,18 @@ nav ul li a.active{
 }
 
 @media (max-width: 768px) {
+    .logo-brand {
+        gap: 0.55rem;
+    }
+
+    .logo-image {
+        width: clamp(34px, 7vw, 44px);
+    }
+
+    .logo-text {
+        font-size: 1.2rem;
+    }
+
     header {
         position: fixed;
         top: 0;
