@@ -565,18 +565,108 @@ nav ul li a.active{
 .site-footer {
     background: var(--color-bg-elevated);
     border-top: 1px solid var(--color-line);
-    padding: 32px 0;
+    padding: 48px 0 40px;
 }
 
 .footer-inner {
     display: flex;
     flex-direction: column;
-    gap: 6px;
+    gap: 24px;
 }
 
-.footer-inner p {
-    font-size: 0.85rem;
-    color: var(--color-ink-faint);
+.footer-brand {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.footer-brand-main {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.footer-logo {
+    width: 44px;
+    height: 44px;
+    object-fit: contain;
+}
+
+.footer-tagline {
+    font-size: 0.95rem;
+    color: var(--color-ink-dim);
+    line-height: 1.7;
+    max-width: 560px;
+}
+
+.footer-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 16px;
+}
+
+.footer-card {
+    background: var(--color-bg-card);
+    border: 1px solid var(--color-line);
+    border-radius: 16px;
+    padding: 18px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.18);
+}
+
+.footer-card h3 {
+    font-family: var(--font-display);
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--color-primary);
+    margin-bottom: 2px;
+}
+
+.footer-card p,
+.footer-card a {
+    font-size: 0.9rem;
+    color: var(--color-ink-dim);
+    line-height: 1.6;
+    text-decoration: none;
+}
+
+.footer-card a {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    width: fit-content;
+}
+
+.footer-card a:hover {
+    color: var(--color-primary);
+}
+
+.footer-social-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.footer-map-block {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.footer-map-label {
+    margin: 0;
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: var(--color-ink);
+}
+
+.footer-map-frame {
+    width: 100%;
+    min-height: 240px;
+    border: 0;
+    border-radius: 16px;
 }
 
 /* ==========================================================================
@@ -613,6 +703,10 @@ nav ul li a.active{
 @media (max-width: 768px) {
     .logo-brand {
         gap: 0.55rem;
+    }
+
+    .footer-grid {
+        grid-template-columns: 1fr;
     }
 
     .logo-image {
