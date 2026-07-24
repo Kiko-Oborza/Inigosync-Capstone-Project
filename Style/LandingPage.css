@@ -315,7 +315,7 @@ nav ul li a.active{
     z-index: 1;
     width: 100%;
     margin-top: 70px;
-    padding: 16px 0;
+    padding: 18px 0;
     background: rgba(20, 17, 13, 0.65);
     border-top: 1px solid var(--color-line);
     border-bottom: 1px solid var(--color-line);
@@ -324,10 +324,11 @@ nav ul li a.active{
 
 .ticker-track {
     display: flex;
-    gap: 48px;
+    gap: 20px;
     white-space: nowrap;
-    animation: ticker-scroll 28s linear infinite;
+    animation: ticker-scroll 24s linear infinite;
     width: max-content;
+    align-items: center;
 }
 
 .ticker-wrap:hover .ticker-track {
@@ -344,31 +345,46 @@ nav ul li a.active{
 }
 
 .ticker-item {
-    font-family: var(--font-mono);
-    font-size: 0.85rem;
-    letter-spacing: 0.02em;
-    color: var(--color-ink-dim);
     display: inline-flex;
-    align-items: center;
+    flex-direction: column;
+    align-items: flex-start;
     gap: 10px;
+    min-width: 220px;
+    padding: 10px;
+    border-radius: 16px;
+    border: 1px solid rgba(244, 239, 230, 0.16);
+    background: linear-gradient(135deg, rgba(255, 106, 44, 0.15), rgba(20, 17, 13, 0.92));
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.22);
 }
 
-.dot {
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    display: inline-block;
-    flex-shrink: 0;
+.ticker-item img {
+    width: 100%;
+    height: 110px;
+    object-fit: cover;
+    border-radius: 12px;
+    display: block;
 }
 
-.dot.available {
-    background: var(--color-court-green);
-    box-shadow: 0 0 6px var(--color-court-green);
+.ticker-caption {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    width: 100%;
 }
 
-.dot.booked {
-    background: var(--color-alert);
-    box-shadow: 0 0 6px var(--color-alert);
+.ticker-label {
+    font-family: var(--font-display);
+    color: var(--color-ink);
+    font-size: 0.95rem;
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+}
+
+.ticker-meta {
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+    letter-spacing: 0.04em;
+    color: var(--color-ink-dim);
 }
 
 /* ==========================================================================
