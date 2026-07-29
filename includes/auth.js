@@ -90,13 +90,34 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     // Password visibility toggles
+    function setPasswordToggleIcon(btn, isVisible) {
+        const visibleIcon = `
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M2 12s3-6 10-6 10 6 10 6-3 6-10 6S2 12 2 12z"/>
+                <circle cx="12" cy="12" r="3"/>
+            </svg>`;
+
+        const hiddenIcon = `
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M2 12s3-6 10-6 10 6 10 6-3 6-10 6S2 12 2 12z"/>
+                <circle cx="12" cy="12" r="3"/>
+                <path d="M4 4l16 16"/>
+            </svg>`;
+
+        btn.innerHTML = isVisible ? visibleIcon : hiddenIcon;
+        btn.setAttribute('aria-label', isVisible ? 'Hide password' : 'Show password');
+    }
+
     overlay.querySelectorAll('[data-toggle-password]').forEach((btn) => {
+        const input = btn.previousElementSibling;
+        if (!input) return;
+
+        setPasswordToggleIcon(btn, input.type === 'text');
+
         btn.addEventListener('click', () => {
-            const input = btn.previousElementSibling;
-            if (!input) return;
             const isHidden = input.type === 'password';
             input.type = isHidden ? 'text' : 'password';
-            btn.setAttribute('aria-label', isHidden ? 'Hide password' : 'Show password');
+            setPasswordToggleIcon(btn, input.type === 'text');
         });
     });
 
