@@ -566,8 +566,11 @@ nav ul li a.active{
    ========================================================================== */
 .cta-footer {
     padding: 90px 0;
-    background: var(--color-bg);
+    background:
+        linear-gradient(90deg, rgba(4, 12, 18, 0.8), rgba(4, 12, 18, 0.55)),
+        url("../assets/Backgroung.png") center/cover no-repeat;
     text-align: center;
+    color: #fff;
 }
 
 .cta-footer-inner {
@@ -579,6 +582,11 @@ nav ul li a.active{
 
 .cta-footer .section-title {
     margin-bottom: 0;
+    color: #fff;
+}
+
+.cta-footer .body-text {
+    color: rgba(255, 255, 255, 0.9);
 }
 
 .cta-footer .cta-button {
