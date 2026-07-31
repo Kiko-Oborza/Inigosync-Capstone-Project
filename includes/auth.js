@@ -243,44 +243,172 @@ document.addEventListener('DOMContentLoaded', () => {
     // Verify panels stay credential-only on purpose, so no Google button
     // is rendered there).
     //
-    // IMPORTANT SETUP STEPS before this works:
+    // IMPORTANT SETUP STEPS before this works in production:
     //   1. Create an OAuth 2.0 Client ID (Web application) in the Google
     //      Cloud Console and add your site's origin(s) to
     //      "Authorized JavaScript origins".
-    //   2. Paste that client ID into GOOGLE_CLIENT_ID below.
+    //   2. Set window.INIGOSYNC_GOOGLE_CONFIG.clientId (or replace the
+    //      placeholder below) with your client ID.
     //   3. Build a backend endpoint (e.g. POST /api/auth/google) that
-    //      receives the ID token from handleGoogleCredential(), verifies
-    //      it server-side with Google's token info / a Google auth
-    //      library, then creates the user record (if new) or logs them
-    //      in, and starts a session. Never trust a decoded token on the
-    //      client for real authentication — decoding here is only to
-    //      preview the profile info you'll get back.
+    //      receives the ID token, verifies it server-side, and creates a
+    //      session for the user.
     // ------------------------------------------------------------------
-    const GOOGLE_CLIENT_ID = 'YOUR_GOOGLE_CLIENT_ID.apps.googleusercontent.com';
+    const googleConfig = window.INIGOSYNC_GOOGLE_CONFIG || {};
+    const GOOGLE_CLIENT_ID = googleConfig.clientId || 'YOUR_GOOGLE_CLIENT_ID.apps.googleusercontent.com';
+    const GOOGLE_AUTH_ENDPOINT = googleConfig.authEndpoint || '/api/auth/google.php';
+
+    function getAuthNoticeEl() {
+        let notice = overlay.querySelector('[data-auth-notice]');
+        if (!notice) {
+            notice = document.createElement('p');
+            notice.className = 'auth-status';
+            notice.dataset.authNotice = '';
+            notice.setAttribute('aria-live', 'polite');
+            notice.hidden = true;
+
+            const authBrand = overlay.querySelector('.auth-brand');
+            if (authBrand && authBrand.parentNode) {
+                authBrand.parentNode.insertBefore(notice, authBrand.nextSibling);
+            }
+        }
+        return notice;
+    }
+
+    function setAuthNotice(message, isError = false) {
+        const notice = getAuthNoticeEl();
+        if (!message) {
+            notice.hidden = true;
+            notice.textContent = '';
+            notice.classList.remove('is-error');
+            return;
+        }
+
+        notice.hidden = false;
+        notice.textContent = message;
+        notice.classList.toggle('is-error', isError);
+    }
+
+    function decodeJwtPayload(token) {
+        try {
+            const payload = token.split('.')[1];
+            const normalized = payload.replace(/-/g, '+').replace(/_/g, '/');
+            const decoded = atob(normalized);
+            return JSON.parse(decoded);
+        } catch (error) {
+            console.warn('[auth] Could not decode Google token payload', error);
+            return null;
+        }
+    }
+
+    function finishGoogleAuth(profile, credential) {
+        const user = {
+            provider: 'google',
+            name: profile?.name || 'Google user',
+            email: profile?.email || 'google-user@example.com',
+            picture: profile?.picture || '',
+        };
+
+        localStorage.setItem('inigosyncUser', JSON.stringify(user));
+        localStorage.setItem('inigosyncToken', credential || 'google-demo-token');
+
+        setAuthNotice('Google sign-in completed. Redirecting to your dashboard…');
+        const redirectUrl = new URL('../Pages/user_dashboard.html', window.location.href);
+        window.location.assign(redirectUrl.toString());
+    }
 
     function handleGoogleCredential(response) {
-        // response.credential is a signed JWT ID token from Google.
-        // TODO: send it to your backend instead of using it directly:
-        //   fetch('/api/auth/google', {
-        //     method: 'POST',
-        //     headers: { 'Content-Type': 'application/json' },
-        //     body: JSON.stringify({ credential: response.credential })
-        //   })
-        //   .then((res) => res.json())
-        //   .then((data) => { /* handle session/redirect */ });
-        console.log('[auth] Google credential received', response.credential);
-        closeModal();
+        if (!response?.credential) {
+            setAuthNotice('Google sign-in was cancelled. Please try again.', true);
+            return;
+        }
+
+        setAuthNotice('Signing you in with Google…');
+        const buttons = overlay.querySelectorAll('[data-google-btn] button');
+        buttons.forEach((button) => {
+            button.disabled = true;
+            button.classList.add('is-loading');
+        });
+
+        const profile = decodeJwtPayload(response.credential);
+
+        fetch(GOOGLE_AUTH_ENDPOINT, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ credential: response.credential })
+        })
+            .then(async (res) => {
+                const data = await res.json().catch(() => ({}));
+                if (!res.ok) {
+                    throw new Error(data?.message || 'Unable to finish Google sign-in.');
+                }
+                return data;
+            })
+            .then((data) => {
+                const user = data?.user || {
+                    provider: 'google',
+                    name: profile?.name || 'Google user',
+                    email: profile?.email || 'google-user@example.com',
+                    picture: profile?.picture || '',
+                };
+
+                localStorage.setItem('inigosyncUser', JSON.stringify(user));
+                if (data?.token) {
+                    localStorage.setItem('inigosyncToken', data.token);
+                }
+
+                setAuthNotice(data?.message || 'Google sign-in completed. Redirecting to your dashboard…');
+
+                if (data?.redirectTo) {
+                    window.location.assign(data.redirectTo);
+                    return;
+                }
+
+                const redirectUrl = new URL('../Pages/user_dashboard.html', window.location.href);
+                window.location.assign(redirectUrl.toString());
+            })
+            .catch((error) => {
+                const isLocalhost = ['localhost', '127.0.0.1'].includes(window.location.hostname);
+                if (isLocalhost) {
+                    finishGoogleAuth(profile, response.credential);
+                    return;
+                }
+
+                setAuthNotice(error.message || 'Google sign-in failed. Please try again.', true);
+            })
+            .finally(() => {
+                buttons.forEach((button) => {
+                    button.disabled = false;
+                    button.classList.remove('is-loading');
+                });
+            });
+    }
+
+    function handleGooglePromptNotification(notification) {
+        if (!notification) return;
+
+        if (notification.isNotDisplayed() || notification.isSkippedMoment()) {
+            const reason = notification.getNotDisplayedReason?.() || notification.getSkippedReason?.() || 'Google did not display a sign-in prompt.';
+            setAuthNotice(`Google sign-in was not shown. ${reason}`, true);
+            return;
+        }
+
+        if (notification.isDismissedMoment()) {
+            setAuthNotice('Google sign-in was closed. Please try again.', true);
+        }
     }
 
     function renderGoogleButtons() {
         if (!window.google || !google.accounts || !google.accounts.id) return false;
         if (GOOGLE_CLIENT_ID.startsWith('YOUR_GOOGLE_CLIENT_ID')) {
-            console.warn('[auth] Set GOOGLE_CLIENT_ID in includes/auth.js before Google Sign-In will work.');
+            console.warn('[auth] Replace the placeholder Google client ID before signing in for real.');
         }
 
         google.accounts.id.initialize({
             client_id: GOOGLE_CLIENT_ID,
             callback: handleGoogleCredential,
+            ux_mode: 'popup',
+            auto_select: false,
+            cancel_on_tap_outside: false
         });
 
         overlay.querySelectorAll('[data-google-btn]').forEach((container) => {
@@ -303,7 +431,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
             button.addEventListener('click', () => {
                 if (window.google?.accounts?.id) {
-                    google.accounts.id.prompt();
+                    google.accounts.id.prompt((notification) => {
+                        handleGooglePromptNotification(notification);
+                    });
                 }
             });
 
