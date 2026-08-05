@@ -138,34 +138,93 @@
                      ============================================================ -->
                 <section class="dash-panel is-active" data-dash-panel="overview">
 
-                    <div class="dash-stat-grid">
-                        <div class="dash-stat-card">
-                            <div class="dash-stat-icon">
-                                <svg viewBox="0 0 24 24" fill="none"><rect x="3.5" y="4.5" width="17" height="16" rx="2" stroke="currentColor" stroke-width="1.8"/><path d="M3.5 9.5h17M8 3v3M16 3v3" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
-                            </div>
-                            <span class="dash-stat-value">3</span>
-                            <span class="dash-stat-label">Upcoming bookings</span>
-                        </div>
-                        <div class="dash-stat-card">
-                            <div class="dash-stat-icon">
-                                <svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.8"/><path d="M8 12.5l2.5 2.5L16 9.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
-                            </div>
-                            <span class="dash-stat-value">4</span>
-                            <span class="dash-stat-label">Courts available now</span>
-                        </div>
-                        <div class="dash-stat-card">
-                            <div class="dash-stat-icon">
-                                <svg viewBox="0 0 24 24" fill="none"><path d="M4 19V10M10 19V5M16 19v-7M22 19H2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
-                            </div>
-                            <span class="dash-stat-value">7</span>
-                            <span class="dash-stat-label">Bookings this month</span>
-                        </div>
-                        <div class="dash-stat-card">
-                            <div class="dash-stat-icon">
-                                <svg viewBox="0 0 24 24" fill="none"><path d="M12 2v20M17 6.5c0-2-2.2-3.5-5-3.5s-5 1.5-5 3.5 2.2 3 5 3.5 5 1.5 5 3.5-2.2 3.5-5 3.5-5-1.5-5-3.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
-                            </div>
-                            <span class="dash-stat-value">₱4,150</span>
-                            <span class="dash-stat-label">Total spent</span>
+                    <div class="ticker-wrap" aria-label="Featured court slots">
+                        <div class="ticker-track">
+                            <article class="ticker-item">
+                                <img src="../database/web/basketball.jpg" alt="Basketball court featured image">
+                                <div class="ticker-caption">
+                                    <span class="ticker-label">Basketball</span>
+                                    <span class="ticker-meta">Indoor court · Available</span>
+                                </div>
+                            </article>
+                            <article class="ticker-item">
+                                <img src="../database/web/badminton.jpg" alt="Badminton court featured image">
+                                <div class="ticker-caption">
+                                    <span class="ticker-label">Badminton</span>
+                                    <span class="ticker-meta">Two courts · Booked</span>
+                                </div>
+                            </article>
+                            <article class="ticker-item">
+                                <img src="../database/web/volleyball.jpg" alt="Volleyball court featured image">
+                                <div class="ticker-caption">
+                                    <span class="ticker-label">Volleyball</span>
+                                    <span class="ticker-meta">Open now · Fast booking</span>
+                                </div>
+                            </article>
+                            <article class="ticker-item">
+                                <img src="../database/web/pickleball.jpg" alt="Pickleball court featured image">
+                                <div class="ticker-caption">
+                                    <span class="ticker-label">Pickleball</span>
+                                    <span class="ticker-meta">New court · Peak hours</span>
+                                </div>
+                            </article>
+                            <article class="ticker-item">
+                                <img src="../database/web/bowling.jpg" alt="Bowling lane featured image">
+                                <div class="ticker-caption">
+                                    <span class="ticker-label">Bowling</span>
+                                    <span class="ticker-meta">Lane 2 · Reserved</span>
+                                </div>
+                            </article>
+                            <article class="ticker-item">
+                                <img src="../assets/Logo/WebLogo.png" alt="Sport slot featured image">
+                                <div class="ticker-caption">
+                                    <span class="ticker-label">Court lineup</span>
+                                    <span class="ticker-meta">Live slots · Updated daily</span>
+                                </div>
+                            </article>
+                            <!-- duplicated for seamless loop -->
+                            <article class="ticker-item">
+                                <img src="../assets/Logo/WebLogo.png" alt="Basketball court featured image">
+                                <div class="ticker-caption">
+                                    <span class="ticker-label">Basketball</span>
+                                    <span class="ticker-meta">Indoor court · Available</span>
+                                </div>
+                            </article>
+                            <article class="ticker-item">
+                                <img src="../assets/Logo/WebLogo.png" alt="Badminton court featured image">
+                                <div class="ticker-caption">
+                                    <span class="ticker-label">Badminton</span>
+                                    <span class="ticker-meta">Two courts · Booked</span>
+                                </div>
+                            </article>
+                            <article class="ticker-item">
+                                <img src="../assets/Logo/Logo.png" alt="Volleyball court featured image">
+                                <div class="ticker-caption">
+                                    <span class="ticker-label">Volleyball</span>
+                                    <span class="ticker-meta">Open now · Fast booking</span>
+                                </div>
+                            </article>
+                            <article class="ticker-item">
+                                <img src="../assets/Logo/WebLogo.png" alt="Pickleball court featured image">
+                                <div class="ticker-caption">
+                                    <span class="ticker-label">Pickleball</span>
+                                    <span class="ticker-meta">New court · Peak hours</span>
+                                </div>
+                            </article>
+                            <article class="ticker-item">
+                                <img src="../assets/Logo/Logo.png" alt="Bowling lane featured image">
+                                <div class="ticker-caption">
+                                    <span class="ticker-label">Bowling</span>
+                                    <span class="ticker-meta">Lane 2 · Reserved</span>
+                                </div>
+                            </article>
+                            <article class="ticker-item">
+                                <img src="../assets/Logo/WebLogo.png" alt="Sport slot featured image">
+                                <div class="ticker-caption">
+                                    <span class="ticker-label">Court lineup</span>
+                                    <span class="ticker-meta">Live slots · Updated daily</span>
+                                </div>
+                            </article>
                         </div>
                     </div>
 
