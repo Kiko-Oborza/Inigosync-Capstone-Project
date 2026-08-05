@@ -324,6 +324,20 @@ body.dash-body {
     margin-bottom: 24px;
 }
 
+.ticker-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 18px;
+}
+
+.ticker-header span {
+    font-family: var(--font-display);
+    font-size: 1rem;
+    font-weight: 700;
+    color: var(--color-ink);
+}
+
 .ticker-track {
     display: flex;
     gap: 16px;
