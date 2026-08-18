@@ -4,6 +4,17 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Staff Dashboard | IñigoSync</title>
+
+<!-- Theme guard: set data-theme before stylesheets load to prevent flash -->
+<script>
+(function() {
+    const saved = localStorage.getItem('inigosync-theme');
+    const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+    const theme = saved || (prefersDark ? 'dark' : 'light') || 'dark';
+    document.documentElement.setAttribute('data-theme', theme);
+})();
+</script>
+
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Inter:wght@400;500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
@@ -29,7 +40,6 @@
                 <button type="button" class="staff-nav-link is-active" data-staff-nav="overview">
                     <svg viewBox="0 0 24 24" fill="none"><rect x="3.5" y="4.5" width="17" height="16" rx="2" stroke="currentColor" stroke-width="1.8"/><path d="M3.5 9.5h17M8 3v3M16 3v3" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path d="M8 14.5l2.3 2.3L16 12" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
                     Booking Overview
-                    <span class="staff-nav-badge" data-staff-pending-badge>4</span>
                 </button>
             </li>
             <li>
@@ -81,12 +91,27 @@
                 </button>
                 <div class="staff-topbar-title">
                     <h1 data-staff-title>Booking Overview</h1>
-                    <p data-staff-subtitle>Today's reservations and walk-ins at a glance.</p>
+                    <p data-staff-subtitle>Today's court activity — bookings arrive already paid through PayMongo.</p>
                 </div>
             </div>
 
             <div class="staff-topbar-actions">
                 <div class="staff-clock"><span class="dot"></span><span data-staff-clock>Thu, Jul 16 · 9:00 AM</span></div>
+
+                <button type="button" class="theme-toggle" data-theme-toggle aria-label="Toggle theme" aria-pressed="false" style="margin-right: 8px;">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="12" cy="12" r="5" class="sun-circle"/>
+                        <line x1="12" y1="1" x2="12" y2="3" class="sun-line"/>
+                        <line x1="12" y1="21" x2="12" y2="23" class="sun-line"/>
+                        <line x1="4.22" y1="4.22" x2="5.64" y2="5.64" class="sun-line"/>
+                        <line x1="18.36" y1="18.36" x2="19.78" y2="19.78" class="sun-line"/>
+                        <line x1="1" y1="12" x2="3" y2="12" class="sun-line"/>
+                        <line x1="21" y1="12" x2="23" y2="12" class="sun-line"/>
+                        <line x1="4.22" y1="19.78" x2="5.64" y2="18.36" class="sun-line"/>
+                        <line x1="18.36" y1="5.64" x2="19.78" y2="4.22" class="sun-line"/>
+                        <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" class="moon-path" style="display:none;"/>
+                    </svg>
+                </button>
 
                 <button type="button" class="staff-icon-btn" aria-label="Notifications">
                     <svg viewBox="0 0 24 24" fill="none"><path d="M18 8.5c0-3.5-2.7-6-6-6s-6 2.5-6 6c0 6-2.5 7.5-2.5 7.5h17S18 14.5 18 8.5z" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><path d="M9.7 19a2.3 2.3 0 0 0 4.6 0" stroke="currentColor" stroke-width="1.7"/></svg>
@@ -128,17 +153,17 @@
                 <div class="staff-stat-grid">
                     <div class="staff-stat-card">
                         <div class="staff-stat-icon">
-                            <svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.8"/><path d="M12 7v5l3.5 2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+                            <svg viewBox="0 0 24 24" fill="none"><rect x="3.5" y="4.5" width="17" height="16" rx="2" stroke="currentColor" stroke-width="1.8"/><path d="M3.5 9.5h17M8 3v3M16 3v3" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
                         </div>
-                        <span class="staff-stat-value">4</span>
-                        <span class="staff-stat-label">Pending confirmations</span>
+                        <span class="staff-stat-value">14</span>
+                        <span class="staff-stat-label">Bookings today</span>
                     </div>
                     <div class="staff-stat-card">
                         <div class="staff-stat-icon">
-                            <svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.8"/><path d="M8 12.5l2.5 2.5L16 9.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                            <svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.8"/><path d="M10 8.3l6 3.7-6 3.7z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg>
                         </div>
-                        <span class="staff-stat-value">9</span>
-                        <span class="staff-stat-label">Confirmed today</span>
+                        <span class="staff-stat-value">3</span>
+                        <span class="staff-stat-label">In play right now</span>
                     </div>
                     <div class="staff-stat-card">
                         <div class="staff-stat-icon">
@@ -149,21 +174,16 @@
                     </div>
                     <div class="staff-stat-card">
                         <div class="staff-stat-icon">
-                            <svg viewBox="0 0 24 24" fill="none"><path d="M12 2v20M17 6.5c0-2-2.2-3.5-5-3.5s-5 1.5-5 3.5 2.2 3 5 3.5 5 1.5 5 3.5-2.2 3.5-5 3.5-5-1.5-5-3.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+                            <svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.8"/><path d="M12 7v5l3.5 2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
                         </div>
-                        <span class="staff-stat-value">₱6,420</span>
-                        <span class="staff-stat-label">Revenue today</span>
+                        <span class="staff-stat-value">6</span>
+                        <span class="staff-stat-label">Still to come today</span>
                     </div>
-                </div>
-
-                <div class="staff-notice">
-                    <svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.7"/><path d="M12 8v5M12 16h.01" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/></svg>
-                    <span>Verify submitted payment proof before confirming a booking. Unconfirmed reservations still honor the 30-minute grace period once their slot starts.</span>
                 </div>
 
                 <div class="staff-card">
                     <div class="staff-card-head">
-                        <h3>Today's Reservations</h3>
+                        <h3>Today's Bookings</h3>
                         <div class="staff-toolbar">
                             <div class="staff-search-wrap">
                                 <svg viewBox="0 0 24 24" fill="none"><circle cx="11" cy="11" r="7" stroke="currentColor" stroke-width="1.8"/><path d="M21 21l-4.3-4.3" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
@@ -171,8 +191,9 @@
                             </div>
                             <div class="staff-filter-row" data-staff-filter-group="overview">
                                 <button type="button" class="staff-chip is-active" data-staff-chip data-staff-filter="all">All</button>
-                                <button type="button" class="staff-chip" data-staff-chip data-staff-filter="pending">Pending</button>
-                                <button type="button" class="staff-chip" data-staff-chip data-staff-filter="confirmed">Confirmed</button>
+                                <button type="button" class="staff-chip" data-staff-chip data-staff-filter="upcoming">Upcoming</button>
+                                <button type="button" class="staff-chip" data-staff-chip data-staff-filter="inplay">In play</button>
+                                <button type="button" class="staff-chip" data-staff-chip data-staff-filter="done">Done</button>
                             </div>
                         </div>
                     </div>
@@ -184,85 +205,81 @@
                                     <th>Customer</th>
                                     <th>Court</th>
                                     <th>Time</th>
-                                    <th>Payment</th>
+                                    <th>Reference</th>
                                     <th>Status</th>
                                     <th>Actions</th>
                                 </tr>
                             </thead>
                             <tbody>
-                                <tr data-status="pending">
+                                <tr data-status="upcoming">
                                     <td class="staff-cell-main">Maria Santos<span class="staff-cell-sub">0917 234 5566</span></td>
-                                    <td>Basketball — Full Court</td>
+                                    <td>Basketball — Court 1</td>
                                     <td>2:00 PM – 3:00 PM</td>
-                                    <td>GCash — Downpayment</td>
-                                    <td><span class="staff-status pending">Pending</span></td>
+                                    <td class="staff-cell-ref">PM-8241</td>
+                                    <td><span class="staff-status upcoming">Upcoming</span></td>
                                     <td>
                                         <div class="staff-table-actions">
-                                            <button type="button" class="staff-mini-btn is-primary" data-staff-confirm>Confirm</button>
-                                            <button type="button" class="staff-mini-btn is-danger" data-staff-cancel>Cancel</button>
+                                            <button type="button" class="staff-mini-btn" data-staff-timein>Time-In</button>
                                         </div>
                                     </td>
                                 </tr>
-                                <tr data-status="pending">
+                                <tr data-status="upcoming">
                                     <td class="staff-cell-main">Carlo Reyes<span class="staff-cell-sub">0928 771 0043</span></td>
                                     <td>Badminton — Court 2</td>
                                     <td>4:00 PM – 5:00 PM</td>
-                                    <td>GCash — Full Payment</td>
-                                    <td><span class="staff-status pending">Pending</span></td>
+                                    <td class="staff-cell-ref">PM-8246</td>
+                                    <td><span class="staff-status upcoming">Upcoming</span></td>
                                     <td>
                                         <div class="staff-table-actions">
-                                            <button type="button" class="staff-mini-btn is-primary" data-staff-confirm>Confirm</button>
-                                            <button type="button" class="staff-mini-btn is-danger" data-staff-cancel>Cancel</button>
+                                            <button type="button" class="staff-mini-btn" data-staff-timein>Time-In</button>
                                         </div>
                                     </td>
                                 </tr>
-                                <tr data-status="confirmed">
+                                <tr data-status="upcoming">
                                     <td class="staff-cell-main">Ana Lopez<span class="staff-cell-sub">0939 552 1187</span></td>
-                                    <td>Pickleball — Court 1</td>
-                                    <td>3:00 PM – 4:00 PM</td>
-                                    <td>Cash — Downpayment</td>
-                                    <td><span class="staff-status confirmed">Confirmed</span></td>
+                                    <td>Pickleball — New Court</td>
+                                    <td>9:00 AM – 10:00 AM</td>
+                                    <td class="staff-cell-ref">PM-8233</td>
+                                    <td><span class="staff-status upcoming">Upcoming</span></td>
                                     <td>
                                         <div class="staff-table-actions">
                                             <button type="button" class="staff-mini-btn" data-staff-timein>Time-In</button>
                                         </div>
                                     </td>
                                 </tr>
-                                <tr data-status="confirmed">
+                                <tr data-status="upcoming">
                                     <td class="staff-cell-main">Iñigo Ramos<span class="staff-cell-sub">0917 002 8834</span></td>
-                                    <td>Volleyball Court</td>
-                                    <td>5:00 PM – 6:00 PM</td>
-                                    <td>GCash — Full Payment</td>
-                                    <td><span class="staff-status confirmed">Confirmed</span></td>
+                                    <td>Lawn Tennis — Court 3</td>
+                                    <td>9:00 AM – 11:00 AM</td>
+                                    <td class="staff-cell-ref">PM-8230</td>
+                                    <td><span class="staff-status upcoming">Upcoming</span></td>
                                     <td>
                                         <div class="staff-table-actions">
                                             <button type="button" class="staff-mini-btn" data-staff-timein>Time-In</button>
                                         </div>
                                     </td>
                                 </tr>
-                                <tr data-status="pending">
+                                <tr data-status="inplay">
                                     <td class="staff-cell-main">Julius Tan<span class="staff-cell-sub">0910 445 2291</span></td>
-                                    <td>Bowling — Lane 1</td>
+                                    <td>Bowling — Duckpin Lane 1</td>
                                     <td>6:00 PM – 7:00 PM</td>
-                                    <td>Cash on-site</td>
-                                    <td><span class="staff-status pending">Pending</span></td>
+                                    <td class="staff-cell-ref">PM-8250</td>
+                                    <td><span class="staff-status inplay">In play</span></td>
                                     <td>
                                         <div class="staff-table-actions">
-                                            <button type="button" class="staff-mini-btn is-primary" data-staff-confirm>Confirm</button>
-                                            <button type="button" class="staff-mini-btn is-danger" data-staff-cancel>Cancel</button>
+                                            <button type="button" class="staff-mini-btn" data-staff-timeout>Time-Out</button>
                                         </div>
                                     </td>
                                 </tr>
-                                <tr data-status="pending">
+                                <tr data-status="done">
                                     <td class="staff-cell-main">Bea Villanueva<span class="staff-cell-sub">0921 340 7712</span></td>
-                                    <td>Badminton — Court 1</td>
-                                    <td>7:00 PM – 8:00 PM</td>
-                                    <td>GCash — Downpayment</td>
-                                    <td><span class="staff-status pending">Pending</span></td>
+                                    <td>Table Tennis — Table 2</td>
+                                    <td>7:00 AM – 8:00 AM</td>
+                                    <td class="staff-cell-ref">PM-8221</td>
+                                    <td><span class="staff-status done">Done</span></td>
                                     <td>
                                         <div class="staff-table-actions">
-                                            <button type="button" class="staff-mini-btn is-primary" data-staff-confirm>Confirm</button>
-                                            <button type="button" class="staff-mini-btn is-danger" data-staff-cancel>Cancel</button>
+                                            <button type="button" class="staff-mini-btn" data-staff-details>Details</button>
                                         </div>
                                     </td>
                                 </tr>
@@ -644,6 +661,7 @@
         </main>
     </div>
 </div>
+<script src="../includes/theme.js"></script>
 <script src="../includes/staff_dashboard.js"></script>
 </body>
 </html>

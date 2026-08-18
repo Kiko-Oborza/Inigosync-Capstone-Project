@@ -7,7 +7,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const subtitleEl = document.querySelector('[data-staff-subtitle]');
 
     const panelMeta = {
-        overview: { title: 'Booking Overview', subtitle: "Today's reservations and walk-ins at a glance." },
+        overview: { title: 'Booking Overview', subtitle: "Today's court activity — bookings arrive already paid through PayMongo." },
         walkin: { title: 'Walk-In Management', subtitle: 'Record walk-in customers and process on-the-spot payment.' },
         schedule: { title: 'Court Schedule', subtitle: 'Calendar view of every court to spot open slots at a glance.' },
         transactions: { title: 'Transaction Records', subtitle: 'Searchable audit trail of every payment processed.' },
@@ -98,6 +98,30 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     // ------------------------------------------------------------------
+    // Theme toggle — includes/theme.js manages the data-theme attribute
+    // and persistence; this just wires the topbar button to it and keeps
+    // the sun/moon icon in sync.
+    // ------------------------------------------------------------------
+    const themeToggleBtn = document.querySelector('[data-theme-toggle]');
+    function syncThemeToggleUI(theme) {
+        if (!themeToggleBtn) return;
+        const isLight = theme === 'light';
+        themeToggleBtn.setAttribute('aria-pressed', String(isLight));
+        themeToggleBtn.querySelectorAll('.sun-circle, .sun-line').forEach((el) => {
+            el.style.display = isLight ? 'none' : '';
+        });
+        const moonPath = themeToggleBtn.querySelector('.moon-path');
+        if (moonPath) moonPath.style.display = isLight ? '' : 'none';
+    }
+    if (themeToggleBtn) {
+        themeToggleBtn.addEventListener('click', () => {
+            if (window.ThemeController) window.ThemeController.toggle();
+        });
+        document.addEventListener('themechange', (e) => syncThemeToggleUI(e.detail.theme));
+        syncThemeToggleUI(document.documentElement.getAttribute('data-theme') || 'dark');
+    }
+
+    // ------------------------------------------------------------------
     // Live clock (topbar)
     // ------------------------------------------------------------------
     const clockEl = document.querySelector('[data-staff-clock]');
@@ -112,7 +136,7 @@ document.addEventListener('DOMContentLoaded', () => {
     window.setInterval(renderClock, 30000);
 
     // ------------------------------------------------------------------
-    // Booking Overview — filter chips, search, confirm/cancel/time-in
+    // Booking Overview — filter chips, search, time-in/time-out/details
     // ------------------------------------------------------------------
     function wireFilterableTable(scopeName) {
         const group = document.querySelector(`[data-staff-filter-group="${scopeName}"]`);
@@ -156,73 +180,61 @@ document.addEventListener('DOMContentLoaded', () => {
     wireFilterableTable('overview');
     wireFilterableTable('transactions');
 
-    const pendingBadge = document.querySelector('[data-staff-pending-badge]');
-    function updatePendingBadge() {
-        const overviewTable = document.querySelector('[data-staff-table="overview"]');
-        if (!overviewTable || !pendingBadge) return;
-        const count = overviewTable.querySelectorAll('tbody tr[data-status="pending"]').length;
-        pendingBadge.textContent = count;
-        pendingBadge.style.display = count > 0 ? 'inline-block' : 'none';
-    }
-    updatePendingBadge();
-
-    document.querySelectorAll('[data-staff-confirm]').forEach((btn) => {
-        btn.addEventListener('click', () => {
-            const row = btn.closest('tr');
-            if (!row) return;
-            // TODO: PATCH /api/bookings/:id { status: 'confirmed' } once the
-            // backend is ready — this only updates the UI for now.
-            row.dataset.status = 'confirmed';
-            const statusBadge = row.querySelector('.staff-status');
-            if (statusBadge) {
-                statusBadge.textContent = 'Confirmed';
-                statusBadge.className = 'staff-status confirmed';
-            }
-            const actions = row.querySelector('.staff-table-actions');
-            if (actions) {
-                actions.innerHTML = '<button type="button" class="staff-mini-btn" data-staff-timein>Time-In</button>';
-                actions.querySelector('[data-staff-timein]').addEventListener('click', handleTimeIn);
-            }
-            console.log('[staff] booking confirmed (placeholder)');
-            updatePendingBadge();
-        });
-    });
-
-    document.querySelectorAll('[data-staff-cancel]').forEach((btn) => {
-        btn.addEventListener('click', () => {
-            const row = btn.closest('tr');
-            if (!row) return;
-            // TODO: PATCH /api/bookings/:id { status: 'cancelled' } once the
-            // backend is ready.
-            row.dataset.status = 'cancelled';
-            const statusBadge = row.querySelector('.staff-status');
-            if (statusBadge) {
-                statusBadge.textContent = 'Cancelled';
-                statusBadge.className = 'staff-status cancelled';
-            }
-            const actions = row.querySelector('.staff-table-actions');
-            if (actions) actions.innerHTML = '';
-            console.log('[staff] booking cancelled (placeholder)');
-            updatePendingBadge();
-        });
-    });
-
+    // Bookings arrive already paid through PayMongo, so there's no
+    // pending/confirm step for staff — just Upcoming -> In play -> Done.
     function handleTimeIn(e) {
         const row = e.target.closest('tr');
         if (!row) return;
         // TODO: PATCH /api/bookings/:id { checked_in_at: now } once the
-        // backend is ready — this also clears the 30-minute grace period.
+        // backend is ready.
+        row.dataset.status = 'inplay';
         const statusBadge = row.querySelector('.staff-status');
         if (statusBadge) {
-            statusBadge.textContent = 'Completed';
-            statusBadge.className = 'staff-status completed';
+            statusBadge.textContent = 'In play';
+            statusBadge.className = 'staff-status inplay';
         }
-        e.target.remove();
+        const actions = row.querySelector('.staff-table-actions');
+        if (actions) {
+            actions.innerHTML = '<button type="button" class="staff-mini-btn" data-staff-timeout>Time-Out</button>';
+            actions.querySelector('[data-staff-timeout]').addEventListener('click', handleTimeOut);
+        }
         console.log('[staff] customer timed in (placeholder)');
+    }
+
+    function handleTimeOut(e) {
+        const row = e.target.closest('tr');
+        if (!row) return;
+        // TODO: PATCH /api/bookings/:id { checked_out_at: now } once the
+        // backend is ready.
+        row.dataset.status = 'done';
+        const statusBadge = row.querySelector('.staff-status');
+        if (statusBadge) {
+            statusBadge.textContent = 'Done';
+            statusBadge.className = 'staff-status done';
+        }
+        const actions = row.querySelector('.staff-table-actions');
+        if (actions) {
+            actions.innerHTML = '<button type="button" class="staff-mini-btn" data-staff-details>Details</button>';
+            actions.querySelector('[data-staff-details]').addEventListener('click', handleDetails);
+        }
+        console.log('[staff] customer timed out (placeholder)');
+    }
+
+    function handleDetails(e) {
+        const row = e.target.closest('tr');
+        if (!row) return;
+        // TODO: open a booking details view/modal once the backend is ready.
+        console.log('[staff] view booking details (placeholder)', row.querySelector('.staff-cell-main')?.textContent);
     }
 
     document.querySelectorAll('[data-staff-timein]').forEach((btn) => {
         btn.addEventListener('click', handleTimeIn);
+    });
+    document.querySelectorAll('[data-staff-timeout]').forEach((btn) => {
+        btn.addEventListener('click', handleTimeOut);
+    });
+    document.querySelectorAll('[data-staff-details]').forEach((btn) => {
+        btn.addEventListener('click', handleDetails);
     });
 
     // ------------------------------------------------------------------

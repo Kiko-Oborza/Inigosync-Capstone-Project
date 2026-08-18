@@ -1,11 +1,123 @@
-// IñigoSync — Owner Dashboard: Booking Trend Charts (Chart.js)
-// Renders the Weekly / Monthly booking trend bar graphs shown on the
-// Booking Overview panel of Pages/admin_dashboard.html.
+// IñigoSync — Owner Dashboard: Booking Trends Chart (Chart.js)
+// Renders the single Weekly/Monthly-toggleable booking trend bar graph
+// shown on the Booking Overview panel of Pages/owner_dashboard.html.
 //
-// UI/demo only — the arrays below are placeholder figures. Once the
-// backend (PHP/MySQL) is ready, replace WEEKLY_DATA / MONTHLY_DATA with a
-// fetch() call to an endpoint such as GET /api/admin/booking-trends and
-// feed the response into the same chart.data.datasets[0].data arrays.
+// UI/demo only — the CHART_DATA figures below are placeholders. Once the
+// backend (PHP/MySQL) is ready, replace week/month values with a fetch()
+// call to an endpoint such as GET /api/admin/booking-trends?range=week and
+// feed the response into the same chart.data.labels / .datasets[0].data.
+//
+// Colors are read dynamically from CSS custom properties and updated on theme change.
+
+let bookingChart = null;
+let currentChartRange = 'week';
+
+const CHART_DATA = {
+    week: {
+        labels: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
+        values: [12, 18, 9, 22, 27, 31, 24],
+        total: 143,
+        unit: 'bookings per day · this week',
+    },
+    month: {
+        labels: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug'],
+        values: [64, 71, 58, 80, 92, 77, 96, 102],
+        total: 640,
+        unit: 'bookings per month · 2026',
+    },
+};
+
+function getThemeColors() {
+    const root = document.documentElement;
+    const style = getComputedStyle(root);
+
+    return {
+        ink: style.getPropertyValue('--color-ink').trim(),
+        inkFaint: style.getPropertyValue('--color-ink-faint').trim(),
+        line: style.getPropertyValue('--color-line').trim(),
+        primary: style.getPropertyValue('--color-primary').trim(),
+        primaryDim: style.getPropertyValue('--color-primary-dim').trim(),
+        bgCard: style.getPropertyValue('--color-bg-card').trim(),
+    };
+}
+
+function baseOptions(colors) {
+    return {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+            legend: { display: false },
+            tooltip: {
+                backgroundColor: colors.bgCard,
+                borderColor: colors.line,
+                borderWidth: 1,
+                titleColor: colors.ink,
+                bodyColor: colors.ink,
+                padding: 10,
+                displayColors: false,
+            },
+        },
+        scales: {
+            x: {
+                grid: { display: false },
+                ticks: { color: colors.inkFaint, font: { size: 11 } },
+            },
+            y: {
+                beginAtZero: true,
+                grid: { color: colors.line },
+                ticks: { color: colors.inkFaint, font: { size: 11 }, precision: 0 },
+            },
+        },
+    };
+}
+
+// Re-applies current theme colors to the existing chart instance (called on
+// 'themechange' so the graph flips light/dark without a full re-render).
+function updateCharts() {
+    if (!bookingChart) return;
+
+    const colors = getThemeColors();
+
+    bookingChart.data.datasets[0].backgroundColor = colors.primary;
+    bookingChart.data.datasets[0].hoverBackgroundColor = colors.primaryDim;
+    bookingChart.options.plugins.tooltip.backgroundColor = colors.bgCard;
+    bookingChart.options.plugins.tooltip.borderColor = colors.line;
+    bookingChart.options.plugins.tooltip.titleColor = colors.ink;
+    bookingChart.options.plugins.tooltip.bodyColor = colors.ink;
+    bookingChart.options.scales.x.ticks.color = colors.inkFaint;
+    bookingChart.options.scales.y.grid.color = colors.line;
+    bookingChart.options.scales.y.ticks.color = colors.inkFaint;
+    bookingChart.update();
+}
+
+// Updates the "total {N}" label, the unit caption under the title, and the
+// active/inactive styling on the Weekly/Monthly pill toggle.
+function renderChartMeta() {
+    const src = CHART_DATA[currentChartRange];
+
+    const unitEl = document.querySelector('[data-admin-chart-unit]');
+    const totalEl = document.querySelector('[data-admin-chart-total]');
+    if (unitEl) unitEl.textContent = src.unit;
+    if (totalEl) totalEl.textContent = src.total;
+
+    document.querySelectorAll('[data-admin-chart-range]').forEach((btn) => {
+        btn.classList.toggle('is-active', btn.dataset.adminChartRange === currentChartRange);
+    });
+}
+
+function setChartRange(range) {
+    if (!CHART_DATA[range]) return;
+    currentChartRange = range;
+
+    renderChartMeta();
+
+    if (bookingChart) {
+        const src = CHART_DATA[range];
+        bookingChart.data.labels = src.labels;
+        bookingChart.data.datasets[0].data = src.values;
+        bookingChart.update();
+    }
+}
 
 document.addEventListener('DOMContentLoaded', () => {
     if (typeof Chart === 'undefined') {
@@ -13,95 +125,44 @@ document.addEventListener('DOMContentLoaded', () => {
         return;
     }
 
-    // Shared look & feel so both charts match the IñigoSync dark theme.
-    const INK = '#c9c2b4';
-    const INK_FAINT = '#8a8177';
-    const LINE = 'rgba(244, 239, 230, 0.12)';
-    const PRIMARY = '#ff6a2c';
-    const PRIMARY_DIM = 'rgba(255, 106, 44, 0.35)';
-    const COURT_GREEN = '#3e7a5e';
+    const colors = getThemeColors();
 
     Chart.defaults.font.family = "'Inter', 'Segoe UI', sans-serif";
-    Chart.defaults.color = INK_FAINT;
-
-    function baseOptions(yLabel) {
-        return {
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: {
-                legend: { display: false },
-                tooltip: {
-                    backgroundColor: '#201a14',
-                    borderColor: LINE,
-                    borderWidth: 1,
-                    titleColor: '#f4efe6',
-                    bodyColor: INK,
-                    padding: 10,
-                    displayColors: false,
-                },
-            },
-            scales: {
-                x: {
-                    grid: { display: false },
-                    ticks: { color: INK_FAINT, font: { size: 11 } },
-                },
-                y: {
-                    beginAtZero: true,
-                    grid: { color: LINE },
-                    ticks: { color: INK_FAINT, font: { size: 11 }, precision: 0 },
-                    title: { display: !!yLabel, text: yLabel, color: INK_FAINT, font: { size: 11 } },
-                },
-            },
-        };
-    }
+    Chart.defaults.color = colors.inkFaint;
 
     // ------------------------------------------------------------------
-    // Weekly Booking Trends — bookings per day, current week.
+    // Booking Trends — single bar chart, toggled between Weekly / Monthly.
     // ------------------------------------------------------------------
-    const weeklyCanvas = document.getElementById('adminWeeklyChart');
-    if (weeklyCanvas) {
-        const WEEKLY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-        const WEEKLY_DATA = [9, 12, 8, 14, 17, 23, 19];
+    const canvas = document.getElementById('adminBookingChart');
+    if (canvas) {
+        const src = CHART_DATA[currentChartRange];
 
-        new Chart(weeklyCanvas, {
+        bookingChart = new Chart(canvas, {
             type: 'bar',
             data: {
-                labels: WEEKLY_LABELS,
+                labels: src.labels,
                 datasets: [{
                     label: 'Bookings',
-                    data: WEEKLY_DATA,
-                    backgroundColor: PRIMARY_DIM,
-                    hoverBackgroundColor: PRIMARY,
-                    borderRadius: 6,
-                    maxBarThickness: 36,
-                }],
-            },
-            options: baseOptions('Bookings'),
-        });
-    }
-
-    // ------------------------------------------------------------------
-    // Monthly Booking Trends — total bookings per month, current year.
-    // ------------------------------------------------------------------
-    const monthlyCanvas = document.getElementById('adminMonthlyChart');
-    if (monthlyCanvas) {
-        const MONTHLY_LABELS = ['Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul'];
-        const MONTHLY_DATA = [64, 71, 88, 96, 110, 132];
-
-        new Chart(monthlyCanvas, {
-            type: 'bar',
-            data: {
-                labels: MONTHLY_LABELS,
-                datasets: [{
-                    label: 'Bookings',
-                    data: MONTHLY_DATA,
-                    backgroundColor: 'rgba(62, 122, 94, 0.45)',
-                    hoverBackgroundColor: COURT_GREEN,
+                    data: src.values,
+                    backgroundColor: colors.primary,
+                    hoverBackgroundColor: colors.primaryDim,
                     borderRadius: 6,
                     maxBarThickness: 42,
                 }],
             },
-            options: baseOptions('Bookings'),
+            options: baseOptions(colors),
         });
     }
+
+    renderChartMeta();
+
+    // Weekly / Monthly pill toggle — swaps the dataset in place.
+    document.querySelectorAll('[data-admin-chart-range]').forEach((btn) => {
+        btn.addEventListener('click', () => setChartRange(btn.dataset.adminChartRange));
+    });
+
+    // Listen for theme changes and re-color the chart.
+    document.addEventListener('themechange', () => {
+        updateCharts();
+    });
 });

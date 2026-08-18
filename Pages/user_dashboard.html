@@ -4,6 +4,17 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>My Dashboard | IñigoSync</title>
+
+    <!-- Theme guard: set data-theme before stylesheets load to prevent flash -->
+    <script>
+    (function() {
+        const saved = localStorage.getItem('inigosync-theme');
+        const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+        const theme = saved || (prefersDark ? 'dark' : 'light') || 'dark';
+        document.documentElement.setAttribute('data-theme', theme);
+    })();
+    </script>
+
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Inter:wght@400;500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
@@ -97,6 +108,21 @@
                 </div>
 
                 <div class="dash-topbar-actions">
+                    <button type="button" class="theme-toggle" data-theme-toggle aria-label="Toggle theme" aria-pressed="false" style="margin-right: 8px;">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <circle cx="12" cy="12" r="5" class="sun-circle"/>
+                            <line x1="12" y1="1" x2="12" y2="3" class="sun-line"/>
+                            <line x1="12" y1="21" x2="12" y2="23" class="sun-line"/>
+                            <line x1="4.22" y1="4.22" x2="5.64" y2="5.64" class="sun-line"/>
+                            <line x1="18.36" y1="18.36" x2="19.78" y2="19.78" class="sun-line"/>
+                            <line x1="1" y1="12" x2="3" y2="12" class="sun-line"/>
+                            <line x1="21" y1="12" x2="23" y2="12" class="sun-line"/>
+                            <line x1="4.22" y1="19.78" x2="5.64" y2="18.36" class="sun-line"/>
+                            <line x1="18.36" y1="5.64" x2="19.78" y2="4.22" class="sun-line"/>
+                            <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" class="moon-path" style="display:none;"/>
+                        </svg>
+                    </button>
+
                     <button type="button" class="dash-icon-btn" aria-label="Notifications">
                         <svg viewBox="0 0 24 24" fill="none"><path d="M18 8.5c0-3.5-2.7-6-6-6s-6 2.5-6 6c0 6-2.5 7.5-2.5 7.5h17S18 14.5 18 8.5z" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><path d="M9.7 19a2.3 2.3 0 0 0 4.6 0" stroke="currentColor" stroke-width="1.7"/></svg>
                         <span class="dash-badge-dot"></span>
@@ -138,96 +164,58 @@
                      ============================================================ -->
                 <section class="dash-panel is-active" data-dash-panel="overview">
 
-                    <div class="ticker-wrap" aria-label="Featured court slots">
-                        <div class="ticker-header">
-                            <span>Featured/Announcement</span>
+                    <div class="dash-hero" data-dash-hero role="region" aria-label="Featured announcement" aria-live="polite">
+                        <div class="dash-hero-container">
+                            <article class="dash-hero-slide is-active" data-dash-hero-slide="0">
+                                <img src="../database/web/basketball.jpg" alt="Bocohan Summer Basketball League" class="dash-hero-image" loading="eager">
+                                <div class="dash-hero-scrim">
+                                    <div class="dash-hero-text">
+                                        <span class="dash-hero-tag">Now on court</span>
+                                        <h3 class="dash-hero-title">Bocohan Summer Basketball League</h3>
+                                        <p class="dash-hero-meta">Finals night · Aug 24 · Court 1</p>
+                                    </div>
+                                </div>
+                            </article>
+                            <article class="dash-hero-slide" data-dash-hero-slide="1">
+                                <img src="../database/web/announcement.jpg" alt="Weekend Open Play" class="dash-hero-image" loading="lazy">
+                                <div class="dash-hero-scrim">
+                                    <div class="dash-hero-text">
+                                        <span class="dash-hero-tag">This weekend</span>
+                                        <h3 class="dash-hero-title">Weekend Open Play</h3>
+                                        <p class="dash-hero-meta">Sat &amp; Sun · 8:00 AM – 10:00 PM · all courts</p>
+                                    </div>
+                                </div>
+                            </article>
+                            <article class="dash-hero-slide" data-dash-hero-slide="2">
+                                <img src="../database/web/badminton.jpg" alt="Four New Badminton Courts Open" class="dash-hero-image" loading="lazy">
+                                <div class="dash-hero-scrim">
+                                    <div class="dash-hero-text">
+                                        <span class="dash-hero-tag">New courts</span>
+                                        <h3 class="dash-hero-title">Four New Badminton Courts Open</h3>
+                                        <p class="dash-hero-meta">9 courts total · book any slot online</p>
+                                    </div>
+                                </div>
+                            </article>
+                            <article class="dash-hero-slide" data-dash-hero-slide="3">
+                                <img src="../database/web/bowling.jpg" alt="Duckpin &amp; Ten-Pin Nights" class="dash-hero-image" loading="lazy">
+                                <div class="dash-hero-scrim">
+                                    <div class="dash-hero-text">
+                                        <span class="dash-hero-tag">Lanes</span>
+                                        <h3 class="dash-hero-title">Duckpin &amp; Ten-Pin Nights</h3>
+                                        <p class="dash-hero-meta">8 duckpin + 12 ten-pin lanes · Mon–Thu</p>
+                                    </div>
+                                </div>
+                            </article>
                         </div>
-                        <div class="ticker-track">
-                            <article class="ticker-item">
-                                <img src="../database/web/basketball.jpg" alt="Basketball court featured image">
-                                <div class="ticker-caption">
-                                    <span class="ticker-label">Basketball</span>
-                                    <span class="ticker-meta">Indoor court · Available</span>
-                                </div>
-                            </article>
-                            <article class="ticker-item">
-                                <img src="../database/web/badminton.jpg" alt="Badminton court featured image">
-                                <div class="ticker-caption">
-                                    <span class="ticker-label">Badminton</span>
-                                    <span class="ticker-meta">Two courts · Booked</span>
-                                </div>
-                            </article>
-                            <article class="ticker-item">
-                                <img src="../database/web/volleyball.jpg" alt="Volleyball court featured image">
-                                <div class="ticker-caption">
-                                    <span class="ticker-label">Volleyball</span>
-                                    <span class="ticker-meta">Open now · Fast booking</span>
-                                </div>
-                            </article>
-                            <article class="ticker-item">
-                                <img src="../database/web/pickleball.jpg" alt="Pickleball court featured image">
-                                <div class="ticker-caption">
-                                    <span class="ticker-label">Pickleball</span>
-                                    <span class="ticker-meta">New court · Peak hours</span>
-                                </div>
-                            </article>
-                            <article class="ticker-item">
-                                <img src="../database/web/bowling.jpg" alt="Bowling lane featured image">
-                                <div class="ticker-caption">
-                                    <span class="ticker-label">Bowling</span>
-                                    <span class="ticker-meta">Lane 2 · Reserved</span>
-                                </div>
-                            </article>
-                            <article class="ticker-item">
-                                <img src="../assets/Logo/WebLogo.png" alt="Sport slot featured image">
-                                <div class="ticker-caption">
-                                    <span class="ticker-label">Court lineup</span>
-                                    <span class="ticker-meta">Live slots · Updated daily</span>
-                                </div>
-                            </article>
-                            <!-- duplicated for seamless loop -->
-                            <article class="ticker-item">
-                                <img src="../database/web/basketball.jpg" alt="Basketball court featured image">
-                                <div class="ticker-caption">
-                                    <span class="ticker-label">Basketball</span>
-                                    <span class="ticker-meta">Indoor court · Available</span>
-                                </div>
-                            </article>
-                            <article class="ticker-item">
-                                <img src="../database/web/badminton.jpg" alt="Badminton court featured image">
-                                <div class="ticker-caption">
-                                    <span class="ticker-label">Badminton</span>
-                                    <span class="ticker-meta">Two courts · Booked</span>
-                                </div>
-                            </article>
-                            <article class="ticker-item">
-                                <img src="../assets/Logo/Logo.png" alt="Volleyball court featured image">
-                                <div class="ticker-caption">
-                                    <span class="ticker-label">Volleyball</span>
-                                    <span class="ticker-meta">Open now · Fast booking</span>
-                                </div>
-                            </article>
-                            <article class="ticker-item">
-                                <img src="../assets/Logo/WebLogo.png" alt="Pickleball court featured image">
-                                <div class="ticker-caption">
-                                    <span class="ticker-label">Pickleball</span>
-                                    <span class="ticker-meta">New court · Peak hours</span>
-                                </div>
-                            </article>
-                            <article class="ticker-item">
-                                <img src="../assets/Logo/Logo.png" alt="Bowling lane featured image">
-                                <div class="ticker-caption">
-                                    <span class="ticker-label">Bowling</span>
-                                    <span class="ticker-meta">Lane 2 · Reserved</span>
-                                </div>
-                            </article>
-                            <article class="ticker-item">
-                                <img src="../assets/Logo/WebLogo.png" alt="Sport slot featured image">
-                                <div class="ticker-caption">
-                                    <span class="ticker-label">Court lineup</span>
-                                    <span class="ticker-meta">Live slots · Updated daily</span>
-                                </div>
-                            </article>
+
+                        <div class="dash-hero-controls">
+                            <button type="button" class="dash-hero-btn" data-dash-nav="booking">Book this slot</button>
+                            <div class="dash-hero-dots">
+                                <button type="button" class="dash-hero-dot is-active" data-dash-hero-dot="0" aria-label="Slide 1" aria-current="true"></button>
+                                <button type="button" class="dash-hero-dot" data-dash-hero-dot="1" aria-label="Slide 2"></button>
+                                <button type="button" class="dash-hero-dot" data-dash-hero-dot="2" aria-label="Slide 3"></button>
+                                <button type="button" class="dash-hero-dot" data-dash-hero-dot="3" aria-label="Slide 4"></button>
+                            </div>
                         </div>
                     </div>
 
@@ -922,6 +910,7 @@
         </div>
     </div>
 
-    <script src="../includes/dashboard.js"></script>
+    <script src="../includes/theme.js"></script>
+    <script src="../includes/Dashboard.js"></script>
 </body>
 </html>

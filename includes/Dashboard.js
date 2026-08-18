@@ -72,6 +72,74 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // ------------------------------------------------------------------
+    // Overview — featured hero banner (auto-rotating, same interval /
+    // crossfade / pause-on-hover / reduced-motion pattern as the landing
+    // page's includes/home-showcase.js carousel, reimplemented here since
+    // this markup is scoped to the dashboard).
+    // ------------------------------------------------------------------
+    const heroEl = document.querySelector('[data-dash-hero]');
+
+    if (heroEl) {
+        const heroSlides = heroEl.querySelectorAll('[data-dash-hero-slide]');
+        const heroDots = heroEl.querySelectorAll('[data-dash-hero-dot]');
+        const heroPrefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+        let heroIndex = 0;
+        let heroTimer = null;
+
+        function updateHeroSlide(newIndex, skipTimer = false) {
+            if (newIndex >= heroSlides.length) newIndex = 0;
+            if (newIndex < 0) newIndex = heroSlides.length - 1;
+
+            heroSlides.forEach((s) => s.classList.remove('is-active'));
+            heroDots.forEach((d) => {
+                d.classList.remove('is-active');
+                d.setAttribute('aria-current', 'false');
+            });
+
+            heroSlides[newIndex].classList.add('is-active');
+            heroDots[newIndex].classList.add('is-active');
+            heroDots[newIndex].setAttribute('aria-current', 'true');
+
+            heroIndex = newIndex;
+
+            if (!skipTimer) {
+                clearHeroAutoplay();
+                startHeroAutoplay();
+            }
+        }
+
+        function startHeroAutoplay() {
+            if (heroPrefersReducedMotion) return;
+            heroTimer = setInterval(() => {
+                updateHeroSlide(heroIndex + 1, true);
+            }, 5000);
+        }
+
+        function clearHeroAutoplay() {
+            if (heroTimer) {
+                clearInterval(heroTimer);
+                heroTimer = null;
+            }
+        }
+
+        heroDots.forEach((dot, index) => {
+            dot.addEventListener('click', () => updateHeroSlide(index));
+        });
+
+        heroEl.addEventListener('mouseenter', clearHeroAutoplay);
+        heroEl.addEventListener('mouseleave', startHeroAutoplay);
+        heroEl.addEventListener('focusin', clearHeroAutoplay);
+        heroEl.addEventListener('focusout', () => {
+            setTimeout(() => {
+                if (!heroEl.contains(document.activeElement)) startHeroAutoplay();
+            }, 0);
+        });
+
+        startHeroAutoplay();
+    }
+
+    // ------------------------------------------------------------------
     // Profile dropdown
     // ------------------------------------------------------------------
     const profile = document.querySelector('[data-dash-profile]');
@@ -111,6 +179,30 @@ document.addEventListener('DOMContentLoaded', () => {
             console.log('[dashboard] logout requested (placeholder)');
         });
     });
+
+    // ------------------------------------------------------------------
+    // Theme toggle — includes/theme.js manages the data-theme attribute
+    // and persistence; this just wires the topbar button to it and keeps
+    // the sun/moon icon in sync.
+    // ------------------------------------------------------------------
+    const themeToggleBtn = document.querySelector('[data-theme-toggle]');
+    function syncThemeToggleUI(theme) {
+        if (!themeToggleBtn) return;
+        const isLight = theme === 'light';
+        themeToggleBtn.setAttribute('aria-pressed', String(isLight));
+        themeToggleBtn.querySelectorAll('.sun-circle, .sun-line').forEach((el) => {
+            el.style.display = isLight ? 'none' : '';
+        });
+        const moonPath = themeToggleBtn.querySelector('.moon-path');
+        if (moonPath) moonPath.style.display = isLight ? '' : 'none';
+    }
+    if (themeToggleBtn) {
+        themeToggleBtn.addEventListener('click', () => {
+            if (window.ThemeController) window.ThemeController.toggle();
+        });
+        document.addEventListener('themechange', (e) => syncThemeToggleUI(e.detail.theme));
+        syncThemeToggleUI(document.documentElement.getAttribute('data-theme') || 'dark');
+    }
 
     // ------------------------------------------------------------------
     // Filter chips (Courts / My Bookings panels) — visual state only.

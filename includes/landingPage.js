@@ -1,7 +1,64 @@
 // IñigoSync — Landing page interactions
-// Scroll-reveal for sections marked with .reveal
+// Scroll-reveal for sections marked with .reveal, nav scroll-spy, and the
+// Courts & Facilities grid rendered from the shared COURTS_INVENTORY.
 
 document.addEventListener('DOMContentLoaded', () => {
+    // Courts & Facilities grid — render from the shared inventory (courts-data.js).
+    // Duckpin and ten-pin bowling are combined into a single "Bowling" card,
+    // matching the design's 8-card layout (Basketball, Badminton, Lawn Tennis,
+    // Pickleball, Bowling, Billiards, Table Tennis, Volleyball).
+    const courtGrid = document.querySelector('[data-court-grid]');
+    if (courtGrid && typeof COURTS_INVENTORY !== 'undefined') {
+        const duckpin = COURTS_INVENTORY.find((c) => c.id === 'bowling-duckpin');
+        const tenpin = COURTS_INVENTORY.find((c) => c.id === 'bowling-tenpin');
+        const bowlingQty = (duckpin ? duckpin.quantity : 0) + (tenpin ? tenpin.quantity : 0);
+        const bowlingNote = duckpin && tenpin
+            ? `${duckpin.quantity} duckpin · ${tenpin.quantity} ten-pin`
+            : 'Duckpin & ten-pin lanes';
+
+        const cards = [];
+        COURTS_INVENTORY.forEach((court) => {
+            if (court.id === 'bowling-tenpin') return; // merged into the Bowling card below
+            if (court.id === 'bowling-duckpin') {
+                cards.push({ name: 'Bowling', quantity: bowlingQty, unit: 'lanes', note: bowlingNote });
+                return;
+            }
+            cards.push({ name: court.name, quantity: court.quantity, unit: court.unit, note: court.description });
+        });
+
+        courtGrid.innerHTML = cards.map((c) => `
+            <article class="court-card">
+                <h3>${c.name}</h3>
+                <p class="court-count"><span class="court-count-value">${c.quantity}</span><span class="court-count-unit">${c.unit}</span></p>
+                <p class="court-note">${c.note}</p>
+            </article>
+        `).join('');
+    }
+
+    // ------------------------------------------------------------------
+    // Theme toggle — includes/theme.js manages the data-theme attribute
+    // and persistence; this just wires the navbar button to it and keeps
+    // the sun/moon icon in sync.
+    // ------------------------------------------------------------------
+    const themeToggleBtn = document.querySelector('[data-theme-toggle]');
+    function syncThemeToggleUI(theme) {
+        if (!themeToggleBtn) return;
+        const isLight = theme === 'light';
+        themeToggleBtn.setAttribute('aria-pressed', String(isLight));
+        themeToggleBtn.querySelectorAll('.sun-circle, .sun-line').forEach((el) => {
+            el.style.display = isLight ? 'none' : '';
+        });
+        const moonPath = themeToggleBtn.querySelector('.moon-path');
+        if (moonPath) moonPath.style.display = isLight ? '' : 'none';
+    }
+    if (themeToggleBtn) {
+        themeToggleBtn.addEventListener('click', () => {
+            if (window.ThemeController) window.ThemeController.toggle();
+        });
+        document.addEventListener('themechange', (e) => syncThemeToggleUI(e.detail.theme));
+        syncThemeToggleUI(document.documentElement.getAttribute('data-theme') || 'dark');
+    }
+
     const revealEls = document.querySelectorAll('.reveal');
 
     const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -25,6 +82,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
     revealEls.forEach((el) => observer.observe(el));
 
+    // The pill navbar's inline links and the off-canvas mobile menu both
+    // render the same links (see Index.html), so there are two <a> elements
+    // per href — match by href, not by node identity, so both stay in sync.
     const navLinks = document.querySelectorAll('nav ul li a[href^="#"]');
     const sectionMap = Array.from(navLinks).map((link) => {
         const href = link.getAttribute('href');
@@ -33,8 +93,9 @@ document.addEventListener('DOMContentLoaded', () => {
     }).filter(Boolean);
 
     function setActiveLink(activeLink) {
+        const activeHref = activeLink.getAttribute('href');
         navLinks.forEach((link) => {
-            link.classList.toggle('active', link === activeLink);
+            link.classList.toggle('active', link.getAttribute('href') === activeHref);
         });
     }
 

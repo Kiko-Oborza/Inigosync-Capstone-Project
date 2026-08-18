@@ -16,6 +16,7 @@ document.addEventListener('DOMContentLoaded', () => {
         overview: { title: 'Booking Overview', subtitle: 'Reservation trends, staff activity, and business performance at a glance.' },
         staff: { title: 'Staff Management', subtitle: 'Add, update, or remove staff accounts and configure payment settings.' },
         courts: { title: 'Court Listings', subtitle: 'Add new courts, update details, or activate/deactivate existing ones.' },
+        media: { title: 'Media Manager', subtitle: "Whatever you upload here is what the website shows — home featured photos and each court's photo." },
         settings: { title: 'Account Settings', subtitle: 'Update your personal details and manage your owner password.' },
     };
 
@@ -101,6 +102,30 @@ document.addEventListener('DOMContentLoaded', () => {
             console.log('[admin] logout requested (placeholder)');
         });
     });
+
+    // ------------------------------------------------------------------
+    // Theme toggle — includes/theme.js manages the data-theme attribute
+    // and persistence; this just wires the topbar button to it and keeps
+    // the sun/moon icon in sync.
+    // ------------------------------------------------------------------
+    const themeToggleBtn = document.querySelector('[data-theme-toggle]');
+    function syncThemeToggleUI(theme) {
+        if (!themeToggleBtn) return;
+        const isLight = theme === 'light';
+        themeToggleBtn.setAttribute('aria-pressed', String(isLight));
+        themeToggleBtn.querySelectorAll('.sun-circle, .sun-line').forEach((el) => {
+            el.style.display = isLight ? 'none' : '';
+        });
+        const moonPath = themeToggleBtn.querySelector('.moon-path');
+        if (moonPath) moonPath.style.display = isLight ? '' : 'none';
+    }
+    if (themeToggleBtn) {
+        themeToggleBtn.addEventListener('click', () => {
+            if (window.ThemeController) window.ThemeController.toggle();
+        });
+        document.addEventListener('themechange', (e) => syncThemeToggleUI(e.detail.theme));
+        syncThemeToggleUI(document.documentElement.getAttribute('data-theme') || 'dark');
+    }
 
     // ------------------------------------------------------------------
     // Live clock (topbar)
@@ -375,5 +400,114 @@ document.addEventListener('DOMContentLoaded', () => {
             // endpoints once the backend is ready.
             console.log('[admin] settings save requested (placeholder)');
         });
+    });
+
+    // ------------------------------------------------------------------
+    // Media Manager — home featured slideshow (replace/remove/add) and
+    // per-sport court photos. Client-side preview only, via
+    // URL.createObjectURL; nothing is uploaded or persisted.
+    // TODO: wire to a real backend upload endpoint (multipart POST) once
+    // the backend (PHP/MySQL) is ready — see includes/courts-data.js for
+    // the matching TODO on the read side of this data.
+    // ------------------------------------------------------------------
+    document.querySelectorAll('[data-admin-slide]').forEach((card) => {
+        const replaceBtn = card.querySelector('[data-admin-slide-replace]');
+        const removeBtn = card.querySelector('[data-admin-slide-remove]');
+        const fileInput = card.querySelector('[data-admin-slide-file]');
+        const img = card.querySelector('[data-admin-slide-img]');
+
+        if (replaceBtn && fileInput) {
+            replaceBtn.addEventListener('click', () => fileInput.click());
+        }
+
+        if (fileInput && img) {
+            fileInput.addEventListener('change', () => {
+                const file = fileInput.files && fileInput.files[0];
+                if (!file) return;
+                img.src = URL.createObjectURL(file);
+                // TODO: POST /api/admin/media/slides/:id once the backend is ready.
+                console.log('[admin] slide photo replaced (preview only, placeholder)', file.name);
+            });
+        }
+
+        if (removeBtn) {
+            removeBtn.addEventListener('click', () => {
+                // TODO: DELETE /api/admin/media/slides/:id once the backend is ready.
+                console.log('[admin] slide removed (placeholder)');
+                card.remove();
+            });
+        }
+    });
+
+    const slideDropzone = document.querySelector('[data-admin-slide-dropzone]');
+    if (slideDropzone) {
+        const addFileInput = slideDropzone.querySelector('[data-admin-slide-add-file]');
+
+        slideDropzone.addEventListener('click', () => {
+            if (addFileInput) addFileInput.click();
+        });
+
+        slideDropzone.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                if (addFileInput) addFileInput.click();
+            }
+        });
+
+        ['dragenter', 'dragover'].forEach((evt) => {
+            slideDropzone.addEventListener(evt, (e) => {
+                e.preventDefault();
+                slideDropzone.classList.add('is-dragover');
+            });
+        });
+
+        ['dragleave', 'drop'].forEach((evt) => {
+            slideDropzone.addEventListener(evt, (e) => {
+                e.preventDefault();
+                slideDropzone.classList.remove('is-dragover');
+            });
+        });
+
+        slideDropzone.addEventListener('drop', (e) => {
+            const file = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+            if (!file) return;
+            // TODO: POST /api/admin/media/slides once the backend is ready —
+            // this demo only logs the dropped file, it doesn't add a new
+            // slide card (that needs a slot-limit + real upload flow).
+            console.log('[admin] new slide dropped (placeholder)', file.name);
+        });
+
+        if (addFileInput) {
+            addFileInput.addEventListener('change', () => {
+                const file = addFileInput.files && addFileInput.files[0];
+                if (!file) return;
+                console.log('[admin] new slide selected (placeholder)', file.name);
+            });
+        }
+    }
+
+    document.querySelectorAll('[data-admin-mediacourt]').forEach((card) => {
+        const replaceBtn = card.querySelector('[data-admin-mediacourt-replace]');
+        const fileInput = card.querySelector('[data-admin-mediacourt-file]');
+        const img = card.querySelector('[data-admin-mediacourt-img]');
+        const caption = card.querySelector('.admin-mediacourt-body p');
+
+        if (replaceBtn && fileInput) {
+            replaceBtn.addEventListener('click', () => fileInput.click());
+        }
+
+        if (fileInput && img) {
+            fileInput.addEventListener('change', () => {
+                const file = fileInput.files && fileInput.files[0];
+                if (!file) return;
+                img.src = URL.createObjectURL(file);
+                if (caption) {
+                    const today = new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+                    caption.textContent = `updated ${today}`;
+                }
+                // TODO: POST /api/admin/media/courts/:sport once the backend is ready.
+                console.log('[admin] court photo replaced (preview only, placeholder)', file.name);
+            });
+        }
     });
 });

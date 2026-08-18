@@ -8,8 +8,8 @@
     --color-ink: #f4efe6;
     --color-ink-dim: #c9c2b4;
     --color-ink-faint: #8a8177;
-    --color-primary: #ff6a2c;
-    --color-primary-dim: #e85a1e;
+    --color-primary: #FF6115;
+    --color-primary-dim: #D4410A;
     --color-court-green: #3e7a5e;
     --color-alert: #d6482f;
     --color-line: rgba(244, 239, 230, 0.12);
@@ -17,6 +17,24 @@
     --font-display: 'Oswald', 'Segoe UI', sans-serif;
     --font-body: 'Inter', 'Segoe UI', sans-serif;
     --font-mono: 'Space Mono', monospace;
+}
+
+/* Light mode (mirrors Style/LandingPage.css :root[data-theme="light"]) */
+:root[data-theme="light"] {
+    --color-bg: #FFFCF4;
+    --color-bg-elevated: #FFFFFF;
+    --color-bg-card: #FFFFFF;
+    --color-line: #EFE3D2;
+
+    --color-ink: #1F1B16;
+    --color-ink-dim: #6B6055;
+    --color-ink-faint: #9A8E80;
+
+    --color-primary: #FF6115;
+    --color-primary-dim: #C4430A;
+
+    --color-court-green: #1E8E4A;
+    --color-alert: #C2281F;
 }
 
 * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -129,7 +147,7 @@ body.staff-body {
     font-family: var(--font-mono);
     font-size: 0.68rem;
     font-weight: 700;
-    background: rgba(255, 106, 44, 0.18);
+    background: rgba(255, 97, 21, 0.18);
     color: var(--color-primary);
     padding: 2px 7px;
     border-radius: 999px;
@@ -316,7 +334,7 @@ body.staff-body {
 
 .staff-stat-icon {
     width: 34px; height: 34px; border-radius: 9px;
-    background: rgba(255, 106, 44, 0.14); color: var(--color-primary);
+    background: rgba(255, 97, 21, 0.14); color: var(--color-primary);
     display: flex; align-items: center; justify-content: center;
 }
 
@@ -398,6 +416,8 @@ body.staff-body {
 
 .staff-table td.staff-cell-sub { font-size: 0.76rem; color: var(--color-ink-faint); display: block; margin-top: 2px; }
 
+.staff-table td.staff-cell-ref { font-family: var(--font-mono); font-size: 0.8rem; }
+
 .staff-table-actions { display: flex; gap: 8px; flex-wrap: wrap; }
 
 .staff-mini-btn {
@@ -420,17 +440,22 @@ body.staff-body {
     text-transform: uppercase; padding: 5px 11px; border-radius: 999px; white-space: nowrap; display: inline-block;
 }
 
-.staff-status.pending { background: rgba(255, 106, 44, 0.16); color: var(--color-primary); }
+.staff-status.pending { background: rgba(255, 97, 21, 0.16); color: var(--color-primary); }
 .staff-status.confirmed { background: rgba(62, 122, 94, 0.2); color: var(--color-court-green); }
 .staff-status.completed { background: rgba(244, 239, 230, 0.12); color: var(--color-ink-dim); }
 .staff-status.cancelled { background: rgba(214, 72, 47, 0.16); color: var(--color-alert); }
 .staff-status.no_show { background: rgba(214, 72, 47, 0.16); color: var(--color-alert); }
 .staff-status.paid { background: rgba(62, 122, 94, 0.2); color: var(--color-court-green); }
-.staff-status.walkin { background: rgba(255, 106, 44, 0.16); color: var(--color-primary); }
+.staff-status.walkin { background: rgba(255, 97, 21, 0.16); color: var(--color-primary); }
+
+/* Booking Overview — upcoming / in play / done (bookings arrive pre-paid via PayMongo) */
+.staff-status.upcoming { background: rgba(62, 122, 94, 0.2); color: var(--color-court-green); }
+.staff-status.inplay { background: rgba(255, 97, 21, 0.16); color: var(--color-primary); }
+.staff-status.done { background: rgba(244, 239, 230, 0.12); color: var(--color-ink-dim); }
 
 .staff-notice {
     display: flex; gap: 10px; padding: 13px 14px; border-radius: 10px;
-    background: rgba(255, 106, 44, 0.08); border: 1px solid rgba(255, 106, 44, 0.25);
+    background: rgba(255, 97, 21, 0.08); border: 1px solid rgba(255, 97, 21, 0.25);
     font-size: 0.8rem; color: var(--color-ink-dim); line-height: 1.5;
 }
 
@@ -516,7 +541,7 @@ body.staff-body {
 }
 
 .staff-recent-icon {
-    width: 38px; height: 38px; border-radius: 10px; background: rgba(255, 106, 44, 0.14); color: var(--color-primary);
+    width: 38px; height: 38px; border-radius: 10px; background: rgba(255, 97, 21, 0.14); color: var(--color-primary);
     display: flex; align-items: center; justify-content: center; flex-shrink: 0;
 }
 
@@ -573,7 +598,7 @@ body.staff-body {
 
 .staff-schedule-cell.is-booked { background: rgba(214, 72, 47, 0.16); color: #f3b6a8; }
 
-.staff-schedule-cell.is-walkin { background: rgba(255, 106, 44, 0.16); color: var(--color-primary); }
+.staff-schedule-cell.is-walkin { background: rgba(255, 97, 21, 0.16); color: var(--color-primary); }
 
 /* ==========================================================================
    Staff Profile panel
@@ -596,6 +621,59 @@ body.staff-body {
 }
 
 .staff-profile-meta-item span:last-child { font-size: 0.92rem; color: var(--color-ink); font-weight: 600; }
+
+/* ==========================================================================
+   Theme toggle (topbar) — mirrors Style/LandingPage.css .theme-toggle
+   ========================================================================== */
+.theme-toggle {
+    background: transparent;
+    border: 1px solid var(--color-line);
+    border-radius: 8px;
+    width: 38px;
+    height: 38px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--color-ink);
+    cursor: pointer;
+    transition: background-color 0.2s, border-color 0.2s;
+}
+
+.theme-toggle:hover { background-color: rgba(255, 97, 21, 0.1); border-color: var(--color-primary); }
+
+:root[data-theme="light"] .theme-toggle:hover { background-color: rgba(255, 97, 21, 0.08); }
+
+.theme-toggle svg { width: 18px; height: 18px; }
+
+/* ==========================================================================
+   Light theme overrides — surfaces that use literal colors (rather than
+   tokens) for contrast against the primary-colored fill need to flip
+   alongside the theme, matching the same on-primary convention used in
+   Style/LandingPage.css (#14110d ink on dark, #FFFCF4 ink on light).
+   ========================================================================== */
+:root[data-theme="light"] .staff-logo-dot,
+:root[data-theme="light"] .staff-nav-link.is-active,
+:root[data-theme="light"] .staff-nav-link.is-active .staff-nav-badge,
+:root[data-theme="light"] .staff-avatar,
+:root[data-theme="light"] .staff-chip.is-active,
+:root[data-theme="light"] .staff-mini-btn.is-primary,
+:root[data-theme="light"] .staff-btn-primary {
+    color: #FFFCF4;
+}
+
+:root[data-theme="light"] .staff-topbar {
+    background: rgba(255, 252, 244, 0.75);
+}
+
+:root[data-theme="light"] .staff-nav-link:hover,
+:root[data-theme="light"] .staff-profile-menu button:hover {
+    background: rgba(31, 27, 22, 0.05);
+}
+
+:root[data-theme="light"] .staff-status.completed,
+:root[data-theme="light"] .staff-status.done {
+    background: rgba(31, 27, 22, 0.07);
+}
 
 /* ==========================================================================
    Responsive
@@ -635,4 +713,8 @@ body.staff-body {
     .staff-profile-meta { grid-template-columns: 1fr; }
     .staff-clock { display: none; }
     .staff-schedule-grid { grid-template-columns: 60px repeat(6, 1fr); font-size: 0.6rem; }
+}
+
+@media (max-width: 480px) {
+    .staff-stat-grid { grid-template-columns: 1fr; }
 }

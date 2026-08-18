@@ -315,72 +315,147 @@ body.dash-body {
     padding: 32px 36px 60px;
 }
 
-.ticker-wrap {
+/* ==========================================================================
+   Overview — featured hero banner (auto-rotating, boxed variant of the
+   landing page's auth-showcase carousel)
+   ========================================================================== */
+.dash-hero {
+    position: relative;
+    height: 340px;
+    border-radius: 20px;
+    overflow: hidden;
+    border: 1px solid var(--color-line);
     background: var(--color-bg-card);
-    border: 1px solid var(--color-line);
-    border-radius: 18px;
-    overflow: hidden;
-    padding: 20px 16px;
-    margin-bottom: 24px;
 }
 
-.ticker-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    margin-bottom: 18px;
-}
-
-.ticker-header span {
-    font-family: var(--font-display);
-    font-size: 1rem;
-    font-weight: 700;
-    color: var(--color-ink);
-}
-
-.ticker-track {
-    display: flex;
-    gap: 16px;
-    overflow-x: auto;
-    padding-bottom: 4px;
-    scroll-snap-type: x mandatory;
-    -webkit-overflow-scrolling: touch;
-}
-
-.ticker-item {
-    min-width: 260px;
-    border-radius: 16px;
-    overflow: hidden;
-    background: var(--color-bg-elevated);
-    border: 1px solid var(--color-line);
-    flex: 0 0 auto;
-    box-shadow: 0 18px 40px rgba(0, 0, 0, 0.04);
-    scroll-snap-align: start;
-}
-
-.ticker-item img {
+.dash-hero-container {
+    position: relative;
     width: 100%;
-    height: 160px;
+    height: 100%;
+}
+
+.dash-hero-slide {
+    position: absolute;
+    inset: 0;
+    opacity: 0;
+    transition: opacity 0.5s ease;
+}
+
+.dash-hero-slide.is-active {
+    opacity: 1;
+}
+
+.dash-hero-image {
+    width: 100%;
+    height: 100%;
     object-fit: cover;
     display: block;
 }
 
-.ticker-caption {
-    padding: 16px;
+.dash-hero-scrim {
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(180deg, rgba(20, 17, 13, 0.05) 0%, rgba(20, 17, 13, 0.85) 100%);
+    display: flex;
+    align-items: flex-end;
+    padding: 26px 190px 26px 28px;
+}
+
+.dash-hero-text {
+    max-width: 620px;
+}
+
+.dash-hero-tag {
+    display: inline-block;
+    font-family: var(--font-mono);
+    font-size: 0.7rem;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: #FFFCF4;
+    background: var(--color-primary);
+    padding: 4px 10px;
+    border-radius: 999px;
+    margin-bottom: 10px;
+}
+
+.dash-hero-title {
+    font-family: var(--font-display);
+    font-weight: 600;
+    font-size: 1.6rem;
+    line-height: 1.2;
+    color: #FFFCF4;
+    margin: 0 0 4px;
+}
+
+.dash-hero-meta {
+    font-family: var(--font-mono);
+    font-size: 0.8rem;
+    color: rgba(255, 252, 244, 0.84);
+    margin: 0;
+}
+
+.dash-hero-controls {
+    position: absolute;
+    right: 28px;
+    bottom: 26px;
     display: flex;
     flex-direction: column;
-    gap: 6px;
+    align-items: flex-end;
+    gap: 12px;
+    z-index: 2;
 }
 
-.ticker-label {
-    font-family: var(--font-display);
-    font-size: 1rem;
+.dash-hero-btn {
+    background: var(--color-primary);
+    color: #14110d;
+    border: none;
+    padding: 12px 24px;
+    border-radius: 999px;
+    font-family: var(--font-body);
     font-weight: 700;
+    font-size: 0.9rem;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background 0.2s ease, transform 0.2s ease;
 }
 
-.ticker-meta {
-    color: var(--color-ink-faint);
-    font-size: 0.88rem;
+.dash-hero-btn:hover {
+    background: var(--color-primary-dim);
+    transform: translateY(-1px);
+}
+
+.dash-hero-dots {
+    display: flex;
+    gap: 7px;
+}
+
+.dash-hero-dot {
+    width: 26px;
+    height: 4px;
+    border-radius: 999px;
+    border: none;
+    padding: 0;
+    background: rgba(255, 252, 244, 0.4);
+    cursor: pointer;
+    transition: background 0.2s ease;
+}
+
+.dash-hero-dot:hover {
+    background: rgba(255, 252, 244, 0.65);
+}
+
+.dash-hero-dot.is-active {
+    background: #FFFCF4;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .dash-hero-slide {
+        transition: none;
+    }
+
+    .dash-hero-btn {
+        transition: none;
+    }
 }
 
 .dash-panel {
@@ -1403,6 +1478,10 @@ body.dash-body {
    Responsive
    ========================================================================== */
 @media (max-width: 1080px) {
+    .dash-hero {
+        height: 300px;
+    }
+
     .dash-stat-grid {
         grid-template-columns: repeat(2, 1fr);
     }
@@ -1471,6 +1550,42 @@ body.dash-body {
 
     .dash-content {
         padding: 22px 18px 50px;
+    }
+
+    .dash-hero {
+        height: 260px;
+        border-radius: 16px;
+    }
+
+    .dash-hero-scrim {
+        padding: 20px 18px 70px;
+    }
+
+    .dash-hero-text {
+        max-width: 100%;
+    }
+
+    .dash-hero-title {
+        font-size: 1.15rem;
+    }
+
+    .dash-hero-meta {
+        font-size: 0.72rem;
+    }
+
+    .dash-hero-controls {
+        left: 18px;
+        right: 18px;
+        bottom: 16px;
+        flex-direction: row;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+    }
+
+    .dash-hero-btn {
+        padding: 9px 16px;
+        font-size: 0.78rem;
     }
 
     .dash-stat-grid {

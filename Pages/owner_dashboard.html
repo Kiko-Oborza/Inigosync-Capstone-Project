@@ -4,12 +4,23 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Owner Dashboard | IñigoSync</title>
+
+<!-- Theme guard: set data-theme before stylesheets load to prevent flash -->
+<script>
+(function() {
+    const saved = localStorage.getItem('inigosync-theme');
+    const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+    const theme = saved || (prefersDark ? 'dark' : 'light') || 'dark';
+    document.documentElement.setAttribute('data-theme', theme);
+})();
+</script>
+
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Inter:wght@400;500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="../Style/owner_dashboard.css">
 
-<!-- Chart.js (CDN) — booking trend graphs are configured in event/chart.js -->
+<!-- Chart.js (CDN) — booking trend graph is configured in event/chart.js -->
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
 </head>
 <body class="admin-body">
@@ -44,6 +55,12 @@
                 <button type="button" class="admin-nav-link" data-admin-nav="courts">
                     <svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.8"/><path d="M12 3v18M3 12h18M6 6c3 3 3 9 0 12M18 6c-3 3-3 9 0 12" stroke="currentColor" stroke-width="1.5"/></svg>
                     Court Listings
+                </button>
+            </li>
+            <li>
+                <button type="button" class="admin-nav-link" data-admin-nav="media">
+                    <svg viewBox="0 0 24 24" fill="none"><rect x="3" y="5" width="18" height="14" rx="2" stroke="currentColor" stroke-width="1.8"/><path d="M3 16l5-5 4 4 3-3 6 6" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><circle cx="15.5" cy="9.5" r="1.5" fill="currentColor"/></svg>
+                    Media Manager
                 </button>
             </li>
 
@@ -83,6 +100,21 @@
 
             <div class="admin-topbar-actions">
                 <div class="admin-clock"><span class="dot"></span><span data-admin-clock>Thu, Jul 16 · 9:00 AM</span></div>
+
+                <button type="button" class="theme-toggle" data-theme-toggle aria-label="Toggle theme" aria-pressed="false" style="margin-right: 8px;">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="12" cy="12" r="5" class="sun-circle"/>
+                        <line x1="12" y1="1" x2="12" y2="3" class="sun-line"/>
+                        <line x1="12" y1="21" x2="12" y2="23" class="sun-line"/>
+                        <line x1="4.22" y1="4.22" x2="5.64" y2="5.64" class="sun-line"/>
+                        <line x1="18.36" y1="18.36" x2="19.78" y2="19.78" class="sun-line"/>
+                        <line x1="1" y1="12" x2="3" y2="12" class="sun-line"/>
+                        <line x1="21" y1="12" x2="23" y2="12" class="sun-line"/>
+                        <line x1="4.22" y1="19.78" x2="5.64" y2="18.36" class="sun-line"/>
+                        <line x1="18.36" y1="5.64" x2="19.78" y2="4.22" class="sun-line"/>
+                        <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" class="moon-path" style="display:none;"/>
+                    </svg>
+                </button>
 
                 <button type="button" class="admin-icon-btn" aria-label="Notifications">
                     <svg viewBox="0 0 24 24" fill="none"><path d="M18 8.5c0-3.5-2.7-6-6-6s-6 2.5-6 6c0 6-2.5 7.5-2.5 7.5h17S18 14.5 18 8.5z" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><path d="M9.7 19a2.3 2.3 0 0 0 4.6 0" stroke="currentColor" stroke-width="1.7"/></svg>
@@ -131,10 +163,17 @@
                     </div>
                     <div class="admin-stat-card">
                         <div class="admin-stat-icon">
-                            <svg viewBox="0 0 24 24" fill="none"><path d="M12 2v20M17 6.5c0-2-2.2-3.5-5-3.5s-5 1.5-5 3.5 2.2 3 5 3.5 5 1.5 5 3.5-2.2 3.5-5 3.5-5-1.5-5-3.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+                            <svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.8"/><path d="M12 7v5l3.5 2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
                         </div>
-                        <span class="admin-stat-value">₱58,140</span>
-                        <span class="admin-stat-label">Revenue this month</span>
+                        <span class="admin-stat-value">14</span>
+                        <span class="admin-stat-label">Bookings today</span>
+                    </div>
+                    <div class="admin-stat-card">
+                        <div class="admin-stat-icon">
+                            <svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.8"/><path d="M12 3v18M3 12h18" stroke="currentColor" stroke-width="1.5"/></svg>
+                        </div>
+                        <span class="admin-stat-value">8</span>
+                        <span class="admin-stat-label">Sports listed</span>
                     </div>
                     <div class="admin-stat-card">
                         <div class="admin-stat-icon">
@@ -143,78 +182,102 @@
                         <span class="admin-stat-value">4</span>
                         <span class="admin-stat-label">Active staff accounts</span>
                     </div>
-                    <div class="admin-stat-card">
-                        <div class="admin-stat-icon">
-                            <svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.8"/><path d="M12 3v18M3 12h18" stroke="currentColor" stroke-width="1.5"/></svg>
+                </div>
+
+                <div class="admin-card">
+                    <div class="admin-card-head admin-chart-head">
+                        <div>
+                            <h3>Booking Trends</h3>
+                            <p class="admin-card-sub" data-admin-chart-unit>bookings per day · this week</p>
                         </div>
-                        <span class="admin-stat-value">5</span>
-                        <span class="admin-stat-label">Courts listed</span>
+                        <div class="admin-chart-controls">
+                            <span class="admin-chart-total">total <span data-admin-chart-total>143</span></span>
+                            <div class="admin-toggle-pill">
+                                <button type="button" class="admin-pill-btn is-active" data-admin-chart-range="week">Weekly</button>
+                                <button type="button" class="admin-pill-btn" data-admin-chart-range="month">Monthly</button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="admin-chart-wrap">
+                        <canvas id="adminBookingChart"></canvas>
                     </div>
                 </div>
 
                 <div class="admin-grid-2">
                     <div class="admin-card">
                         <div class="admin-card-head">
-                            <div>
-                                <h3>Weekly Booking Trends</h3>
-                                <p class="admin-card-sub">Bookings per day, current week</p>
-                            </div>
+                            <h3>Busiest courts this week</h3>
                         </div>
-                        <div class="admin-chart-wrap">
-                            <canvas id="adminWeeklyChart"></canvas>
+                        <div class="admin-progress-list">
+                            <div class="admin-progress-item">
+                                <div class="admin-progress-row">
+                                    <span>Badminton (9 courts)</span>
+                                    <span class="admin-progress-count">48 bookings</span>
+                                </div>
+                                <div class="admin-progress-track"><div class="admin-progress-fill" style="width: 100%;"></div></div>
+                            </div>
+                            <div class="admin-progress-item">
+                                <div class="admin-progress-row">
+                                    <span>Bowling (20 lanes)</span>
+                                    <span class="admin-progress-count">35 bookings</span>
+                                </div>
+                                <div class="admin-progress-track"><div class="admin-progress-fill" style="width: 73%;"></div></div>
+                            </div>
+                            <div class="admin-progress-item">
+                                <div class="admin-progress-row">
+                                    <span>Basketball (2 courts)</span>
+                                    <span class="admin-progress-count">22 bookings</span>
+                                </div>
+                                <div class="admin-progress-track"><div class="admin-progress-fill" style="width: 46%;"></div></div>
+                            </div>
+                            <div class="admin-progress-item">
+                                <div class="admin-progress-row">
+                                    <span>Lawn Tennis (3 courts)</span>
+                                    <span class="admin-progress-count">18 bookings</span>
+                                </div>
+                                <div class="admin-progress-track"><div class="admin-progress-fill" style="width: 38%;"></div></div>
+                            </div>
                         </div>
                     </div>
 
                     <div class="admin-card">
                         <div class="admin-card-head">
-                            <div>
-                                <h3>Monthly Booking Trends</h3>
-                                <p class="admin-card-sub">Total bookings per month</p>
-                            </div>
+                            <h3>Staff on shift</h3>
+                            <button type="button" class="admin-link-btn" data-admin-nav="staff">Manage staff</button>
                         </div>
-                        <div class="admin-chart-wrap">
-                            <canvas id="adminMonthlyChart"></canvas>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="admin-card">
-                    <div class="admin-card-head">
-                        <h3>Active Staff Accounts</h3>
-                        <button type="button" class="admin-link-btn" data-admin-nav="staff">Manage staff</button>
-                    </div>
-                    <div class="admin-staff-list">
-                        <div class="admin-staff-row">
-                            <div class="admin-staff-avatar-sm">RD</div>
-                            <div class="admin-staff-row-info">
-                                <h4>Rosalinda Driz</h4>
-                                <p>Front Desk / Secretary</p>
+                        <div class="admin-staff-list">
+                            <div class="admin-staff-row">
+                                <div class="admin-staff-avatar-sm">RD</div>
+                                <div class="admin-staff-row-info">
+                                    <h4>Rosalinda Driz</h4>
+                                    <p>Front Desk / Secretary</p>
+                                </div>
+                                <span class="admin-online-dot is-online"><span></span>Online</span>
                             </div>
-                            <span class="admin-online-dot is-online"><span></span>Online</span>
-                        </div>
-                        <div class="admin-staff-row">
-                            <div class="admin-staff-avatar-sm">MC</div>
-                            <div class="admin-staff-row-info">
-                                <h4>Marco Cruz</h4>
-                                <p>Court Attendant</p>
+                            <div class="admin-staff-row">
+                                <div class="admin-staff-avatar-sm">MC</div>
+                                <div class="admin-staff-row-info">
+                                    <h4>Marco Cruz</h4>
+                                    <p>Court Attendant</p>
+                                </div>
+                                <span class="admin-online-dot is-online"><span></span>Online</span>
                             </div>
-                            <span class="admin-online-dot is-online"><span></span>Online</span>
-                        </div>
-                        <div class="admin-staff-row">
-                            <div class="admin-staff-avatar-sm">JT</div>
-                            <div class="admin-staff-row-info">
-                                <h4>Jasmine Tolentino</h4>
-                                <p>Court Attendant</p>
+                            <div class="admin-staff-row">
+                                <div class="admin-staff-avatar-sm">JT</div>
+                                <div class="admin-staff-row-info">
+                                    <h4>Jasmine Tolentino</h4>
+                                    <p>Court Attendant</p>
+                                </div>
+                                <span class="admin-online-dot"><span></span>Offline</span>
                             </div>
-                            <span class="admin-online-dot"><span></span>Offline</span>
-                        </div>
-                        <div class="admin-staff-row">
-                            <div class="admin-staff-avatar-sm">EP</div>
-                            <div class="admin-staff-row-info">
-                                <h4>Edgar Panganiban</h4>
-                                <p>Weekend Relief Staff</p>
+                            <div class="admin-staff-row">
+                                <div class="admin-staff-avatar-sm">EP</div>
+                                <div class="admin-staff-row-info">
+                                    <h4>Edgar Panganiban</h4>
+                                    <p>Weekend Relief Staff</p>
+                                </div>
+                                <span class="admin-online-dot"><span></span>Offline</span>
                             </div>
-                            <span class="admin-online-dot"><span></span>Offline</span>
                         </div>
                     </div>
                 </div>
@@ -524,6 +587,188 @@
             </section>
 
             <!-- ============================================================
+                 MEDIA MANAGER PANEL
+                 ============================================================ -->
+            <section class="admin-panel" data-admin-panel="media">
+                <div class="admin-panel-head">
+                    <div>
+                        <h2>Media Manager</h2>
+                        <p>Whatever you upload here is what the website shows — home featured photos and each court's photo.</p>
+                    </div>
+                </div>
+
+                <div class="admin-card">
+                    <div class="admin-card-head">
+                        <div>
+                            <h3>Home featured slideshow</h3>
+                            <p class="admin-card-sub">4 of 6 slots used. Recommended 1600×900, JPG or PNG, under 3 MB.</p>
+                        </div>
+                        <span class="admin-media-hint">rotates every 5s · drag to reorder</span>
+                    </div>
+
+                    <div class="admin-slide-grid" data-admin-slide-grid>
+                        <div class="admin-slide-card" data-admin-slide>
+                            <div class="admin-slide-thumb">
+                                <img src="../database/web/basketball.jpg" alt="" data-admin-slide-img>
+                                <span class="admin-slide-badge">Slide 1</span>
+                            </div>
+                            <div class="admin-slide-body">
+                                <input type="text" class="admin-input admin-slide-title" value="Bocohan Summer Basketball League">
+                                <input type="text" class="admin-input admin-slide-caption" value="Finals night · Aug 24 · Court 1">
+                                <div class="admin-slide-actions">
+                                    <button type="button" class="admin-btn-chip-primary" data-admin-slide-replace>Replace photo</button>
+                                    <button type="button" class="admin-btn-chip-danger" data-admin-slide-remove>Remove</button>
+                                </div>
+                                <input type="file" accept="image/*" class="admin-visually-hidden" data-admin-slide-file>
+                            </div>
+                        </div>
+
+                        <div class="admin-slide-card" data-admin-slide>
+                            <div class="admin-slide-thumb">
+                                <img src="../database/web/announcement.jpg" alt="" data-admin-slide-img>
+                                <span class="admin-slide-badge">Slide 2</span>
+                            </div>
+                            <div class="admin-slide-body">
+                                <input type="text" class="admin-input admin-slide-title" value="Weekend Open Play">
+                                <input type="text" class="admin-input admin-slide-caption" value="Sat &amp; Sun · 8:00 AM – 10:00 PM · all courts">
+                                <div class="admin-slide-actions">
+                                    <button type="button" class="admin-btn-chip-primary" data-admin-slide-replace>Replace photo</button>
+                                    <button type="button" class="admin-btn-chip-danger" data-admin-slide-remove>Remove</button>
+                                </div>
+                                <input type="file" accept="image/*" class="admin-visually-hidden" data-admin-slide-file>
+                            </div>
+                        </div>
+
+                        <div class="admin-slide-card" data-admin-slide>
+                            <div class="admin-slide-thumb">
+                                <img src="../database/web/badminton.jpg" alt="" data-admin-slide-img>
+                                <span class="admin-slide-badge">Slide 3</span>
+                            </div>
+                            <div class="admin-slide-body">
+                                <input type="text" class="admin-input admin-slide-title" value="Four New Badminton Courts Open">
+                                <input type="text" class="admin-input admin-slide-caption" value="9 courts total · book any slot online">
+                                <div class="admin-slide-actions">
+                                    <button type="button" class="admin-btn-chip-primary" data-admin-slide-replace>Replace photo</button>
+                                    <button type="button" class="admin-btn-chip-danger" data-admin-slide-remove>Remove</button>
+                                </div>
+                                <input type="file" accept="image/*" class="admin-visually-hidden" data-admin-slide-file>
+                            </div>
+                        </div>
+
+                        <div class="admin-slide-card" data-admin-slide>
+                            <div class="admin-slide-thumb">
+                                <img src="../database/web/bowling.jpg" alt="" data-admin-slide-img>
+                                <span class="admin-slide-badge">Slide 4</span>
+                            </div>
+                            <div class="admin-slide-body">
+                                <input type="text" class="admin-input admin-slide-title" value="Duckpin &amp; Ten-Pin Nights">
+                                <input type="text" class="admin-input admin-slide-caption" value="8 duckpin + 12 ten-pin lanes · Mon–Thu">
+                                <div class="admin-slide-actions">
+                                    <button type="button" class="admin-btn-chip-primary" data-admin-slide-replace>Replace photo</button>
+                                    <button type="button" class="admin-btn-chip-danger" data-admin-slide-remove>Remove</button>
+                                </div>
+                                <input type="file" accept="image/*" class="admin-visually-hidden" data-admin-slide-file>
+                            </div>
+                        </div>
+
+                        <div class="admin-slide-dropzone" data-admin-slide-dropzone tabindex="0" role="button" aria-label="Add a new slide">
+                            <div class="admin-dropzone-icon">
+                                <svg viewBox="0 0 24 24" fill="none"><path d="M12 16V5m0 0L8 9m4-4l4 4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><path d="M4 17v2a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+                            </div>
+                            <strong>Drop a photo or video</strong>
+                            <span>or <span class="admin-dropzone-browse">browse files</span></span>
+                            <span class="admin-dropzone-meta">JPG · PNG · MP4 up to 20 MB</span>
+                            <input type="file" accept="image/*,video/mp4" class="admin-visually-hidden" data-admin-slide-add-file>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="admin-card">
+                    <div class="admin-card-head">
+                        <div>
+                            <h3>Court photos</h3>
+                            <p class="admin-card-sub">One photo per sport — shown on court listings and the booking flow.</p>
+                        </div>
+                    </div>
+
+                    <div class="admin-mediacourt-grid">
+                        <div class="admin-mediacourt-card" data-admin-mediacourt>
+                            <div class="admin-mediacourt-thumb"><img src="../database/web/basketball.jpg" alt="" data-admin-mediacourt-img></div>
+                            <div class="admin-mediacourt-body">
+                                <h4>Basketball</h4>
+                                <p>updated Aug 2</p>
+                                <button type="button" data-admin-mediacourt-replace>Replace photo</button>
+                                <input type="file" accept="image/*" class="admin-visually-hidden" data-admin-mediacourt-file>
+                            </div>
+                        </div>
+                        <div class="admin-mediacourt-card" data-admin-mediacourt>
+                            <div class="admin-mediacourt-thumb"><img src="../database/web/badminton.jpg" alt="" data-admin-mediacourt-img></div>
+                            <div class="admin-mediacourt-body">
+                                <h4>Badminton</h4>
+                                <p>updated Jul 28</p>
+                                <button type="button" data-admin-mediacourt-replace>Replace photo</button>
+                                <input type="file" accept="image/*" class="admin-visually-hidden" data-admin-mediacourt-file>
+                            </div>
+                        </div>
+                        <div class="admin-mediacourt-card" data-admin-mediacourt>
+                            <div class="admin-mediacourt-thumb"><img src="../database/web/bowling.jpg" alt="" data-admin-mediacourt-img></div>
+                            <div class="admin-mediacourt-body">
+                                <h4>Bowling</h4>
+                                <p>updated Jul 12</p>
+                                <button type="button" data-admin-mediacourt-replace>Replace photo</button>
+                                <input type="file" accept="image/*" class="admin-visually-hidden" data-admin-mediacourt-file>
+                            </div>
+                        </div>
+                        <div class="admin-mediacourt-card" data-admin-mediacourt>
+                            <div class="admin-mediacourt-thumb"><img src="../database/web/pickleball.jpg" alt="" data-admin-mediacourt-img></div>
+                            <div class="admin-mediacourt-body">
+                                <h4>Pickleball</h4>
+                                <p>updated Aug 9</p>
+                                <button type="button" data-admin-mediacourt-replace>Replace photo</button>
+                                <input type="file" accept="image/*" class="admin-visually-hidden" data-admin-mediacourt-file>
+                            </div>
+                        </div>
+                        <div class="admin-mediacourt-card" data-admin-mediacourt>
+                            <div class="admin-mediacourt-thumb"><img src="../database/web/volleyball.jpg" alt="" data-admin-mediacourt-img></div>
+                            <div class="admin-mediacourt-body">
+                                <h4>Volleyball</h4>
+                                <p>updated Jun 30</p>
+                                <button type="button" data-admin-mediacourt-replace>Replace photo</button>
+                                <input type="file" accept="image/*" class="admin-visually-hidden" data-admin-mediacourt-file>
+                            </div>
+                        </div>
+                        <div class="admin-mediacourt-card" data-admin-mediacourt>
+                            <div class="admin-mediacourt-thumb"><img src="../database/web/announcement.jpg" alt="" data-admin-mediacourt-img></div>
+                            <div class="admin-mediacourt-body">
+                                <h4>Lawn Tennis</h4>
+                                <p>no photo yet — never updated</p>
+                                <button type="button" data-admin-mediacourt-replace>Replace photo</button>
+                                <input type="file" accept="image/*" class="admin-visually-hidden" data-admin-mediacourt-file>
+                            </div>
+                        </div>
+                        <div class="admin-mediacourt-card" data-admin-mediacourt>
+                            <div class="admin-mediacourt-thumb"><img src="../database/web/announcement%201.jpg" alt="" data-admin-mediacourt-img></div>
+                            <div class="admin-mediacourt-body">
+                                <h4>Billiards</h4>
+                                <p>no photo yet — never updated</p>
+                                <button type="button" data-admin-mediacourt-replace>Replace photo</button>
+                                <input type="file" accept="image/*" class="admin-visually-hidden" data-admin-mediacourt-file>
+                            </div>
+                        </div>
+                        <div class="admin-mediacourt-card" data-admin-mediacourt>
+                            <div class="admin-mediacourt-thumb"><img src="../database/web/announcement.jpg" alt="" data-admin-mediacourt-img></div>
+                            <div class="admin-mediacourt-body">
+                                <h4>Table Tennis</h4>
+                                <p>no photo yet — never updated</p>
+                                <button type="button" data-admin-mediacourt-replace>Replace photo</button>
+                                <input type="file" accept="image/*" class="admin-visually-hidden" data-admin-mediacourt-file>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- ============================================================
                  ACCOUNT SETTINGS PANEL
                  ============================================================ -->
             <section class="admin-panel" data-admin-panel="settings">
@@ -608,10 +853,13 @@
     </div>
 </div>
 
+<!-- Script for theme management -->
+<script src="../includes/theme.js"></script>
+
 <!-- Script for owner dashboard functionality -->
 <script src="../includes/owner_dashboard.js"></script>
 
-<!-- Chart configuration for Weekly / Monthly booking trend graphs -->
+<!-- Chart configuration for the Booking Trends graph (Weekly / Monthly toggle) -->
 <script src="../event/chart.js"></script>
 </body>
 </html>
