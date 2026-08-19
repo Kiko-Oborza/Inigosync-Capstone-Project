@@ -54,11 +54,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function closeMobileSidebar() {
         document.body.classList.remove('admin-sidebar-open');
+        if (mobileToggle) mobileToggle.setAttribute('aria-expanded', 'false');
     }
 
     if (mobileToggle) {
         mobileToggle.addEventListener('click', () => {
-            document.body.classList.toggle('admin-sidebar-open');
+            const isOpen = document.body.classList.toggle('admin-sidebar-open');
+            mobileToggle.setAttribute('aria-expanded', String(isOpen));
         });
     }
     if (scrim) scrim.addEventListener('click', closeMobileSidebar);
