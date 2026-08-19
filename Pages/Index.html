@@ -73,20 +73,27 @@
                             </svg>
                         </button>
                         <button type="button" class="book-now" data-auth-open="login">Log In / Sign Up</button>
-                        <label for="menu-toggle" class="menu-toggle">
-                            <img src="../assets/NavBar/more.png" alt="Open menu">
+                        <label for="menu-toggle" class="menu-toggle" aria-label="Toggle menu">
+                            <span class="menu-toggle-bar"></span>
+                            <span class="menu-toggle-bar"></span>
+                            <span class="menu-toggle-bar"></span>
                         </label>
                     </div>
                 </div>
 
                 <!-- Off-canvas mobile menu (mirrors the links above; shown only below the nav-collapse breakpoint) -->
                 <nav class="nav-menu">
+                    <div class="nav-menu-brand">
+                        <img src="../assets/Logo/WebLogo.png" alt="IñigoSync logo" class="nav-menu-logo">
+                        <div class="logo-text">IñigoSync</div>
+                    </div>
                     <ul>
                         <li><a href="#" class="active">Home</a></li>
                         <li><a href="#courts">Courts</a></li>
                         <li><a href="#whats-on">Events</a></li>
                         <li><a href="#about">About</a></li>
                     </ul>
+                    <button type="button" class="book-now nav-menu-cta" data-auth-open="login">Log In / Sign Up</button>
                 </nav>
             </header>
 
