@@ -65,6 +65,7 @@
 
 html {
     scroll-behavior: smooth;
+    scroll-padding-top: 110px;
 }
 
 body {
@@ -190,11 +191,10 @@ header {
     }
 }
 
-/* Floating pill navbar — overlaid on top of the hero photo. Positioned
-   absolutely within .hero (not fixed to the viewport): it scrolls away
-   with the rest of the hero, per the design. */
+/* Floating pill navbar — overlaid on top of the hero photo and fixed to the
+   viewport, so it stays visible while the page scrolls. */
 .site-nav {
-    position: absolute;
+    position: fixed;
     top: 0;
     left: 0;
     right: 0;
@@ -236,6 +236,9 @@ header {
 
 .site-nav .logo-text {
     font-size: 1.25rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 .site-nav-links ul {
@@ -286,17 +289,47 @@ header {
 .menu-toggle {
     display: none;
     cursor: pointer;
+    position: relative;
+    width: 26px;
+    height: 20px;
+    flex-shrink: 0;
 }
 
-.menu-toggle img {
-    width: 28px;
-    height: 28px;
-    object-fit: contain;
-    filter: invert(100%);
+.menu-toggle-bar {
+    position: absolute;
+    left: 0;
+    width: 100%;
+    height: 2px;
+    border-radius: 2px;
+    background: var(--color-ink);
+    transition: transform 0.25s ease, opacity 0.2s ease, top 0.25s ease;
 }
 
-:root[data-theme="light"] .menu-toggle img {
-    filter: invert(0%);
+.menu-toggle-bar:nth-child(1) { top: 0; }
+.menu-toggle-bar:nth-child(2) { top: 9px; }
+.menu-toggle-bar:nth-child(3) { top: 18px; }
+
+/* Morph into an X once the off-canvas menu is open. .menu-toggle lives
+   inside .site-nav-pill, a sibling of the checkbox — chain the descendant
+   selector off the sibling combinator to reach it. */
+.menu-toggle-checkbox:checked ~ .site-nav-pill .menu-toggle-bar:nth-child(1) {
+    top: 9px;
+    transform: rotate(45deg);
+}
+
+.menu-toggle-checkbox:checked ~ .site-nav-pill .menu-toggle-bar:nth-child(2) {
+    opacity: 0;
+}
+
+.menu-toggle-checkbox:checked ~ .site-nav-pill .menu-toggle-bar:nth-child(3) {
+    top: 9px;
+    transform: rotate(-45deg);
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .menu-toggle-bar {
+        transition: none;
+    }
 }
 
 .nav-menu {
@@ -965,6 +998,10 @@ nav ul li a.active {
 }
 
 @media (max-width: 768px) {
+    html {
+        scroll-padding-top: 90px;
+    }
+
     .site-nav .logo-brand {
         gap: 0.55rem;
     }
@@ -987,10 +1024,22 @@ nav ul li a.active {
 
     .site-nav-pill {
         padding: 8px 10px 8px 14px;
+        gap: 14px;
     }
 
-    /* Collapse the pill to: logo + theme toggle + hamburger */
+    /* Collapse the pill to: logo + theme toggle + hamburger. The "Log In /
+       Sign Up" button moves into the off-canvas menu below — keeping it in
+       the pill too left too little room for the logo and made everything
+       crowd/overlap on narrow phones. */
     .site-nav-links {
+        display: none;
+    }
+
+    .site-nav-actions {
+        gap: 8px;
+    }
+
+    .site-nav-actions .book-now {
         display: none;
     }
 
@@ -1011,10 +1060,10 @@ nav ul li a.active {
         height: 100vh;
         width: 260px;
         background: rgba(20, 17, 13, 0.98);
-        overflow: hidden;
+        overflow-y: auto;
         transform: translateX(-100%);
         transition: transform 0.3s ease;
-        padding-top: 80px;
+        padding: 24px 0;
         z-index: 6;
     }
 
@@ -1027,11 +1076,32 @@ nav ul li a.active {
         transform: translateX(0);
     }
 
+    /* Brand row at the top of the off-canvas menu, matching the pill navbar */
+    .nav-menu-brand {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 0 20px 20px;
+        margin-bottom: 8px;
+        border-bottom: 1px solid var(--color-line);
+    }
+
+    .nav-menu-logo {
+        width: 32px;
+        height: 32px;
+        object-fit: contain;
+        flex-shrink: 0;
+    }
+
+    .nav-menu-brand .logo-text {
+        font-size: 1.1rem;
+    }
+
     .nav-menu ul {
         display: flex;
         flex-direction: column;
         gap: 0;
-        padding: 14px 20px 18px;
+        padding: 0 20px 18px;
     }
 
     .nav-menu ul li {
@@ -1047,6 +1117,13 @@ nav ul li a.active {
 
     .nav-menu ul li + li {
         border-top: 1px solid var(--color-line);
+    }
+
+    .nav-menu-cta {
+        display: block;
+        width: calc(100% - 40px);
+        margin: 4px 20px 0;
+        text-align: center;
     }
 
     /* Hero reflow — stack the caption/CTAs above the progress dots, and

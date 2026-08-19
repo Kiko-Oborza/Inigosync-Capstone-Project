@@ -143,4 +143,16 @@ document.addEventListener('DOMContentLoaded', () => {
     window.addEventListener('scroll', updateActiveLink);
     window.addEventListener('hashchange', updateActiveLink);
     updateActiveLink();
+
+    // Close the off-canvas mobile menu whenever something inside it is
+    // clicked (a nav link or the Log In / Sign Up button).
+    const menuToggleCheckbox = document.getElementById('menu-toggle');
+    const navMenu = document.querySelector('.nav-menu');
+    if (menuToggleCheckbox && navMenu) {
+        navMenu.querySelectorAll('a, button').forEach((el) => {
+            el.addEventListener('click', () => {
+                menuToggleCheckbox.checked = false;
+            });
+        });
+    }
 });
