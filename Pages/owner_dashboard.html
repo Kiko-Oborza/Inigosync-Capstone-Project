@@ -23,7 +23,7 @@
 <!-- Chart.js (CDN) — booking trend graph is configured in event/chart.js -->
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
 </head>
-<body class="admin-body">
+<body class="admin-body" data-required-role="admin">
 
 <div class="admin-shell">
 
@@ -299,6 +299,7 @@
 
                 <div class="admin-card admin-add-panel" data-admin-staff-form>
                     <div class="admin-card-head"><h3>New Staff Account</h3></div>
+                    <p class="admin-form-hint">An email invite is sent to this address with a link for them to set their own password — nobody but the staff member ever knows it.</p>
                     <div class="admin-form-row">
                         <div class="admin-form-group">
                             <span class="admin-form-label">Full name</span>
@@ -311,26 +312,17 @@
                     </div>
                     <div class="admin-form-row">
                         <div class="admin-form-group">
-                            <span class="admin-form-label">Role</span>
+                            <span class="admin-form-label">Position</span>
                             <select class="admin-select" data-admin-staff-role>
                                 <option>Front Desk / Secretary</option>
                                 <option>Court Attendant</option>
                                 <option>Weekend Relief Staff</option>
                             </select>
                         </div>
-                        <div class="admin-form-group">
-                            <span class="admin-form-label">Temporary password</span>
-                            <div class="admin-input-wrap">
-                                <input type="password" class="admin-input" placeholder="Create a temporary password" data-admin-staff-password>
-                                <button type="button" class="admin-toggle-visibility" data-admin-toggle-password aria-label="Show password">
-                                    <svg viewBox="0 0 24 24" width="18" height="18"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7z" fill="none" stroke="currentColor" stroke-width="1.6"/><circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="1.6"/></svg>
-                                </button>
-                            </div>
-                        </div>
                     </div>
                     <div class="admin-form-actions">
                         <button type="button" class="admin-btn-ghost" data-admin-toggle-staff-form>Cancel</button>
-                        <button type="button" class="admin-btn-save" data-admin-staff-submit>Create Staff Account</button>
+                        <button type="button" class="admin-btn-save" data-admin-staff-submit>Send Invite</button>
                     </div>
                 </div>
 
@@ -856,6 +848,9 @@
 </div>
 
 <!-- Script for theme management -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<script src="../Config/supabaseClient.js"></script>
+<script src="../includes/authGuard.js"></script>
 <script src="../includes/theme.js"></script>
 
 <!-- Script for owner dashboard functionality -->

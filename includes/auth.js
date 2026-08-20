@@ -18,6 +18,50 @@ document.addEventListener('DOMContentLoaded', () => {
     const tabs = overlay.querySelectorAll('[data-auth-tab]');
     const panels = overlay.querySelectorAll('[data-auth-panel]');
     let lastFocusedEl = null;
+    let pendingSignupEmail = '';
+
+    const DASHBOARD_BY_ROLE = {
+        customer: 'user_dashboard.html',
+        staff: 'staff_dashboard.html',
+        admin: 'owner_dashboard.html'
+    };
+
+    // After a successful signInWithPassword, confirm the account's role is one
+    // of `allowedRoles` for the panel that was used (customer login vs Admin
+    // login), then redirect to the matching dashboard. Signs back out and
+    // throws if the role doesn't belong on this panel, so nobody can reach a
+    // dashboard by guessing/mismatching credentials on the wrong form.
+    async function completeLogin(allowedRoles) {
+        const { data: { session } } = await window.sb.auth.getSession();
+        if (!session) throw new Error('Sign-in failed. Please try again.');
+
+        const { data: profile, error: profileError } = await window.sb
+            .from('profiles')
+            .select('role, status')
+            .eq('id', session.user.id)
+            .single();
+
+        if (profileError || !profile) {
+            await window.sb.auth.signOut();
+            throw new Error('Could not load your account. Please try again.');
+        }
+
+        if (profile.status === 'disabled') {
+            await window.sb.auth.signOut();
+            throw new Error('This account has been disabled. Contact the front desk.');
+        }
+
+        if (!allowedRoles.includes(profile.role)) {
+            await window.sb.auth.signOut();
+            throw new Error(allowedRoles.includes('customer')
+                ? 'This is a staff/owner account — please use "Log in as Admin" instead.'
+                : 'This account is not authorized for staff/owner access.');
+        }
+
+        closeModal();
+        const redirectUrl = new URL(DASHBOARD_BY_ROLE[profile.role], window.location.href);
+        window.location.assign(redirectUrl.toString());
+    }
 
     function setActivePanel(name) {
         tabs.forEach((tab) => {
@@ -121,11 +165,12 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     });
 
-    // Basic client-side validation feedback + placeholder submit handling.
-    // Wire this up to the real auth endpoints once the backend is ready.
-    // (This also covers the Admin panel — its mode resolves to "admin".)
+    // Wired to real Supabase Auth. Public signup always creates a customer
+    // account (role is never client-settable — see the DB trigger); the
+    // Admin panel logs into the same auth.users but only accepts an
+    // account whose profiles.role is staff/admin.
     panels.forEach((form) => {
-        form.addEventListener('submit', (e) => {
+        form.addEventListener('submit', async (e) => {
             e.preventDefault();
 
             if (!form.checkValidity()) {
@@ -133,34 +178,104 @@ document.addEventListener('DOMContentLoaded', () => {
                 return;
             }
 
+            if (!window.sb) {
+                setAuthNotice('Unable to reach the server right now. Please try again shortly.', true);
+                return;
+            }
+
             const mode = form.dataset.authPanel;
             const data = Object.fromEntries(new FormData(form));
-            console.log(`[auth] ${mode} submitted`, data);
+            const submitBtn = form.querySelector('.auth-submit');
 
-            // TODO: replace with real API calls once the backend is ready.
-            // Admin submissions should hit a separate admin-auth endpoint/role
-            // check on the backend, not the customer registration/login one.
-
-            if (mode === 'signup') {
-                // Don't log the customer in yet — send them to email
-                // verification first. TODO: trigger the real "send OTP"
-                // API call here once the backend endpoint exists.
-                const emailLabel = overlay.querySelector('[data-verify-email]');
-                if (emailLabel) emailLabel.textContent = data.email || 'your email';
-                setActivePanel('verify');
-                startOtpFlow();
-                return;
+            function setBusy(isBusy) {
+                if (!submitBtn) return;
+                submitBtn.disabled = isBusy;
+                submitBtn.classList.toggle('is-loading', isBusy);
             }
 
-            if (mode === 'verify') {
-                // Placeholder only — no real code is checked yet.
-                // TODO: send the entered code to a "verify OTP" endpoint,
-                // then closeModal() (or log the user in) on success.
-                return;
-            }
+            setAuthNotice('');
+            setBusy(true);
 
-            // login / admin
-            closeModal();
+            try {
+                if (mode === 'login') {
+                    const { error } = await window.sb.auth.signInWithPassword({
+                        email: data.email,
+                        password: data.password
+                    });
+                    if (error) throw error;
+                    await completeLogin(['customer']);
+                    return;
+                }
+
+                if (mode === 'signup') {
+                    const { data: signUpData, error } = await window.sb.auth.signUp({
+                        email: data.email,
+                        password: data.password,
+                        options: {
+                            data: {
+                                full_name: data.fullname,
+                                contact_num: data.mobile
+                            }
+                        }
+                    });
+                    if (error) throw error;
+
+                    if (signUpData.session) {
+                        // Email confirmation is turned off for this project —
+                        // signUp already returned a live session.
+                        closeModal();
+                        const redirectUrl = new URL('user_dashboard.html', window.location.href);
+                        window.location.assign(redirectUrl.toString());
+                        return;
+                    }
+
+                    pendingSignupEmail = data.email;
+                    const emailLabel = overlay.querySelector('[data-verify-email]');
+                    if (emailLabel) emailLabel.textContent = data.email || 'your email';
+                    setActivePanel('verify');
+                    startOtpFlow();
+                    return;
+                }
+
+                if (mode === 'verify') {
+                    const code = otpBoxes.map((box) => box.value).join('');
+                    if (code.length !== 6 || !pendingSignupEmail) {
+                        if (otpError) otpError.classList.add('is-visible');
+                        return;
+                    }
+
+                    const { error } = await window.sb.auth.verifyOtp({
+                        email: pendingSignupEmail,
+                        token: code,
+                        type: 'signup'
+                    });
+
+                    if (error) {
+                        if (otpError) otpError.classList.add('is-visible');
+                        throw error;
+                    }
+
+                    if (otpError) otpError.classList.remove('is-visible');
+                    closeModal();
+                    const redirectUrl = new URL('user_dashboard.html', window.location.href);
+                    window.location.assign(redirectUrl.toString());
+                    return;
+                }
+
+                if (mode === 'admin') {
+                    const { error } = await window.sb.auth.signInWithPassword({
+                        email: data['admin-email'],
+                        password: data['admin-password']
+                    });
+                    if (error) throw error;
+                    await completeLogin(['staff', 'admin']);
+                    return;
+                }
+            } catch (err) {
+                setAuthNotice(err.message || 'Something went wrong. Please try again.', true);
+            } finally {
+                setBusy(false);
+            }
         });
     });
 
@@ -232,8 +347,18 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     if (otpResendBtn) {
-        otpResendBtn.addEventListener('click', () => {
-            console.log('[auth] resend OTP requested (placeholder)');
+        otpResendBtn.addEventListener('click', async () => {
+            if (!window.sb || !pendingSignupEmail) return;
+            otpResendBtn.disabled = true;
+            const { error } = await window.sb.auth.resend({
+                type: 'signup',
+                email: pendingSignupEmail
+            });
+            if (error) {
+                setAuthNotice(error.message || 'Could not resend the code. Please try again.', true);
+                otpResendBtn.disabled = false;
+                return;
+            }
             startResendCountdown(30);
         });
     }

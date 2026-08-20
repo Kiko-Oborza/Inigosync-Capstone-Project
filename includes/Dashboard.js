@@ -169,16 +169,7 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    // ------------------------------------------------------------------
-    // Logout — placeholder only, no session handling yet.
-    // ------------------------------------------------------------------
-    document.querySelectorAll('[data-dash-logout]').forEach((btn) => {
-        btn.addEventListener('click', () => {
-            // TODO: call the real logout endpoint and redirect to the
-            // landing page once the backend session handling is wired up.
-            console.log('[dashboard] logout requested (placeholder)');
-        });
-    });
+    // Logout is wired in includes/authGuard.js (real Supabase sign-out).
 
     // ------------------------------------------------------------------
     // Theme toggle — includes/theme.js manages the data-theme attribute

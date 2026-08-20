@@ -21,7 +21,7 @@
     <link rel="stylesheet" href="../Style/LandingPage.css">
     <link rel="stylesheet" href="../Style/Dashboard.css">
 </head>
-<body class="dash-body">
+<body class="dash-body" data-required-role="customer">
 
     <div class="dash-shell">
 
@@ -910,6 +910,9 @@
         </div>
     </div>
 
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+    <script src="../Config/supabaseClient.js"></script>
+    <script src="../includes/authGuard.js"></script>
     <script src="../includes/theme.js"></script>
     <script src="../includes/Dashboard.js"></script>
 </body>

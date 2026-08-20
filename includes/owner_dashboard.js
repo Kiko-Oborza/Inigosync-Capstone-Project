@@ -94,16 +94,7 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    // ------------------------------------------------------------------
-    // Logout — placeholder only, no session handling yet.
-    // ------------------------------------------------------------------
-    document.querySelectorAll('[data-admin-logout]').forEach((btn) => {
-        btn.addEventListener('click', () => {
-            // TODO: call the real logout endpoint and redirect to the
-            // landing page once the backend session handling is wired up.
-            console.log('[admin] logout requested (placeholder)');
-        });
-    });
+    // Logout is wired in includes/authGuard.js (real Supabase sign-out).
 
     // ------------------------------------------------------------------
     // Theme toggle — includes/theme.js manages the data-theme attribute
@@ -159,14 +150,14 @@ document.addEventListener('DOMContentLoaded', () => {
     const staffSubmitBtn = document.querySelector('[data-admin-staff-submit]');
 
     if (staffSubmitBtn) {
-        staffSubmitBtn.addEventListener('click', () => {
+        staffSubmitBtn.addEventListener('click', async () => {
             const nameInput = document.querySelector('[data-admin-staff-name]');
             const emailInput = document.querySelector('[data-admin-staff-email]');
             const roleSelect = document.querySelector('[data-admin-staff-role]');
 
             const name = nameInput ? nameInput.value.trim() : '';
             const email = emailInput ? emailInput.value.trim() : '';
-            const role = roleSelect ? roleSelect.value : '';
+            const position = roleSelect ? roleSelect.value : '';
 
             if (!name || !email) {
                 if (!name && nameInput) nameInput.focus();
@@ -174,33 +165,61 @@ document.addEventListener('DOMContentLoaded', () => {
                 return;
             }
 
-            // TODO: POST /api/admin/staff once the backend (PHP/MySQL) is
-            // ready — this only appends a row to the table for now.
-            console.log('[admin] staff account created (placeholder)', { name, email, role });
-
-            if (staffTable) {
-                const tbody = staffTable.querySelector('tbody');
-                const row = document.createElement('tr');
-                row.innerHTML = `
-                    <td class="admin-cell-main">${name}</td>
-                    <td>${email}</td>
-                    <td>${role}</td>
-                    <td><span class="admin-status active">Active</span></td>
-                    <td>
-                        <div class="admin-table-actions">
-                            <button type="button" class="admin-mini-btn" data-admin-reset-password>Reset Password</button>
-                            <button type="button" class="admin-mini-btn" data-admin-edit-staff>Edit</button>
-                            <button type="button" class="admin-mini-btn is-danger" data-admin-delete-staff>Delete</button>
-                        </div>
-                    </td>
-                `;
-                tbody.appendChild(row);
-                wireStaffRowActions(row);
+            if (!window.sb || !window.SUPABASE_URL) {
+                window.alert('Unable to reach the server right now. Please try again shortly.');
+                return;
             }
 
-            if (nameInput) nameInput.value = '';
-            if (emailInput) emailInput.value = '';
-            if (staffForm) staffForm.classList.remove('is-open');
+            staffSubmitBtn.disabled = true;
+            staffSubmitBtn.textContent = 'Sending invite…';
+
+            try {
+                const { data: { session } } = await window.sb.auth.getSession();
+                if (!session) throw new Error('Your session expired. Please log in again.');
+
+                const res = await fetch(`${window.SUPABASE_URL}/functions/v1/invite-staff`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        Authorization: `Bearer ${session.access_token}`
+                    },
+                    body: JSON.stringify({ email, full_name: name, position, role: 'staff' })
+                });
+
+                const result = await res.json().catch(() => ({}));
+                if (!res.ok) {
+                    throw new Error(result.error || 'Could not send the invite.');
+                }
+
+                if (staffTable) {
+                    const tbody = staffTable.querySelector('tbody');
+                    const row = document.createElement('tr');
+                    row.innerHTML = `
+                        <td class="admin-cell-main">${name}</td>
+                        <td>${email}</td>
+                        <td>${position}</td>
+                        <td><span class="admin-status pending">Invited</span></td>
+                        <td>
+                            <div class="admin-table-actions">
+                                <button type="button" class="admin-mini-btn" data-admin-reset-password>Reset Password</button>
+                                <button type="button" class="admin-mini-btn" data-admin-edit-staff>Edit</button>
+                                <button type="button" class="admin-mini-btn is-danger" data-admin-delete-staff>Delete</button>
+                            </div>
+                        </td>
+                    `;
+                    tbody.appendChild(row);
+                    wireStaffRowActions(row);
+                }
+
+                if (nameInput) nameInput.value = '';
+                if (emailInput) emailInput.value = '';
+                if (staffForm) staffForm.classList.remove('is-open');
+            } catch (err) {
+                window.alert(err.message || 'Could not send the invite. Please try again.');
+            } finally {
+                staffSubmitBtn.disabled = false;
+                staffSubmitBtn.textContent = 'Send Invite';
+            }
         });
     }
 

@@ -20,7 +20,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Inter:wght@400;500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="../Style/staff_dashboard.css">
 </head>
-<body class="staff-body">
+<body class="staff-body" data-required-role="staff">
 
 <div class="staff-shell">
 
@@ -663,6 +663,9 @@
         </main>
     </div>
 </div>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<script src="../Config/supabaseClient.js"></script>
+<script src="../includes/authGuard.js"></script>
 <script src="../includes/theme.js"></script>
 <script src="../includes/staff_dashboard.js"></script>
 </body>
