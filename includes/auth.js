@@ -382,6 +382,11 @@ document.addEventListener('DOMContentLoaded', () => {
     const GOOGLE_CLIENT_ID = googleConfig.clientId || 'YOUR_GOOGLE_CLIENT_ID.apps.googleusercontent.com';
     const GOOGLE_AUTH_ENDPOINT = googleConfig.authEndpoint || '/api/auth/google.php';
 
+    // Short-lived toast: floats above the modal instead of sitting inline in
+    // the form flow, and auto-dismisses on its own — no close button needed.
+    let authNoticeDismissTimer = null;
+    let authNoticeHideTimer = null;
+
     function getAuthNoticeEl() {
         let notice = overlay.querySelector('[data-auth-notice]');
         if (!notice) {
@@ -390,27 +395,42 @@ document.addEventListener('DOMContentLoaded', () => {
             notice.dataset.authNotice = '';
             notice.setAttribute('aria-live', 'polite');
             notice.hidden = true;
-
-            const authBrand = overlay.querySelector('.auth-brand');
-            if (authBrand && authBrand.parentNode) {
-                authBrand.parentNode.insertBefore(notice, authBrand.nextSibling);
-            }
+            overlay.appendChild(notice);
         }
         return notice;
     }
 
-    function setAuthNotice(message, isError = false) {
+    function hideAuthNotice() {
         const notice = getAuthNoticeEl();
-        if (!message) {
+        notice.classList.remove('is-visible');
+        if (authNoticeHideTimer) window.clearTimeout(authNoticeHideTimer);
+        authNoticeHideTimer = window.setTimeout(() => {
             notice.hidden = true;
-            notice.textContent = '';
-            notice.classList.remove('is-error');
+        }, 250);
+    }
+
+    function setAuthNotice(message, isError = false, duration = isError ? 5000 : 3500) {
+        const notice = getAuthNoticeEl();
+        if (authNoticeDismissTimer) {
+            window.clearTimeout(authNoticeDismissTimer);
+            authNoticeDismissTimer = null;
+        }
+        if (authNoticeHideTimer) {
+            window.clearTimeout(authNoticeHideTimer);
+            authNoticeHideTimer = null;
+        }
+
+        if (!message) {
+            hideAuthNotice();
             return;
         }
 
         notice.hidden = false;
         notice.textContent = message;
         notice.classList.toggle('is-error', isError);
+        requestAnimationFrame(() => notice.classList.add('is-visible'));
+
+        authNoticeDismissTimer = window.setTimeout(hideAuthNotice, duration);
     }
 
     function decodeJwtPayload(token) {
