@@ -1,0 +1,56 @@
+<!--
+  IñigoSync — "Confirm signup" email template
+  Paste this into: Supabase Dashboard → Authentication → Emails →
+  Confirm signup → Source (replace everything currently there), then Save.
+
+  Uses {{ .Token }} — Supabase's 6-digit OTP variable — so it plugs
+  straight into the existing 6-box Verify screen with no code changes.
+  Kept to inline styles + a table layout on purpose: that's what actually
+  survives Gmail/Outlook's HTML stripping, unlike modern CSS.
+-->
+<div style="background-color:#14110d;padding:40px 16px;font-family:'Inter',Helvetica,Arial,sans-serif;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:440px;margin:0 auto;border-collapse:collapse;">
+    <tr>
+      <td style="padding-bottom:24px;text-align:center;">
+        <span style="font-family:'Oswald',Helvetica,Arial,sans-serif;font-size:20px;font-weight:600;letter-spacing:0.02em;color:#f4efe6;">
+          Iñigo<span style="color:#FF6115;">Sync</span>
+        </span>
+      </td>
+    </tr>
+
+    <tr>
+      <td style="background-color:#1c1712;border:1px solid rgba(244,239,230,0.12);border-radius:16px;padding:36px 32px;">
+
+        <h1 style="margin:0 0 8px;font-family:'Oswald',Helvetica,Arial,sans-serif;font-size:22px;font-weight:600;color:#f4efe6;text-align:center;">
+          Confirm your email
+        </h1>
+        <p style="margin:0 0 28px;font-size:14px;line-height:1.5;color:#c9c2b4;text-align:center;">
+          Enter this code to finish creating your account.
+        </p>
+
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+          <tr>
+            <td style="background-color:#14110d;border:1px solid rgba(255,97,21,0.4);border-radius:12px;padding:20px;text-align:center;">
+              <span style="font-family:'Space Mono',Consolas,monospace;font-size:34px;font-weight:700;letter-spacing:0.3em;color:#FF6115;">
+                {{ .Token }}
+              </span>
+            </td>
+          </tr>
+        </table>
+
+        <p style="margin:24px 0 0;font-size:13px;line-height:1.5;color:#8a8177;text-align:center;">
+          This code expires in 1 hour. Didn't request this? You can safely ignore this email.
+        </p>
+
+      </td>
+    </tr>
+
+    <tr>
+      <td style="padding-top:24px;text-align:center;">
+        <p style="margin:0;font-size:12px;color:#8a8177;">
+          Iñigo's Sports Center &middot; Book your court in a few taps.
+        </p>
+      </td>
+    </tr>
+  </table>
+</div>

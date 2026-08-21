@@ -63,6 +63,19 @@ document.addEventListener('DOMContentLoaded', () => {
         window.location.assign(redirectUrl.toString());
     }
 
+    // Google's OAuth flow is a full-page redirect away and back — there's no
+    // in-page callback to hook into. So on every load of this page, check
+    // whether a session already exists (true right after that redirect
+    // returns) and route straight into the dashboard. Errors are swallowed
+    // rather than shown, since landing here isn't something the visitor
+    // actively did — e.g. a stale non-customer session shouldn't surface a
+    // toast on an otherwise ordinary page load.
+    if (window.sb) {
+        window.sb.auth.getSession().then(({ data: { session } }) => {
+            if (session) completeLogin(['customer']).catch(() => {});
+        });
+    }
+
     function setActivePanel(name) {
         tabs.forEach((tab) => {
             const isMatch = tab.dataset.authTab === name;
@@ -165,6 +178,29 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     });
 
+    // Rewrites raw Supabase Auth error text into copy a user can act on.
+    // The rate-limit and email-not-confirmed cases are the ones that came up
+    // while diagnosing the OTP email issue — Supabase's built-in mailer caps
+    // out fast during repeated signups, and the raw messages ("429: email
+    // rate limit exceeded") don't tell the user what to actually do.
+    function friendlyAuthError(err) {
+        const code = err?.code || '';
+        const message = err?.message || '';
+
+        if (code === 'over_email_send_rate_limit' || /rate limit/i.test(message)) {
+            const waitMatch = message.match(/after (\d+) seconds/i);
+            return waitMatch
+                ? `Too many attempts — please wait ${waitMatch[1]}s and try again.`
+                : 'Too many attempts — please wait a minute and try again.';
+        }
+
+        if (code === 'email_not_confirmed' || /email not confirmed/i.test(message)) {
+            return 'Please verify your email before logging in — check your inbox to confirm your account.';
+        }
+
+        return message || 'Something went wrong. Please try again.';
+    }
+
     // Wired to real Supabase Auth. Public signup always creates a customer
     // account (role is never client-settable — see the DB trigger); the
     // Admin panel logs into the same auth.users but only accepts an
@@ -220,6 +256,15 @@ document.addEventListener('DOMContentLoaded', () => {
                     });
                     if (error) throw error;
 
+                    // Supabase returns no error and no session for an email that's
+                    // already registered — it just silently no-ops (anti-enumeration
+                    // behavior) instead of throwing. An empty identities array is the
+                    // one signal that distinguishes this from a genuine new signup.
+                    if (signUpData.user && signUpData.user.identities && signUpData.user.identities.length === 0) {
+                        setAuthNotice('An account with this email already exists. Please log in instead.', true);
+                        return;
+                    }
+
                     if (signUpData.session) {
                         // Email confirmation is turned off for this project —
                         // signUp already returned a live session.
@@ -272,7 +317,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     return;
                 }
             } catch (err) {
-                setAuthNotice(err.message || 'Something went wrong. Please try again.', true);
+                setAuthNotice(friendlyAuthError(err), true);
             } finally {
                 setBusy(false);
             }
@@ -355,32 +400,13 @@ document.addEventListener('DOMContentLoaded', () => {
                 email: pendingSignupEmail
             });
             if (error) {
-                setAuthNotice(error.message || 'Could not resend the code. Please try again.', true);
+                setAuthNotice(friendlyAuthError(error), true);
                 otpResendBtn.disabled = false;
                 return;
             }
             startResendCountdown(30);
         });
     }
-
-    // ------------------------------------------------------------------
-    // Google Sign-In / Sign-Up (customer accounts only — the Admin and
-    // Verify panels stay credential-only on purpose, so no Google button
-    // is rendered there).
-    //
-    // IMPORTANT SETUP STEPS before this works in production:
-    //   1. Create an OAuth 2.0 Client ID (Web application) in the Google
-    //      Cloud Console and add your site's origin(s) to
-    //      "Authorized JavaScript origins".
-    //   2. Set window.INIGOSYNC_GOOGLE_CONFIG.clientId (or replace the
-    //      placeholder below) with your client ID.
-    //   3. Build a backend endpoint (e.g. POST /api/auth/google) that
-    //      receives the ID token, verifies it server-side, and creates a
-    //      session for the user.
-    // ------------------------------------------------------------------
-    const googleConfig = window.INIGOSYNC_GOOGLE_CONFIG || {};
-    const GOOGLE_CLIENT_ID = googleConfig.clientId || 'YOUR_GOOGLE_CLIENT_ID.apps.googleusercontent.com';
-    const GOOGLE_AUTH_ENDPOINT = googleConfig.authEndpoint || '/api/auth/google.php';
 
     // Short-lived toast: floats above the modal instead of sitting inline in
     // the form flow, and auto-dismisses on its own — no close button needed.
@@ -433,170 +459,58 @@ document.addEventListener('DOMContentLoaded', () => {
         authNoticeDismissTimer = window.setTimeout(hideAuthNotice, duration);
     }
 
-    function decodeJwtPayload(token) {
-        try {
-            const payload = token.split('.')[1];
-            const normalized = payload.replace(/-/g, '+').replace(/_/g, '/');
-            const decoded = atob(normalized);
-            return JSON.parse(decoded);
-        } catch (error) {
-            console.warn('[auth] Could not decode Google token payload', error);
-            return null;
-        }
-    }
+    // ------------------------------------------------------------------
+    // Google Sign-In / Sign-Up — via Supabase's native Google OAuth
+    // provider (Authentication → Sign In / Providers → Google in the
+    // Supabase dashboard). Customer accounts only — the Admin and Verify
+    // panels stay credential-only on purpose, so no Google button is
+    // rendered there. Clicking the button hands off to a full-page
+    // redirect (Google, then back here); there is no in-page response to
+    // handle, so the click handler only needs to cover the case where the
+    // redirect itself fails to start.
+    // ------------------------------------------------------------------
+    overlay.querySelectorAll('[data-google-btn]').forEach((container) => {
+        container.innerHTML = '';
 
-    function finishGoogleAuth(profile, credential) {
-        const user = {
-            provider: 'google',
-            name: profile?.name || 'Google user',
-            email: profile?.email || 'google-user@example.com',
-            picture: profile?.picture || '',
-        };
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'auth-google-button';
+        button.innerHTML = `
+            <span class="auth-google-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
+                    <path fill="#4285F4" d="M21.6 12.23c0-.78-.07-1.53-.2-2.25H12v4.26h5.38a4.6 4.6 0 0 1-2 3.02v2.5h3.24c1.9-1.75 2.98-4.32 2.98-7.53z"></path>
+                    <path fill="#34A853" d="M12 22c2.7 0 4.96-.9 6.62-2.43l-3.24-2.5c-.9.6-2.04.96-3.38.96-2.6 0-4.8-1.75-5.59-4.1H3.07v2.58A10 10 0 0 0 12 22z"></path>
+                    <path fill="#FBBC05" d="M6.41 13.93A5.98 5.98 0 0 1 6.41 8.07V5.49H3.07a10 10 0 0 0 0 16.88l3.34-2.44z"></path>
+                    <path fill="#EA4335" d="M12 6.04c1.47 0 2.79.5 3.83 1.49l2.87-2.87A9.96 9.96 0 0 0 12 2a10 10 0 0 0-8.93 5.49l3.34 2.44C7.2 7.79 9.4 6.04 12 6.04z"></path>
+                </svg>
+            </span>
+            <span>Login / Sign up with Google</span>
+        `;
 
-        localStorage.setItem('inigosyncUser', JSON.stringify(user));
-        localStorage.setItem('inigosyncToken', credential || 'google-demo-token');
+        button.addEventListener('click', async () => {
+            if (!window.sb) {
+                setAuthNotice('Unable to reach the server right now. Please try again shortly.', true);
+                return;
+            }
 
-        setAuthNotice('Google sign-in completed. Redirecting to your dashboard…');
-        const redirectUrl = new URL('../Pages/user_dashboard.html', window.location.href);
-        window.location.assign(redirectUrl.toString());
-    }
-
-    function handleGoogleCredential(response) {
-        if (!response?.credential) {
-            setAuthNotice('Google sign-in was cancelled. Please try again.', true);
-            return;
-        }
-
-        setAuthNotice('Signing you in with Google…');
-        const buttons = overlay.querySelectorAll('[data-google-btn] button');
-        buttons.forEach((button) => {
             button.disabled = true;
             button.classList.add('is-loading');
-        });
 
-        const profile = decodeJwtPayload(response.credential);
-
-        fetch(GOOGLE_AUTH_ENDPOINT, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ credential: response.credential })
-        })
-            .then(async (res) => {
-                const data = await res.json().catch(() => ({}));
-                if (!res.ok) {
-                    throw new Error(data?.message || 'Unable to finish Google sign-in.');
-                }
-                return data;
-            })
-            .then((data) => {
-                const user = data?.user || {
-                    provider: 'google',
-                    name: profile?.name || 'Google user',
-                    email: profile?.email || 'google-user@example.com',
-                    picture: profile?.picture || '',
-                };
-
-                localStorage.setItem('inigosyncUser', JSON.stringify(user));
-                if (data?.token) {
-                    localStorage.setItem('inigosyncToken', data.token);
-                }
-
-                setAuthNotice(data?.message || 'Google sign-in completed. Redirecting to your dashboard…');
-
-                if (data?.redirectTo) {
-                    window.location.assign(data.redirectTo);
-                    return;
-                }
-
-                const redirectUrl = new URL('../Pages/user_dashboard.html', window.location.href);
-                window.location.assign(redirectUrl.toString());
-            })
-            .catch((error) => {
-                const isLocalhost = ['localhost', '127.0.0.1'].includes(window.location.hostname);
-                if (isLocalhost) {
-                    finishGoogleAuth(profile, response.credential);
-                    return;
-                }
-
-                setAuthNotice(error.message || 'Google sign-in failed. Please try again.', true);
-            })
-            .finally(() => {
-                buttons.forEach((button) => {
-                    button.disabled = false;
-                    button.classList.remove('is-loading');
-                });
-            });
-    }
-
-    function handleGooglePromptNotification(notification) {
-        if (!notification) return;
-
-        if (notification.isNotDisplayed() || notification.isSkippedMoment()) {
-            const reason = notification.getNotDisplayedReason?.() || notification.getSkippedReason?.() || 'Google did not display a sign-in prompt.';
-            setAuthNotice(`Google sign-in was not shown. ${reason}`, true);
-            return;
-        }
-
-        if (notification.isDismissedMoment()) {
-            setAuthNotice('Google sign-in was closed. Please try again.', true);
-        }
-    }
-
-    function renderGoogleButtons() {
-        if (!window.google || !google.accounts || !google.accounts.id) return false;
-        if (GOOGLE_CLIENT_ID.startsWith('YOUR_GOOGLE_CLIENT_ID')) {
-            console.warn('[auth] Replace the placeholder Google client ID before signing in for real.');
-        }
-
-        google.accounts.id.initialize({
-            client_id: GOOGLE_CLIENT_ID,
-            callback: handleGoogleCredential,
-            ux_mode: 'popup',
-            auto_select: false,
-            cancel_on_tap_outside: false
-        });
-
-        overlay.querySelectorAll('[data-google-btn]').forEach((container) => {
-            container.innerHTML = '';
-
-            const button = document.createElement('button');
-            button.type = 'button';
-            button.className = 'auth-google-button';
-            button.innerHTML = `
-                <span class="auth-google-icon" aria-hidden="true">
-                    <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
-                        <path fill="#4285F4" d="M21.6 12.23c0-.78-.07-1.53-.2-2.25H12v4.26h5.38a4.6 4.6 0 0 1-2 3.02v2.5h3.24c1.9-1.75 2.98-4.32 2.98-7.53z"></path>
-                        <path fill="#34A853" d="M12 22c2.7 0 4.96-.9 6.62-2.43l-3.24-2.5c-.9.6-2.04.96-3.38.96-2.6 0-4.8-1.75-5.59-4.1H3.07v2.58A10 10 0 0 0 12 22z"></path>
-                        <path fill="#FBBC05" d="M6.41 13.93A5.98 5.98 0 0 1 6.41 8.07V5.49H3.07a10 10 0 0 0 0 16.88l3.34-2.44z"></path>
-                        <path fill="#EA4335" d="M12 6.04c1.47 0 2.79.5 3.83 1.49l2.87-2.87A9.96 9.96 0 0 0 12 2a10 10 0 0 0-8.93 5.49l3.34 2.44C7.2 7.79 9.4 6.04 12 6.04z"></path>
-                    </svg>
-                </span>
-                <span>Login / Sign up with Google</span>
-            `;
-
-            button.addEventListener('click', () => {
-                if (window.google?.accounts?.id) {
-                    google.accounts.id.prompt((notification) => {
-                        handleGooglePromptNotification(notification);
-                    });
-                }
+            const { error } = await window.sb.auth.signInWithOAuth({
+                provider: 'google',
+                options: { redirectTo: window.location.href }
             });
 
-            container.appendChild(button);
-        });
-
-        return true;
-    }
-
-    // The Google script tag is loaded with async/defer, so it may not be
-    // ready yet at DOMContentLoaded — poll briefly until it is.
-    if (!renderGoogleButtons()) {
-        let attempts = 0;
-        const poll = window.setInterval(() => {
-            attempts += 1;
-            if (renderGoogleButtons() || attempts > 50) {
-                window.clearInterval(poll);
+            if (error) {
+                setAuthNotice(friendlyAuthError(error), true);
+                button.disabled = false;
+                button.classList.remove('is-loading');
             }
-        }, 100);
-    }
+            // On success the browser navigates away to Google, so there's
+            // nothing further to do here — the redirect back is handled by
+            // the session check at the top of this file.
+        });
+
+        container.appendChild(button);
+    });
 });
