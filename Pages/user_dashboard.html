@@ -5,13 +5,16 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>My Dashboard | IñigoSync</title>
 
-    <!-- Theme guard: set data-theme before stylesheets load to prevent flash -->
+    <!-- Theme guard: set data-theme before stylesheets load to prevent flash.
+         Also marks the page auth-pending so Loading.css hides the dashboard
+         shell until authGuard.js confirms the real session + profile. -->
     <script>
     (function() {
         const saved = localStorage.getItem('inigosync-theme');
         const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
         const theme = saved || (prefersDark ? 'dark' : 'light') || 'dark';
         document.documentElement.setAttribute('data-theme', theme);
+        document.documentElement.classList.add('inigo-auth-pending');
     })();
     </script>
 
@@ -20,10 +23,13 @@
     <link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Inter:wght@400;500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="../Style/LandingPage.css">
     <link rel="stylesheet" href="../Style/Dashboard.css">
+    <link rel="stylesheet" href="../Style/Loading.css">
+    <script src="../includes/loadingOverlay.js"></script>
 </head>
 <body class="dash-body" data-required-role="customer">
+    <script>window.InigoLoading.show('Loading your dashboard…');</script>
 
-    <div class="dash-shell">
+    <div class="dash-shell inigo-reveal">
 
         <!-- Mobile scrim (click to close sidebar) -->
         <div class="dash-sidebar-scrim" data-dash-scrim></div>
@@ -132,7 +138,7 @@
                         <button type="button" class="dash-profile-trigger" data-dash-profile-trigger>
                             <div class="dash-avatar">JD</div>
                             <div class="dash-profile-name">
-                                <strong>Juan Dela Cruz</strong>
+                                <strong data-dash-profile-name>Juan Dela Cruz</strong>
                                 <span>Customer</span>
                             </div>
                             <svg class="dash-caret" viewBox="0 0 24 24" fill="none"><path d="M6 9l6 6 6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
@@ -862,7 +868,7 @@
                         </div>
                         <div class="dash-form-actions">
                             <button type="button" class="dash-btn-ghost">Cancel</button>
-                            <button type="button" class="dash-btn-save" data-dash-settings-save>Save Changes</button>
+                            <button type="button" class="dash-btn-save" data-dash-settings-save="profile">Save Changes</button>
                         </div>
                     </div>
 
@@ -901,7 +907,7 @@
                         </div>
                         <div class="dash-form-actions">
                             <button type="button" class="dash-btn-ghost">Cancel</button>
-                            <button type="button" class="dash-btn-save" data-dash-settings-save>Update Password</button>
+                            <button type="button" class="dash-btn-save" data-dash-settings-save="password">Update Password</button>
                         </div>
                     </div>
                 </section>

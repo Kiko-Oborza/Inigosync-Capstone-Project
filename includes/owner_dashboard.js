@@ -1,8 +1,8 @@
 // IñigoSync — Owner Dashboard controller
-// UI/design only — nothing here talks to a backend yet. Anywhere a real
-// submit would happen is logged with console.log and a TODO, matching the
-// pattern used in includes/auth.js and includes/staff_dashboard.js.
-// (Booking trend chart setup lives in event/chart.js, loaded below.)
+// Staff Management and Account Settings talk to the real Supabase database.
+// Court Listings, Payment Configuration, and Media Manager are still
+// UI/design only — those TODOs are unchanged. (Booking trend chart setup
+// lives in event/chart.js, loaded below.)
 
 document.addEventListener('DOMContentLoaded', () => {
     // ------------------------------------------------------------------
@@ -191,25 +191,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     throw new Error(result.error || 'Could not send the invite.');
                 }
 
-                if (staffTable) {
-                    const tbody = staffTable.querySelector('tbody');
-                    const row = document.createElement('tr');
-                    row.innerHTML = `
-                        <td class="admin-cell-main">${name}</td>
-                        <td>${email}</td>
-                        <td>${position}</td>
-                        <td><span class="admin-status pending">Invited</span></td>
-                        <td>
-                            <div class="admin-table-actions">
-                                <button type="button" class="admin-mini-btn" data-admin-reset-password>Reset Password</button>
-                                <button type="button" class="admin-mini-btn" data-admin-edit-staff>Edit</button>
-                                <button type="button" class="admin-mini-btn is-danger" data-admin-delete-staff>Delete</button>
-                            </div>
-                        </td>
-                    `;
-                    tbody.appendChild(row);
-                    wireStaffRowActions(row);
-                }
+                refreshStaffList();
 
                 if (nameInput) nameInput.value = '';
                 if (emailInput) emailInput.value = '';
@@ -223,41 +205,141 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
+    // Maps profiles.status to the admin-status badge classes already styled
+    // in Style/owner_dashboard.css (active/inactive/pending).
+    function staffStatusBadge(status) {
+        const map = {
+            active: ['active', 'Active'],
+            disabled: ['inactive', 'Deactivated'],
+            pending: ['pending', 'Invited'],
+        };
+        const [cls, label] = map[status] || ['active', 'Active'];
+        return `<span class="admin-status ${cls}">${label}</span>`;
+    }
+
+    function renderStaffRow(profile) {
+        const row = document.createElement('tr');
+        row.dataset.id = profile.id;
+        row.innerHTML = `
+            <td class="admin-cell-main" data-admin-staff-name-cell>${profile.full_name || '—'}</td>
+            <td data-admin-staff-email-cell>${profile.email || '—'}</td>
+            <td data-admin-staff-position-cell>${profile.position || '—'}</td>
+            <td data-admin-staff-status-cell>${staffStatusBadge(profile.status)}</td>
+            <td>
+                <div class="admin-table-actions">
+                    <button type="button" class="admin-mini-btn" data-admin-reset-password>Reset Password</button>
+                    <button type="button" class="admin-mini-btn" data-admin-edit-staff>Edit</button>
+                    ${profile.status !== 'disabled' ? '<button type="button" class="admin-mini-btn is-danger" data-admin-delete-staff>Deactivate</button>' : ''}
+                </div>
+            </td>
+        `;
+        return row;
+    }
+
+    async function refreshStaffList() {
+        if (!staffTable || !window.sb) return;
+        const { data, error } = await window.sb
+            .from('profiles')
+            .select('*')
+            .in('role', ['staff', 'admin'])
+            .order('created_at');
+
+        if (error) {
+            console.error('[admin] failed to load staff', error);
+            return;
+        }
+
+        const tbody = staffTable.querySelector('tbody');
+        tbody.innerHTML = '';
+        (data || []).forEach((profile) => {
+            const row = renderStaffRow(profile);
+            tbody.appendChild(row);
+            wireStaffRowActions(row);
+        });
+    }
+
     function wireStaffRowActions(scope) {
         scope.querySelectorAll('[data-admin-reset-password]').forEach((btn) => {
-            btn.addEventListener('click', () => {
+            btn.addEventListener('click', async () => {
                 const row = btn.closest('tr');
-                const name = row ? row.querySelector('.admin-cell-main').textContent : '';
-                // TODO: POST /api/admin/staff/:id/reset-password once the
-                // backend is ready — this should email/display a temp password.
-                console.log(`[admin] password reset requested for ${name} (placeholder)`);
+                const email = row?.querySelector('[data-admin-staff-email-cell]')?.textContent;
+                if (!email || !window.sb) return;
+
+                btn.disabled = true;
+                const { error } = await window.sb.auth.resetPasswordForEmail(email);
+                btn.disabled = false;
+
+                window.InigoToast?.show(
+                    error ? (error.message || 'Could not send the reset email.') : `Password reset email sent to ${email}.`,
+                    Boolean(error)
+                );
             });
         });
 
+        // Edit toggles the Name/Role cells into inputs; clicking again
+        // (now "Save") commits the change — no separate edit modal exists.
         scope.querySelectorAll('[data-admin-edit-staff]').forEach((btn) => {
-            btn.addEventListener('click', () => {
-                const row = btn.closest('tr');
-                const name = row ? row.querySelector('.admin-cell-main').textContent : '';
-                // TODO: open a real edit form pre-filled with this staff
-                // member's data once the backend is ready.
-                console.log(`[admin] edit staff requested for ${name} (placeholder)`);
-            });
-        });
-
-        scope.querySelectorAll('[data-admin-delete-staff]').forEach((btn) => {
-            btn.addEventListener('click', () => {
+            btn.addEventListener('click', async () => {
                 const row = btn.closest('tr');
                 if (!row) return;
-                const name = row.querySelector('.admin-cell-main').textContent;
-                if (!window.confirm(`Remove ${name}'s staff account?`)) return;
-                // TODO: DELETE /api/admin/staff/:id once the backend is ready.
-                console.log(`[admin] staff account deleted (placeholder): ${name}`);
-                row.remove();
+                const nameCell = row.querySelector('[data-admin-staff-name-cell]');
+                const positionCell = row.querySelector('[data-admin-staff-position-cell]');
+
+                if (btn.dataset.editing !== 'true') {
+                    const currentName = nameCell.textContent.trim();
+                    const currentPosition = positionCell.textContent.trim() === '—' ? '' : positionCell.textContent.trim();
+                    nameCell.innerHTML = `<input type="text" class="admin-input" value="${currentName}">`;
+                    positionCell.innerHTML = `<input type="text" class="admin-input" value="${currentPosition}">`;
+                    btn.textContent = 'Save';
+                    btn.dataset.editing = 'true';
+                    return;
+                }
+
+                const full_name = nameCell.querySelector('input').value.trim();
+                const position = positionCell.querySelector('input').value.trim();
+
+                btn.disabled = true;
+                const { error } = await window.sb.from('profiles').update({ full_name, position }).eq('id', row.dataset.id);
+                btn.disabled = false;
+
+                if (error) {
+                    window.InigoToast?.show(error.message || 'Could not save changes.', true);
+                    return;
+                }
+
+                nameCell.textContent = full_name;
+                positionCell.textContent = position || '—';
+                btn.textContent = 'Edit';
+                btn.dataset.editing = 'false';
+                window.InigoToast?.show('Staff updated.');
+            });
+        });
+
+        // Soft-delete: a real auth.users delete needs service-role/an edge
+        // function, unavailable client-side, so this deactivates the profile
+        // instead (authGuard.js already refuses disabled accounts at login).
+        scope.querySelectorAll('[data-admin-delete-staff]').forEach((btn) => {
+            btn.addEventListener('click', async () => {
+                const row = btn.closest('tr');
+                if (!row) return;
+                const name = row.querySelector('[data-admin-staff-name-cell]')?.textContent;
+                if (!window.confirm(`Deactivate ${name}'s account? They will no longer be able to log in.`)) return;
+
+                btn.disabled = true;
+                const { error } = await window.sb.from('profiles').update({ status: 'disabled' }).eq('id', row.dataset.id);
+                btn.disabled = false;
+
+                if (error) {
+                    window.InigoToast?.show(error.message || 'Could not deactivate this account.', true);
+                    return;
+                }
+                refreshStaffList();
             });
         });
     }
 
-    if (staffTable) wireStaffRowActions(staffTable);
+    refreshStaffList();
+    document.addEventListener('inigosync:profile-ready', refreshStaffList);
 
     const staffSearch = document.querySelector('[data-admin-staff-search]');
     if (staffSearch && staffTable) {
@@ -415,13 +497,84 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     });
 
-    document.querySelectorAll('[data-admin-settings-save]').forEach((btn) => {
-        btn.addEventListener('click', () => {
-            // TODO: wire up to the real "update profile" / "change password"
-            // endpoints once the backend is ready.
-            console.log('[admin] settings save requested (placeholder)');
+    // Owner Profile — prefill from the real signed-in profile. The
+    // "Username" field has no backing column (profiles has no username),
+    // so it stays display-only and is never persisted.
+    function renderAdminProfile(profile) {
+        const initials = (profile.full_name || profile.email || '?')
+            .split(' ').map((p) => p[0]).slice(0, 2).join('').toUpperCase();
+
+        document.querySelectorAll('.admin-avatar').forEach((el) => { el.textContent = initials; });
+        document.querySelectorAll('[data-admin-profile-name]').forEach((el) => { el.textContent = profile.full_name || 'Owner'; });
+
+        const cardInfo = document.querySelector('[data-admin-panel="settings"] .admin-profile-card-info h3');
+        if (cardInfo) cardInfo.textContent = profile.full_name || 'Owner';
+
+        const settingsPanel = document.querySelector('[data-admin-panel="settings"]');
+        if (settingsPanel) {
+            const inputs = settingsPanel.querySelectorAll('.admin-settings-grid .admin-input');
+            if (inputs[0]) inputs[0].value = profile.full_name || '';
+            if (inputs[2]) inputs[2].value = profile.email || '';
+        }
+    }
+
+    document.addEventListener('inigosync:profile-ready', (e) => renderAdminProfile(e.detail));
+    if (window.inigosyncProfile) renderAdminProfile(window.inigosyncProfile);
+
+    const adminProfileSaveBtn = document.querySelector('[data-admin-settings-save="profile"]');
+    if (adminProfileSaveBtn) {
+        adminProfileSaveBtn.addEventListener('click', async () => {
+            if (!window.sb || !window.inigosyncProfile) return;
+            const settingsPanel = document.querySelector('[data-admin-panel="settings"]');
+            const inputs = settingsPanel.querySelectorAll('.admin-settings-grid .admin-input');
+            const full_name = inputs[0]?.value.trim();
+
+            adminProfileSaveBtn.disabled = true;
+            const { error } = await window.sb.from('profiles').update({ full_name }).eq('id', window.inigosyncProfile.id);
+            adminProfileSaveBtn.disabled = false;
+
+            if (error) {
+                window.InigoToast?.show(error.message || 'Could not save your changes.', true);
+                return;
+            }
+
+            window.inigosyncProfile.full_name = full_name;
+            renderAdminProfile(window.inigosyncProfile);
+            window.InigoToast?.show('Profile updated.');
         });
-    });
+    }
+
+    const adminPasswordSaveBtn = document.querySelector('[data-admin-settings-save="password"]');
+    if (adminPasswordSaveBtn) {
+        adminPasswordSaveBtn.addEventListener('click', async () => {
+            if (!window.sb) return;
+            const settingsPanel = document.querySelector('[data-admin-panel="settings"]');
+            const passwordInputs = settingsPanel.querySelectorAll('.admin-form-group input[type="password"]');
+            const newPassword = passwordInputs[1]?.value;
+            const confirmPassword = passwordInputs[2]?.value;
+
+            if (!newPassword) {
+                window.InigoToast?.show('Enter a new password.', true);
+                return;
+            }
+            if (newPassword !== confirmPassword) {
+                window.InigoToast?.show('Passwords do not match.', true);
+                return;
+            }
+
+            adminPasswordSaveBtn.disabled = true;
+            const { error } = await window.sb.auth.updateUser({ password: newPassword });
+            adminPasswordSaveBtn.disabled = false;
+
+            if (error) {
+                window.InigoToast?.show(error.message || 'Could not update your password.', true);
+                return;
+            }
+
+            passwordInputs.forEach((input) => { input.value = ''; });
+            window.InigoToast?.show('Password updated.');
+        });
+    }
 
     // ------------------------------------------------------------------
     // Media Manager — home featured slideshow (replace/remove/add) and

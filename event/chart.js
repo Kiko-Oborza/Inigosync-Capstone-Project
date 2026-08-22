@@ -2,30 +2,69 @@
 // Renders the single Weekly/Monthly-toggleable booking trend bar graph
 // shown on the Booking Overview panel of Pages/owner_dashboard.html.
 //
-// UI/demo only — the CHART_DATA figures below are placeholders. Once the
-// backend (PHP/MySQL) is ready, replace week/month values with a fetch()
-// call to an endpoint such as GET /api/admin/booking-trends?range=week and
-// feed the response into the same chart.data.labels / .datasets[0].data.
+// Real data: counts real rows from the `booking` table, grouped by day
+// (last 7 days) or by month (last 8 months) client-side — there's no SQL
+// aggregation available without a view/RPC, and none exists, so grouping
+// happens in JS over the raw `time_date` values.
 //
 // Colors are read dynamically from CSS custom properties and updated on theme change.
 
 let bookingChart = null;
 let currentChartRange = 'week';
 
-const CHART_DATA = {
-    week: {
-        labels: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
-        values: [12, 18, 9, 22, 27, 31, 24],
-        total: 143,
-        unit: 'bookings per day · this week',
-    },
-    month: {
-        labels: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug'],
-        values: [64, 71, 58, 80, 92, 77, 96, 102],
-        total: 640,
-        unit: 'bookings per month · 2026',
-    },
+function emptyRange(labels, unit) {
+    return { labels, values: labels.map(() => 0), total: 0, unit };
+}
+
+let CHART_DATA = {
+    week: emptyRange(['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'], 'bookings per day · last 7 days'),
+    month: emptyRange(['—'], 'bookings per month'),
 };
+
+function aggregateWeek(rows) {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const days = Array.from({ length: 7 }, (_, i) => {
+        const d = new Date(today);
+        d.setDate(d.getDate() - (6 - i));
+        return d;
+    });
+
+    const labels = days.map((d) => d.toLocaleDateString('en-US', { weekday: 'short' }));
+    const values = days.map((d) => {
+        const next = new Date(d);
+        next.setDate(next.getDate() + 1);
+        return rows.filter((r) => {
+            const t = new Date(r.time_date);
+            return t >= d && t < next;
+        }).length;
+    });
+
+    return { labels, values, total: values.reduce((a, b) => a + b, 0), unit: 'bookings per day · last 7 days' };
+}
+
+function aggregateMonth(rows) {
+    const now = new Date();
+    const months = Array.from({ length: 8 }, (_, i) => new Date(now.getFullYear(), now.getMonth() - (7 - i), 1));
+
+    const labels = months.map((d) => d.toLocaleDateString('en-US', { month: 'short' }));
+    const values = months.map((d) => rows.filter((r) => {
+        const t = new Date(r.time_date);
+        return t.getFullYear() === d.getFullYear() && t.getMonth() === d.getMonth();
+    }).length);
+
+    return { labels, values, total: values.reduce((a, b) => a + b, 0), unit: `bookings per month · ${now.getFullYear()}` };
+}
+
+async function loadChartData() {
+    if (!window.sb) return;
+    const { data, error } = await window.sb.from('booking').select('time_date');
+    if (error || !data) {
+        console.error('[admin-chart] failed to load bookings', error);
+        return;
+    }
+    CHART_DATA = { week: aggregateWeek(data), month: aggregateMonth(data) };
+}
 
 function getThemeColors() {
     const root = document.documentElement;
@@ -165,4 +204,13 @@ document.addEventListener('DOMContentLoaded', () => {
     document.addEventListener('themechange', () => {
         updateCharts();
     });
+
+    // Real booking counts load once the signed-in profile is confirmed
+    // (RLS needs an authenticated session), then refresh the chart in place.
+    async function refreshChartData() {
+        await loadChartData();
+        setChartRange(currentChartRange);
+    }
+    document.addEventListener('inigosync:profile-ready', refreshChartData);
+    if (window.inigosyncProfile) refreshChartData();
 });

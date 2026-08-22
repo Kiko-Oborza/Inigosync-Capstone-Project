@@ -3,6 +3,8 @@
 // Actual data access is still enforced server-side by RLS — this only avoids
 // showing the wrong dashboard shell to a signed-in user of the wrong role.
 document.addEventListener('DOMContentLoaded', async () => {
+    if (window.InigoLoading) window.InigoLoading.show('Loading your dashboard…');
+
     if (!window.sb) {
         console.error('[authGuard] Supabase client (window.sb) is not available.');
         return;
@@ -27,7 +29,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     const { data: profile, error } = await window.sb
         .from('profiles')
-        .select('id, role, full_name, email, status')
+        .select('id, role, full_name, email, status, contact_num, position, avatar_url')
         .eq('id', session.user.id)
         .single();
 
@@ -44,6 +46,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     window.inigosyncProfile = profile;
+    if (window.InigoLoading) window.InigoLoading.hide();
+    document.documentElement.classList.remove('inigo-auth-pending');
     document.dispatchEvent(new CustomEvent('inigosync:profile-ready', { detail: profile }));
 
     async function logout() {

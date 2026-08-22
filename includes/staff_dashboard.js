@@ -7,7 +7,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const subtitleEl = document.querySelector('[data-staff-subtitle]');
 
     const panelMeta = {
-        overview: { title: 'Booking Overview', subtitle: "Today's court activity — bookings arrive already paid through PayMongo." },
+        overview: { title: 'Booking Overview', subtitle: "Today's court activity across the app." },
         walkin: { title: 'Walk-In Management', subtitle: 'Record walk-in customers and process on-the-spot payment.' },
         schedule: { title: 'Court Schedule', subtitle: 'Calendar view of every court to spot open slots at a glance.' },
         transactions: { title: 'Transaction Records', subtitle: 'Searchable audit trail of every payment processed.' },
@@ -170,11 +170,69 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    wireFilterableTable('overview');
+    // Transaction Records — no payment records exist yet this pass (see
+    // Walk-In submit below), so this is an honest empty state rather than
+    // fake data.
+    const transactionsTableBody = document.querySelector('[data-staff-table="transactions"] tbody');
+    if (transactionsTableBody) {
+        transactionsTableBody.innerHTML = '<tr><td colspan="7" style="text-align:center; color: var(--color-ink-faint);">No transactions yet.</td></tr>';
+    }
     wireFilterableTable('transactions');
 
-    // Bookings arrive already paid through PayMongo, so there's no
-    // pending/confirm step for staff — just Upcoming -> In play -> Done.
+    // Real Booking Overview — replaces the static demo rows once the
+    // signed-in staff profile is ready. Time-In / Time-Out / Details stay
+    // out of scope this pass (no dedicated "checked-in" state exists yet),
+    // so real rows render with no action buttons rather than wiring
+    // buttons to something undecided.
+    const overviewTableBody = document.querySelector('[data-staff-table="overview"] tbody');
+
+    function formatOverviewDate(iso) {
+        return new Date(iso).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+    }
+
+    async function refreshBookingOverview() {
+        if (!overviewTableBody || !window.sb) return;
+
+        const { data, error } = await window.sb
+            .from('booking')
+            .select('*, profiles(full_name, contact_num)')
+            .order('time_date', { ascending: true });
+
+        if (error) {
+            console.error('[staff] failed to load bookings', error);
+            return;
+        }
+
+        overviewTableBody.innerHTML = '';
+
+        if (!data || data.length === 0) {
+            overviewTableBody.innerHTML = '<tr><td colspan="6" style="text-align:center; color: var(--color-ink-faint);">No bookings yet.</td></tr>';
+            wireFilterableTable('overview');
+            return;
+        }
+
+        data.forEach((booking) => {
+            const customerName = booking.profiles?.full_name || 'Customer';
+            const customerContact = booking.profiles?.contact_num || '';
+            const row = document.createElement('tr');
+            row.dataset.status = booking.status;
+            row.innerHTML = `
+                <td class="staff-cell-main">${customerName}${customerContact ? `<span class="staff-cell-sub">${customerContact}</span>` : ''}</td>
+                <td>${booking.courts}</td>
+                <td>${formatOverviewDate(booking.time_date)}</td>
+                <td class="staff-cell-ref">#${booking.booking_id}</td>
+                <td><span class="staff-status ${booking.status}">${booking.status.charAt(0).toUpperCase() + booking.status.slice(1)}</span></td>
+                <td></td>
+            `;
+            overviewTableBody.appendChild(row);
+        });
+
+        wireFilterableTable('overview');
+    }
+
+    refreshBookingOverview();
+    document.addEventListener('inigosync:profile-ready', refreshBookingOverview);
+
     function handleTimeIn(e) {
         const row = e.target.closest('tr');
         if (!row) return;
@@ -324,15 +382,38 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     if (walkinSubmit) {
-        walkinSubmit.addEventListener('click', () => {
+        walkinSubmit.addEventListener('click', async () => {
             if (!walkinState.name) {
                 if (walkinName) walkinName.focus();
                 return;
             }
-            // TODO: POST /api/walkins once the backend (PHP/MySQL) is ready.
-            // This should create the booking record, the payment record, and
-            // return a receipt number to display/print.
-            console.log('[staff] walk-in booking recorded (placeholder)', walkinState);
+            if (!window.sb || !window.inigosyncProfile) {
+                window.InigoToast?.show('Unable to reach the server right now. Please try again shortly.', true);
+                return;
+            }
+
+            // Note: walk_in_booking has no column for the customer's name/
+            // mobile — those stay UI-only (shown in the recent-walkins list
+            // below for the staff's own reference this shift) until the
+            // table gains one. Payment isn't recorded here either — that
+            // waits for real PayMongo, per this pass's scope.
+            const today = new Date().toISOString().slice(0, 10);
+            walkinSubmit.disabled = true;
+            const { error } = await window.sb.from('walk_in_booking').insert({
+                staff_id: window.inigosyncProfile.id,
+                sports: walkinState.court,
+                courts: walkinState.court,
+                time_date: new Date(`${today}T${walkinState.time}:00`).toISOString(),
+                status: 'pending',
+                payment_id: null,
+            });
+            walkinSubmit.disabled = false;
+
+            if (error) {
+                window.InigoToast?.show(error.message || 'Could not record this walk-in.', true);
+                return;
+            }
+            window.InigoToast?.show('Walk-in recorded.');
 
             if (recentList) {
                 const row = document.createElement('div');
@@ -367,7 +448,11 @@ document.addEventListener('DOMContentLoaded', () => {
     updateWalkinSummary();
 
     // ------------------------------------------------------------------
-    // Court Schedule — sport tab filtering
+    // Court Schedule — sport tab filtering. The grid itself stays on static
+    // demo data this pass: each cell is a fixed time-row x court-column
+    // slot, but there's no per-court-instance identity in the schema (courts
+    // are just a free-text tag on a booking) to map real rows onto it
+    // honestly. Followup once court identity is decided.
     // ------------------------------------------------------------------
     const sportTabs = document.querySelector('[data-staff-sport-tabs]');
     const scheduleCells = document.querySelectorAll('.staff-schedule-cell');
@@ -384,6 +469,61 @@ document.addEventListener('DOMContentLoaded', () => {
                     cell.style.opacity = match ? '1' : '0.25';
                 });
             });
+        });
+    }
+
+    // ------------------------------------------------------------------
+    // Staff Profile — prefill from the real signed-in profile and wire the
+    // Save button to a real update.
+    // ------------------------------------------------------------------
+    function renderStaffProfile(profile) {
+        const initials = (profile.full_name || profile.email || '?')
+            .split(' ').map((p) => p[0]).slice(0, 2).join('').toUpperCase();
+
+        document.querySelectorAll('.staff-avatar').forEach((el) => { el.textContent = initials; });
+        document.querySelectorAll('[data-staff-profile-name]').forEach((el) => { el.textContent = profile.full_name || 'Staff'; });
+
+        const cardInfo = document.querySelector('[data-staff-panel="profile"] .staff-profile-card-info h3');
+        if (cardInfo) cardInfo.textContent = profile.full_name || 'Staff';
+
+        const metaItems = document.querySelectorAll('[data-staff-panel="profile"] .staff-profile-meta-item');
+        if (metaItems[0]) metaItems[0].querySelector('span:last-child').textContent = profile.email || '—';
+        if (metaItems[1]) metaItems[1].querySelector('span:last-child').textContent = profile.contact_num || '—';
+
+        const nameInput = document.querySelector('[data-staff-profile-name-input]');
+        const contactInput = document.querySelector('[data-staff-profile-contact-input]');
+        if (nameInput) nameInput.value = profile.full_name || '';
+        if (contactInput) contactInput.value = profile.contact_num || '';
+    }
+
+    document.addEventListener('inigosync:profile-ready', (e) => renderStaffProfile(e.detail));
+    if (window.inigosyncProfile) renderStaffProfile(window.inigosyncProfile);
+
+    const staffProfileSaveBtn = document.querySelector('[data-staff-profile-save]');
+    if (staffProfileSaveBtn) {
+        staffProfileSaveBtn.addEventListener('click', async () => {
+            if (!window.sb || !window.inigosyncProfile) return;
+            const nameInput = document.querySelector('[data-staff-profile-name-input]');
+            const contactInput = document.querySelector('[data-staff-profile-contact-input]');
+            const full_name = nameInput?.value.trim();
+            const contact_num = contactInput?.value.trim();
+
+            staffProfileSaveBtn.disabled = true;
+            const { error } = await window.sb
+                .from('profiles')
+                .update({ full_name, contact_num })
+                .eq('id', window.inigosyncProfile.id);
+            staffProfileSaveBtn.disabled = false;
+
+            if (error) {
+                window.InigoToast?.show(error.message || 'Could not save your changes.', true);
+                return;
+            }
+
+            window.inigosyncProfile.full_name = full_name;
+            window.inigosyncProfile.contact_num = contact_num;
+            renderStaffProfile(window.inigosyncProfile);
+            window.InigoToast?.show('Profile updated.');
         });
     }
 });

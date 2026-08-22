@@ -5,13 +5,16 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Staff Dashboard | IñigoSync</title>
 
-<!-- Theme guard: set data-theme before stylesheets load to prevent flash -->
+<!-- Theme guard: set data-theme before stylesheets load to prevent flash.
+     Also marks the page auth-pending so Loading.css hides the dashboard
+     shell until authGuard.js confirms the real session + profile. -->
 <script>
 (function() {
     const saved = localStorage.getItem('inigosync-theme');
     const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
     const theme = saved || (prefersDark ? 'dark' : 'light') || 'dark';
     document.documentElement.setAttribute('data-theme', theme);
+    document.documentElement.classList.add('inigo-auth-pending');
 })();
 </script>
 
@@ -19,10 +22,13 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Inter:wght@400;500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="../Style/staff_dashboard.css">
+<link rel="stylesheet" href="../Style/Loading.css">
+<script src="../includes/loadingOverlay.js"></script>
 </head>
 <body class="staff-body" data-required-role="staff">
+<script>window.InigoLoading.show('Loading your dashboard…');</script>
 
-<div class="staff-shell">
+<div class="staff-shell inigo-reveal">
 
     <!-- Mobile scrim -->
     <div class="staff-sidebar-scrim" data-staff-scrim></div>
@@ -124,7 +130,7 @@
                     <button type="button" class="staff-profile-trigger" data-staff-profile-trigger>
                         <div class="staff-avatar">RD</div>
                         <div class="staff-profile-name">
-                            <strong>Rosalinda Driz</strong>
+                            <strong data-staff-profile-name>Rosalinda Driz</strong>
                             <span>Staff</span>
                         </div>
                         <svg class="staff-caret" viewBox="0 0 24 24" fill="none"><path d="M6 9l6 6 6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
@@ -193,9 +199,10 @@
                             </div>
                             <div class="staff-filter-row" data-staff-filter-group="overview">
                                 <button type="button" class="staff-chip is-active" data-staff-chip data-staff-filter="all">All</button>
-                                <button type="button" class="staff-chip" data-staff-chip data-staff-filter="upcoming">Upcoming</button>
-                                <button type="button" class="staff-chip" data-staff-chip data-staff-filter="inplay">In play</button>
-                                <button type="button" class="staff-chip" data-staff-chip data-staff-filter="done">Done</button>
+                                <button type="button" class="staff-chip" data-staff-chip data-staff-filter="pending">Pending</button>
+                                <button type="button" class="staff-chip" data-staff-chip data-staff-filter="confirmed">Confirmed</button>
+                                <button type="button" class="staff-chip" data-staff-chip data-staff-filter="completed">Completed</button>
+                                <button type="button" class="staff-chip" data-staff-chip data-staff-filter="cancelled">Cancelled</button>
                             </div>
                         </div>
                     </div>
@@ -656,6 +663,23 @@
 
                     <div class="staff-form-actions" style="margin-top: 28px;">
                         <button type="button" class="staff-btn-ghost" data-staff-logout>Log Out</button>
+                    </div>
+                </div>
+
+                <div class="staff-card">
+                    <div class="staff-card-head"><h3>Personal Information</h3></div>
+                    <div class="staff-form-row">
+                        <div class="staff-form-group">
+                            <span class="staff-form-label">Full name</span>
+                            <input type="text" class="staff-input" data-staff-profile-name-input>
+                        </div>
+                        <div class="staff-form-group">
+                            <span class="staff-form-label">Contact number</span>
+                            <input type="tel" class="staff-input" data-staff-profile-contact-input>
+                        </div>
+                    </div>
+                    <div class="staff-form-actions">
+                        <button type="button" class="staff-btn-primary" data-staff-profile-save>Save Changes</button>
                     </div>
                 </div>
             </section>

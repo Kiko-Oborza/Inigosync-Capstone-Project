@@ -70,9 +70,22 @@ document.addEventListener('DOMContentLoaded', () => {
     // rather than shown, since landing here isn't something the visitor
     // actively did — e.g. a stale non-customer session shouldn't surface a
     // toast on an otherwise ordinary page load.
+    //
+    // The loading overlay should only appear for a genuine "just came back
+    // from Google" trip — not for an ordinary revisit where a session
+    // happens to already exist (e.g. the landing page is still open in a
+    // tab) — otherwise every plain page load with a lingering session would
+    // flash a full-page blur for no reason the visitor asked for.
+    const isOauthReturn = sessionStorage.getItem('inigosync-oauth-pending') === '1';
+    sessionStorage.removeItem('inigosync-oauth-pending');
+
     if (window.sb) {
         window.sb.auth.getSession().then(({ data: { session } }) => {
-            if (session) completeLogin(['customer']).catch(() => {});
+            if (!session) return;
+            if (isOauthReturn && window.InigoLoading) window.InigoLoading.show('Signing you in…');
+            completeLogin(['customer']).catch(() => {
+                if (window.InigoLoading) window.InigoLoading.hide();
+            });
         });
     }
 
@@ -234,6 +247,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
             try {
                 if (mode === 'login') {
+                    if (window.InigoLoading) window.InigoLoading.show('Signing you in…');
                     const { error } = await window.sb.auth.signInWithPassword({
                         email: data.email,
                         password: data.password
@@ -268,6 +282,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     if (signUpData.session) {
                         // Email confirmation is turned off for this project —
                         // signUp already returned a live session.
+                        if (window.InigoLoading) window.InigoLoading.show('Setting up your dashboard…');
                         closeModal();
                         const redirectUrl = new URL('user_dashboard.html', window.location.href);
                         window.location.assign(redirectUrl.toString());
@@ -289,6 +304,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         return;
                     }
 
+                    if (window.InigoLoading) window.InigoLoading.show('Verifying…');
                     const { error } = await window.sb.auth.verifyOtp({
                         email: pendingSignupEmail,
                         token: code,
@@ -308,6 +324,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
 
                 if (mode === 'admin') {
+                    if (window.InigoLoading) window.InigoLoading.show('Signing you in…');
                     const { error } = await window.sb.auth.signInWithPassword({
                         email: data['admin-email'],
                         password: data['admin-password']
@@ -317,6 +334,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     return;
                 }
             } catch (err) {
+                if (window.InigoLoading) window.InigoLoading.hide();
                 setAuthNotice(friendlyAuthError(err), true);
             } finally {
                 setBusy(false);
@@ -495,6 +513,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
             button.disabled = true;
             button.classList.add('is-loading');
+            if (window.InigoLoading) window.InigoLoading.show('Redirecting to Google…');
+            sessionStorage.setItem('inigosync-oauth-pending', '1');
 
             const { error } = await window.sb.auth.signInWithOAuth({
                 provider: 'google',
@@ -502,6 +522,8 @@ document.addEventListener('DOMContentLoaded', () => {
             });
 
             if (error) {
+                sessionStorage.removeItem('inigosync-oauth-pending');
+                if (window.InigoLoading) window.InigoLoading.hide();
                 setAuthNotice(friendlyAuthError(error), true);
                 button.disabled = false;
                 button.classList.remove('is-loading');

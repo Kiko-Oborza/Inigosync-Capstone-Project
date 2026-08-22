@@ -1,0 +1,151 @@
+/* ==========================================================================
+   IñigoSync — Real loading overlay (auth + dashboard session checks)
+   Uses the same design tokens defined in LandingPage.css :root, and follows
+   the same overlay/[data-open]/[hidden] pattern as Auth.css's .auth-overlay.
+   ========================================================================== */
+
+.inigo-loading-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 200;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(10, 8, 6, 0.82);
+    backdrop-filter: blur(6px);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.3s ease;
+}
+
+.inigo-loading-overlay[data-open] {
+    opacity: 1;
+    pointer-events: auto;
+}
+
+.inigo-loading-overlay[hidden] {
+    display: flex;
+    opacity: 0;
+    pointer-events: none;
+}
+
+.inigo-loading-card {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 18px;
+    transform: translateY(8px);
+    opacity: 0;
+    transition: transform 0.35s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.3s ease;
+}
+
+.inigo-loading-overlay[data-open] .inigo-loading-card {
+    transform: translateY(0);
+    opacity: 1;
+}
+
+.inigo-loading-ring {
+    position: relative;
+    width: 76px;
+    height: 76px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.inigo-loading-ring::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: 50%;
+    border: 3px solid rgba(244, 239, 230, 0.16);
+    border-top-color: var(--color-primary);
+    animation: inigo-spin 0.9s linear infinite;
+}
+
+.inigo-loading-logo {
+    width: 40px;
+    height: 40px;
+    object-fit: contain;
+    border-radius: 50%;
+}
+
+.inigo-loading-text {
+    margin: 0;
+    font-family: var(--font-body);
+    font-size: 0.95rem;
+    font-weight: 500;
+    color: #f4efe6;
+    letter-spacing: 0.01em;
+}
+
+@keyframes inigo-spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+/* ==========================================================================
+   Shared toast — real success/error feedback for dashboard actions (booking
+   submit, profile save, etc). Same fixed-pill pattern as Auth.css's
+   .auth-status, factored out here so every dashboard can share one class.
+   ========================================================================== */
+
+.inigo-toast {
+    position: fixed;
+    top: 28px;
+    left: 50%;
+    z-index: 210;
+    max-width: min(420px, calc(100vw - 32px));
+    margin: 0;
+    padding: 12px 22px;
+    border-radius: 999px;
+    background: var(--color-bg-elevated);
+    border: 1px solid var(--color-line);
+    color: var(--color-ink);
+    font-family: var(--font-body);
+    font-size: 0.88rem;
+    font-weight: 600;
+    text-align: center;
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.4);
+    opacity: 0;
+    pointer-events: none;
+    transform: translate(-50%, -12px);
+    transition: opacity 0.25s ease, transform 0.25s ease;
+}
+
+.inigo-toast.is-visible {
+    opacity: 1;
+    transform: translate(-50%, 0);
+}
+
+.inigo-toast.is-error {
+    border-color: var(--color-alert);
+    color: var(--color-alert);
+}
+
+/* ==========================================================================
+   Dashboard reveal — content stays hidden behind the overlay until the real
+   session + profile check (authGuard.js) resolves, then fades/rises in.
+   The `inigo-auth-pending` class is set synchronously in <head> (before
+   paint) and removed by authGuard.js once the real data is ready.
+
+   Scoped to the explicit `.inigo-reveal` class (put on each dashboard's
+   shell wrapper) rather than a blanket `body > *` selector — a blanket
+   selector would also match unrelated fixed-position elements on other
+   pages (e.g. the login modal's overlay on the landing page) and force
+   their opacity open regardless of their own hidden/closed state.
+   ========================================================================== */
+
+html.inigo-auth-pending .inigo-reveal {
+    opacity: 0;
+}
+
+.inigo-reveal {
+    transition: opacity 0.45s ease, transform 0.45s ease;
+}
+
+html:not(.inigo-auth-pending) .inigo-reveal {
+    opacity: 1;
+    transform: translateY(0);
+}
