@@ -806,7 +806,7 @@
                         </div>
                     </div>
                     <div class="admin-form-actions">
-                        <button type="button" class="admin-btn-ghost">Cancel</button>
+                        <button type="button" class="admin-btn-ghost" data-admin-settings-cancel="profile">Cancel</button>
                         <button type="button" class="admin-btn-save" data-admin-settings-save="profile">Save Changes</button>
                     </div>
                 </div>
@@ -843,7 +843,7 @@
                         </div>
                     </div>
                     <div class="admin-form-actions">
-                        <button type="button" class="admin-btn-ghost">Cancel</button>
+                        <button type="button" class="admin-btn-ghost" data-admin-settings-cancel="password">Cancel</button>
                         <button type="button" class="admin-btn-save" data-admin-settings-save="password">Update Password</button>
                     </div>
                 </div>
@@ -858,6 +858,10 @@
 <script src="../Config/supabaseClient.js"></script>
 <script src="../includes/authGuard.js"></script>
 <script src="../includes/theme.js"></script>
+
+<!-- Shared HTML-escaping helper — must load before owner_dashboard.js,
+     which uses window.escapeHtml on every staff/court name it renders. -->
+<script src="../includes/escape.js"></script>
 
 <!-- Script for owner dashboard functionality -->
 <script src="../includes/owner_dashboard.js"></script>

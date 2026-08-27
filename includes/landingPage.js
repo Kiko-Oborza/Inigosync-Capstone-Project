@@ -27,19 +27,12 @@
 // database/schema/002_content_tables.sql). A court named
 // `<img onerror=alert(1)>` must render as literal text, not run — so every
 // interpolated value that reaches innerHTML goes through this first.
-function escapeHtml(value) {
-    if (value === null || value === undefined) return '';
-    return String(value).replace(/[&<>"']/g, (ch) => {
-        switch (ch) {
-            case '&': return '&amp;';
-            case '<': return '&lt;';
-            case '>': return '&gt;';
-            case '"': return '&quot;';
-            case "'": return '&#39;';
-            default: return ch;
-        }
-    });
-}
+//
+// The implementation now lives in the shared includes/escape.js (loaded
+// before this file — see the <script> order in Pages/Index.html) so the
+// dashboard controllers can reuse the exact same function instead of a
+// second copy that could drift. This is just a local alias for brevity.
+const escapeHtml = window.escapeHtml;
 
 // ============================================================================
 // Image slots — no photos exist in the DB yet. `image_url` is nullable on

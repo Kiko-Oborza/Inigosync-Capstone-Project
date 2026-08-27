@@ -1065,6 +1065,15 @@ body.dash-body {
     border-color: var(--color-primary);
 }
 
+/* Account Settings' Email field is disabled (it cannot be changed from
+   this UI — see includes/Dashboard.js) — make that visibly obvious rather
+   than relying on default browser styling alone. */
+.dash-input:disabled {
+    color: var(--color-ink-faint);
+    background: var(--color-bg);
+    cursor: not-allowed;
+}
+
 .dash-slot-grid {
     display: grid;
     grid-template-columns: repeat(4, 1fr);

@@ -462,16 +462,25 @@ document.addEventListener('DOMContentLoaded', () => {
             const rate = courtRates[booking.courts];
             const amount = rate ? `₱${rate.toFixed(2)}` : '—';
             const row = document.createElement('tr');
+            // courts/status are DB content (courts is free text on the
+            // booking row; status could in principle be a raw value if RLS
+            // were ever bypassed) — escaped before touching innerHTML so
+            // this renders as literal text in the customer's own session
+            // instead of running, same as the staff/admin tables.
+            const statusRaw = booking.status || '';
+            const courtLabel = window.escapeHtml(booking.courts || '');
+            const statusClass = window.escapeHtml(statusRaw);
+            const statusLabel = window.escapeHtml(statusRaw.charAt(0).toUpperCase() + statusRaw.slice(1));
             row.innerHTML = `
-                <td class="dash-cell-main">${booking.courts}</td>
+                <td class="dash-cell-main">${courtLabel}</td>
                 <td>${formatBookingDate(booking.time_date)}</td>
                 <td>${formatBookingTime(booking.time_date)}</td>
                 <td>${amount}</td>
-                <td><span class="dash-status ${booking.status}">${booking.status.charAt(0).toUpperCase() + booking.status.slice(1)}</span></td>
+                <td><span class="dash-status ${statusClass}">${statusLabel}</span></td>
                 <td>
                     <div class="dash-table-actions">
                         ${['pending', 'confirmed'].includes(booking.status)
-                            ? `<button type="button" class="dash-mini-btn is-danger" data-dash-cancel-booking="${booking.booking_id}">Cancel</button>`
+                            ? `<button type="button" class="dash-mini-btn is-danger" data-dash-cancel-booking="${window.escapeHtml(booking.booking_id)}">Cancel</button>`
                             : ''}
                     </div>
                 </td>
@@ -565,7 +574,17 @@ document.addEventListener('DOMContentLoaded', () => {
             const settingsPanel = document.querySelector('[data-dash-panel="settings"]');
             const inputs = settingsPanel.querySelectorAll('.dash-settings-grid .dash-input');
             const full_name = inputs[0]?.value.trim();
-            const contact_num = inputs[2]?.value.trim();
+
+            // PH mobile validation (spec: Account Settings must validate
+            // updates to the registered mobile number). Normalized to the
+            // local 09XXXXXXXXX form regardless of which accepted format
+            // was typed, so contact_num is always stored one consistent way.
+            const mobileCheck = window.validatePhMobile(inputs[2]?.value || '');
+            if (!mobileCheck.valid) {
+                window.InigoToast?.show(mobileCheck.message, true);
+                return;
+            }
+            const contact_num = mobileCheck.normalized;
 
             profileSaveBtn.disabled = true;
             const { error } = await window.sb
@@ -589,12 +608,17 @@ document.addEventListener('DOMContentLoaded', () => {
     const passwordSaveBtn = document.querySelector('[data-dash-settings-save="password"]');
     if (passwordSaveBtn) {
         passwordSaveBtn.addEventListener('click', async () => {
-            if (!window.sb) return;
+            if (!window.sb || !window.inigosyncProfile) return;
             const settingsPanel = document.querySelector('[data-dash-panel="settings"]');
             const passwordInputs = settingsPanel.querySelectorAll('.dash-form-group input[type="password"]');
+            const currentPassword = passwordInputs[0]?.value;
             const newPassword = passwordInputs[1]?.value;
             const confirmPassword = passwordInputs[2]?.value;
 
+            if (!currentPassword) {
+                window.InigoToast?.show('Enter your current password.', true);
+                return;
+            }
             if (!newPassword) {
                 window.InigoToast?.show('Enter a new password.', true);
                 return;
@@ -605,6 +629,24 @@ document.addEventListener('DOMContentLoaded', () => {
             }
 
             passwordSaveBtn.disabled = true;
+
+            // "Current password" used to be collected and never checked —
+            // any hijacked or left-open session could silently take over
+            // the account via updateUser(). Re-authenticating with it first
+            // (Supabase has no separate "verify password" call) confirms
+            // the person at the keyboard actually knows it before the
+            // password is changed.
+            const { error: verifyError } = await window.sb.auth.signInWithPassword({
+                email: window.inigosyncProfile.email,
+                password: currentPassword,
+            });
+
+            if (verifyError) {
+                passwordSaveBtn.disabled = false;
+                window.InigoToast?.show('Current password is incorrect.', true);
+                return;
+            }
+
             const { error } = await window.sb.auth.updateUser({ password: newPassword });
             passwordSaveBtn.disabled = false;
 
@@ -617,4 +659,23 @@ document.addEventListener('DOMContentLoaded', () => {
             window.InigoToast?.show('Password updated.');
         });
     }
+
+    // ------------------------------------------------------------------
+    // Account Settings — Cancel buttons (previously unwired: clicking them
+    // did nothing). Discards in-progress edits back to the last-saved
+    // values instead of leaving a button that has no effect.
+    // ------------------------------------------------------------------
+    document.querySelectorAll('[data-dash-settings-cancel]').forEach((btn) => {
+        btn.addEventListener('click', () => {
+            const mode = btn.dataset.dashSettingsCancel;
+            if (mode === 'profile') {
+                if (window.inigosyncProfile) renderProfile(window.inigosyncProfile);
+            } else if (mode === 'password') {
+                const settingsPanel = document.querySelector('[data-dash-panel="settings"]');
+                settingsPanel?.querySelectorAll('.dash-form-group input[type="password"]').forEach((input) => {
+                    input.value = '';
+                });
+            }
+        });
+    });
 });

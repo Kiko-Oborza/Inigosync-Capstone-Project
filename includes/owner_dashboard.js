@@ -220,10 +220,18 @@ document.addEventListener('DOMContentLoaded', () => {
     function renderStaffRow(profile) {
         const row = document.createElement('tr');
         row.dataset.id = profile.id;
+        // full_name/email/position are set by whoever filled in the staff
+        // invite/edit form (and, before Phase 2, an admin — but this same
+        // rendering path is what a promoted/self-edited account would also
+        // flow through), so they're escaped before touching innerHTML — a
+        // name like `<img src=x onerror=alert(1)>` must render as literal
+        // text in this admin session, not run. staffStatusBadge() only
+        // returns markup built from a fixed internal map, not profile data,
+        // so it's safe as-is.
         row.innerHTML = `
-            <td class="admin-cell-main" data-admin-staff-name-cell>${profile.full_name || '—'}</td>
-            <td data-admin-staff-email-cell>${profile.email || '—'}</td>
-            <td data-admin-staff-position-cell>${profile.position || '—'}</td>
+            <td class="admin-cell-main" data-admin-staff-name-cell>${window.escapeHtml(profile.full_name) || '—'}</td>
+            <td data-admin-staff-email-cell>${window.escapeHtml(profile.email) || '—'}</td>
+            <td data-admin-staff-position-cell>${window.escapeHtml(profile.position) || '—'}</td>
             <td data-admin-staff-status-cell>${staffStatusBadge(profile.status)}</td>
             <td>
                 <div class="admin-table-actions">
@@ -288,8 +296,15 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (btn.dataset.editing !== 'true') {
                     const currentName = nameCell.textContent.trim();
                     const currentPosition = positionCell.textContent.trim() === '—' ? '' : positionCell.textContent.trim();
-                    nameCell.innerHTML = `<input type="text" class="admin-input" value="${currentName}">`;
-                    positionCell.innerHTML = `<input type="text" class="admin-input" value="${currentPosition}">`;
+                    // Build the <input> with no value attribute, then set
+                    // .value as a DOM property instead of concatenating the
+                    // name/position into the markup string — a `"` in
+                    // currentName would otherwise close the attribute early
+                    // and let the rest of the name inject new markup.
+                    nameCell.innerHTML = '<input type="text" class="admin-input">';
+                    positionCell.innerHTML = '<input type="text" class="admin-input">';
+                    nameCell.querySelector('input').value = currentName;
+                    positionCell.querySelector('input').value = currentPosition;
                     btn.textContent = 'Save';
                     btn.dataset.editing = 'true';
                     return;
@@ -430,9 +445,9 @@ document.addEventListener('DOMContentLoaded', () => {
                         <span class="admin-status active">Active</span>
                     </div>
                     <div class="admin-court-body">
-                        <h3>${name}</h3>
-                        <p class="admin-court-rate">₱${rate} <span>/ ${unitSelect ? unitSelect.value : 'hour'}</span></p>
-                        <div class="admin-court-tags"><span>${sportSelect ? sportSelect.value : ''}</span></div>
+                        <h3>${window.escapeHtml(name)}</h3>
+                        <p class="admin-court-rate">₱${window.escapeHtml(rate)} <span>/ ${window.escapeHtml(unitSelect ? unitSelect.value : 'hour')}</span></p>
+                        <div class="admin-court-tags"><span>${window.escapeHtml(sportSelect ? sportSelect.value : '')}</span></div>
                         <div class="admin-court-actions">
                             <button type="button" class="admin-btn-secondary" data-admin-court-edit>Edit</button>
                             <button type="button" class="admin-btn-secondary" data-admin-court-toggle-status>Deactivate</button>
@@ -547,12 +562,17 @@ document.addEventListener('DOMContentLoaded', () => {
     const adminPasswordSaveBtn = document.querySelector('[data-admin-settings-save="password"]');
     if (adminPasswordSaveBtn) {
         adminPasswordSaveBtn.addEventListener('click', async () => {
-            if (!window.sb) return;
+            if (!window.sb || !window.inigosyncProfile) return;
             const settingsPanel = document.querySelector('[data-admin-panel="settings"]');
             const passwordInputs = settingsPanel.querySelectorAll('.admin-form-group input[type="password"]');
+            const currentPassword = passwordInputs[0]?.value;
             const newPassword = passwordInputs[1]?.value;
             const confirmPassword = passwordInputs[2]?.value;
 
+            if (!currentPassword) {
+                window.InigoToast?.show('Enter your current password.', true);
+                return;
+            }
             if (!newPassword) {
                 window.InigoToast?.show('Enter a new password.', true);
                 return;
@@ -563,6 +583,24 @@ document.addEventListener('DOMContentLoaded', () => {
             }
 
             adminPasswordSaveBtn.disabled = true;
+
+            // "Current password" used to be collected and never checked —
+            // any hijacked or left-open owner/staff session could silently
+            // take over the account via updateUser(). Re-authenticating
+            // with it first (Supabase has no separate "verify password"
+            // call) confirms the person at the keyboard actually knows it
+            // before the password is changed.
+            const { error: verifyError } = await window.sb.auth.signInWithPassword({
+                email: window.inigosyncProfile.email,
+                password: currentPassword,
+            });
+
+            if (verifyError) {
+                adminPasswordSaveBtn.disabled = false;
+                window.InigoToast?.show('Current password is incorrect.', true);
+                return;
+            }
+
             const { error } = await window.sb.auth.updateUser({ password: newPassword });
             adminPasswordSaveBtn.disabled = false;
 
@@ -575,6 +613,25 @@ document.addEventListener('DOMContentLoaded', () => {
             window.InigoToast?.show('Password updated.');
         });
     }
+
+    // ------------------------------------------------------------------
+    // Account Settings — Cancel buttons (previously unwired: clicking them
+    // did nothing). Discards in-progress edits back to the last-saved
+    // values instead of leaving a button that has no effect.
+    // ------------------------------------------------------------------
+    document.querySelectorAll('[data-admin-settings-cancel]').forEach((btn) => {
+        btn.addEventListener('click', () => {
+            const mode = btn.dataset.adminSettingsCancel;
+            if (mode === 'profile') {
+                if (window.inigosyncProfile) renderAdminProfile(window.inigosyncProfile);
+            } else if (mode === 'password') {
+                const settingsPanel = document.querySelector('[data-admin-panel="settings"]');
+                settingsPanel?.querySelectorAll('.admin-form-group input[type="password"]').forEach((input) => {
+                    input.value = '';
+                });
+            }
+        });
+    });
 
     // ------------------------------------------------------------------
     // Media Manager — home featured slideshow (replace/remove/add) and

@@ -1,222 +1,166 @@
-# IñigoSync — Landing Page Rework + Backend Seed Users + Bug Fixes
+# IñigoSync — QA Remediation Plan
+
+> Supersedes the previous landing-page plan, which is complete and archived in
+> git history. Driven by `docs/QA_AUDIT_REPORT.md` (2026-08-27).
 
 ## Goal
-Redesign the landing page into a minimalist page that shows courts, featured events,
-about-Iñigos, and 3 rotating Google reviews; back it with real Supabase tables
-(courts, events, reviews); and seed one working account for each role
-(customer, staff, admin) — plus fix the bugs found along the way.
+
+Close the gap between what the thesis paper promises
+(`docs/SPEC_scope_and_limitations.md`) and what the system actually does — in
+priority order, so that at every stopping point the project is more defensible
+than it was before.
 
 ## Context and current state
 
-**Stack (confirmed by inspection)**
-- Frontend: plain HTML/CSS/JS, no build step. Served by `python -m http.server 8532`
-  (`.claude/launch.json`). Entry page is `Pages/Index.html`.
-- Backend: Supabase project `xrlwtnwamboucihsamrr`. Client is created in
-  `Config/supabaseClient.js` as `window.sb` using the publishable (anon) key.
-- Auth: real Supabase Auth is already wired in `includes/auth.js`
-  (password login, signup, OTP verify, admin login, Google OAuth).
-  `includes/authGuard.js` guards the 3 dashboards via `body[data-required-role]`.
+8 of 31 scope requirements are implemented, 12 partial, 11 missing. One of the
+four stated Objectives (Payment Automation) has no code at all. The landing page
+and auth layer are genuinely wired to Supabase; almost everything behind the
+login is presentation over hardcoded arrays.
 
-**Database — actual state (probed via PostgREST)**
-| Table | Exists | Rows |
-|---|---|---|
-| `profiles` | yes | 0 |
-| `booking` | yes | 0 |
-| `payment` | yes | 0 |
-| `walk_in_booking` | yes | 0 |
-| `courts` / `sports` / `events` / `reviews` | **no** | — |
-
-So: the schema is half-built and the database is completely empty. There are
-zero users, which is why nothing can be tested end to end today.
-
-**Landing page today**
-- Hero carousel, "this week" strip, About, Courts grid, CTA footer, auth modal.
-- Courts grid renders from a hardcoded array in `includes/courts-data.js`.
-- Hero slides are hardcoded `<img>`/`<div>` pairs in `Index.html`.
-- No reviews section at all.
-
-**Bugs / defects found during inspection**
-1. `includes/courts-data.js` points every court at `../assets/courts/<name>.jpg`.
-   That directory does not exist — every one of those paths is a 404. The landing
-   page happens not to render images, so it's invisible today, but it is dead data.
-2. Court data, hero events and the "This week" strip are three separate hardcoded
-   sources that can drift out of sync (Bowling is 8+12 lanes in one, "8 lanes" in another).
-3. `includes/Dashboard.js:358` inserts a booking with `sports` and `courts` set to
-   the *same* value (`bookingState.court`). One of the two is wrong.
-4. `includes/landingPage.js` injects `c.name` / `c.note` into `innerHTML` without
-   escaping. Harmless with a static array, an XSS hole the moment this data comes
-   from the database. Must be fixed as part of moving courts to Supabase.
-5. `includes/landingPage.js` `return`s early inside `DOMContentLoaded` when
-   reduced-motion is on — which silently skips *all* the nav scroll-spy and mobile
-   menu wiring below it. Reduced-motion users get a broken navbar.
-6. Nav "Events" link points at `#whats-on`, which is the thin week strip, not an
-   events section. There is no real featured-events section to link to.
+Live-verified: RLS is enforced on content tables; Google OAuth is enabled; the
+`notification` and `audit_log` tables do not exist; the `.test` demo accounts do
+not exist (the real-email variant was applied instead).
 
 ## Approach and architectural decisions
 
-**D1 — Move courts and events into Supabase; keep the static array as fallback.**
-Create `sport`, `court`, and `event` tables (singular, matching the existing
-`booking`/`payment` naming). The landing page reads from them; if the fetch fails
-or returns empty, it falls back to `COURTS_INVENTORY` so the page never renders blank.
+**D1 — Fix truthfulness before features.** Any UI text claiming a capability the
+system lacks gets removed or corrected first. A panelist reading "already paid
+through PayMongo" on a system with no payment code is a worse outcome than a
+missing feature honestly labelled. Cheap, and it de-risks the demo immediately.
 
-**D2 — Images are "slots", not `<img>` — for COURTS. The hero keeps its photos.**
-No court images exist yet, so each court card renders a placeholder slot
-(aspect-ratio box, 2-letter sport monogram, subtle pattern) driven by a nullable
-`image_url`. Null → slot; set → the same component swaps in a real `<img>`. No
-rework needed when photos arrive.
+**D2 — One source of truth for courts: the `court` table.** The customer
+dashboard and admin Court Listings currently hardcode two different court lists
+that both contradict the landing page. Both get rewired to read `court`/`sport`
+from Supabase, reusing the fetch-with-static-fallback pattern already proven in
+`includes/landingPage.js`. Admin Court Listings becomes real CRUD against that
+same table, so an admin edit is visible on the landing page on next load.
 
-**Correction made during execution:** the first implementation extended slot
-treatment to the hero too, hardcoding `imageUrl: null` in the events fallback. That
-orphaned all 7 real photos in `database/web/` and replaced the full-bleed
-photographic hero with a gradient + "BB" monogram. Slots were only ever meant for
-courts, where images genuinely don't exist. Fixed: the 5 fallback events now point
-at the real local photos, and `database/seed/002_seed_content.sql` sets the same
-paths on `image_url` so the DB path matches once the SQL is run.
+**D3 — Reuse `escapeHtml`, do not reinvent it.** The helper in
+`includes/landingPage.js:30` is correct and already handles all five characters.
+It moves to a shared file and gets applied to every `innerHTML` interpolation in
+the three dashboard controllers. No templating library, no framework.
 
-**D3 — Reviews: labeled testimonials in Supabase. A live Google feed is not viable.**
+**D4 — Anything time-triggered must be server-side.** Automatic cancellation
+(30-min grace) and the 5h→0h booking reminder cannot run in browser JS — that
+only executes while somebody has the tab open, and the spec requires them to
+fire regardless. These need `pg_cron` + a Postgres function, or a scheduled Edge
+Function. Because there is no service_role key in this environment, these ship as
+**SQL files the owner applies manually**, not as code the Coder can deploy.
 
-Researched and ruled out. Two independent blockers:
+**D5 — Double-booking prevention belongs in the database, not the client.** A
+client-side conflict check loses to two simultaneous requests. The fix is a
+Postgres exclusion constraint (`btree_gist` over court + time range), which makes
+the guarantee unbreakable regardless of what the frontend does. Client-side
+checking is added on top only for a friendly error message.
 
-1. **Card required.** Places API reviews need a billing-enabled Cloud project, which
-   needs a real payment method. Google's one card-free option — the Maps Demo Key —
-   names this exact case as excluded: *"User-generated content, such as user-submitted
-   photos and reviews, is not available through the Maps Demo Key."*
-2. **Storing reviews is a ToS violation anyway.** Places API content may not be
-   cached or stored. The only exceptions are lat/long (30 days) and `place_id`
-   (indefinite). Review text, author, and rating have **no** exception — so the
-   original "seed reviews into a `google_review` table" idea was non-compliant
-   regardless of whether a key was ever obtained.
+**D6 — Session Expiration is frontend; Single Session needs the database.**
+Idle auto-logout is a plain activity-listener + timer, done entirely in
+`includes/authGuard.js`. Single Session requires knowing that a *newer* session
+exists elsewhere, which means a server-side record — an `active_session` table
+with the current session ID per user, checked on focus/interval.
 
-Also worth knowing: the API caps at **5 reviews per place**, no pagination, and
-relevance-sort only (the `newest` sort exists only on the Legacy endpoint, which
-cannot be enabled on any project created after March 1, 2025).
+**D7 — Payment and email are gated on owner-supplied accounts.** PayMongo needs
+a merchant account and a secret key that must live in an Edge Function, never in
+the repo. Gmail delivery needs a mail provider and verified domain. Both are
+blocked on the owner; the plan builds everything up to the integration boundary
+and stops there.
 
-**Chosen approach:** a `testimonial` table in Supabase — `author_name`, `rating`,
-`quote`, `source_label`, `captured_on`, `display_order`, `is_published`. The landing
-page picks 3 at random per load. The section is labeled honestly as testimonials
-("What people say about Iñigos"), **not** presented as a live Google Reviews feed.
-Zero cost, no card, no ToS exposure, fully styleable to match the design, and it
-still works with no internet during a thesis defense.
+**D8 — UI changes stay within the existing design language.** Oswald/Inter,
+dark-first theming, pill navbar. Changes are made where the audit found real
+defects (frozen stat tiles, dead buttons, false claims), not as a rebrand.
 
-Note for the owner: review text is copyrighted by its author, not by Google. Get
-Ms. Driz's sign-off on the quotes used, and prefer testimonials given directly to
-the business over verbatim copies of strangers' Google posts.
+## Phases
 
-**D4 — Seed users via a SQL script the owner runs, not from code.**
-Creating an `auth.users` row with a chosen role requires the `service_role` key,
-which must never live in this repo. Instead the Coder produces
-`database/seed/001_seed_users.sql` to be pasted into the Supabase SQL editor.
-It creates one confirmed account per role and the matching `profiles` row.
-Credentials are demo-grade and documented in `database/seed/README.md`.
+Phase 1 is unambiguous and has no trade-offs. Phases 2+ need owner decisions.
 
-**D5 — Minimalist redesign, restrained scope.**
-Keep the existing design language (Oswald/Inter, dark-first theming, pill navbar) —
-this is a cleanup, not a rebrand. Sections in order:
-Hero → Featured Events → Courts & Facilities → About → Reviews → CTA → Footer.
-The "This week" strip is absorbed into the Featured Events section so there is one
-source of truth for what's on, and the nav "Events" link finally points somewhere real.
+### Phase 1 — Security and truthfulness *(no owner input needed)*
 
-**D6 — Resend and PayMongo are out of scope for this pass.** See Non-goals.
-
-## Files to change
-
-| File | Intent |
+| Item | Files |
 |---|---|
-| `database/schema/002_content_tables.sql` | **new** — `sport`, `court`, `event`, `testimonial` tables + RLS (public read, staff/admin write) |
-| `database/seed/001_seed_users.sql` | **new** — one confirmed auth user + profile per role |
-| `database/seed/002_seed_content.sql` | **new** — 9 sports/courts, sample events, placeholder testimonials |
-| `database/seed/README.md` | **new** — how to run the SQL, and the 3 demo logins |
-| `Pages/Index.html` | Restructure sections; add Featured Events + Reviews; retire the week strip; fix nav anchors |
-| `Style/LandingPage.css` | Styles for events grid, review cards, image slots; tighten spacing for the minimalist pass |
-| `includes/landingPage.js` | Render courts/events/reviews from Supabase with static fallback; **escape all interpolated text**; fix the reduced-motion early-return |
-| `includes/courts-data.js` | Keep as fallback only; drop the dead `../assets/courts/*` paths |
-| `includes/home-showcase.js` | Drive hero slides from fetched events instead of hardcoded markup |
-| `includes/Dashboard.js` | Fix the `sports`/`courts` duplicate-value insert bug |
+| Extract `escapeHtml` to a shared helper; apply to every dashboard `innerHTML` | `includes/` (new shared file), `staff_dashboard.js`, `owner_dashboard.js`, `Dashboard.js`, `landingPage.js` |
+| Fix attribute injection in the staff-edit modal | `owner_dashboard.js:291` |
+| Verify "Current password" via re-authentication before `updateUser` | `Dashboard.js:589`, `owner_dashboard.js:547` |
+| Remove the false PayMongo claim and any other unbacked UI copy | `Pages/staff_dashboard.html:102` |
+| PH mobile-number validation on signup and settings | `Pages/Index.html:328`, `Dashboard.js:567` |
+| Make the Email settings field read-only (it is silently discarded today) | `Dashboard.js`, `Pages/user_dashboard.html` |
+| Write the Terms & Conditions page covering all 5 mandated topics; wire the checkbox link | new `Pages/terms.html`, `Pages/Index.html:341` |
+| Fix dead links: "Forgot password?", Details/View/Download | `Pages/Index.html:300`, `Dashboard.js` |
+
+### Phase 2 — One source of truth for courts
+
+Rewire the customer dashboard's Court Information and Booking Management option
+lists to read `court`/`sport` from Supabase. Convert admin Court Listings from
+`console.log` placeholders into real CRUD. Render hourly rate on landing cards
+and add a `rating` column so Facilities & Pricing matches the spec.
+
+### Phase 3 — Make the staff module operable
+
+Render Confirm / Time-In / Time-Out actions on *real* booking rows. Persist
+walk-in customer name and mobile. Add the `audit_log` table and write to it on
+every booking state change, then render Transaction Records from it. Drive the
+Court Schedule grid from real bookings.
+
+### Phase 4 — Booking integrity and lifecycle *(SQL, owner-applied)*
+
+Exclusion constraint against double booking. `pg_cron` job for the 30-minute
+grace-period auto-cancel that reopens the slot. `notification` table plus the
+5h→0h reminder job. RLS hardening on `profiles.role` if introspection shows it
+is writable.
+
+### Phase 5 — Payment *(blocked on owner)*
+
+PayMongo Edge Function, real receipt/invoice generation, and the live loading
+phase on payment matching the login overlay.
+
+### Phase 6 — Session security
+
+Idle session expiration. `active_session` table and single-session enforcement.
+Login OTP, if confirmed as wanted on every login.
 
 ## Constraints and non-goals
 
-**Constraints**
-- No build step, no framework, no npm. Plain HTML/CSS/JS only. (Node is not even
-  installed on this machine.)
-- Never commit a `service_role` key or any secret. `Config/supabaseClient.js` keeps
-  only the publishable key.
-- All new tables get RLS enabled: public `SELECT`, writes restricted to staff/admin.
-- Landing page must still render fully with the database unreachable (fallback path).
-- Do not touch the three dashboards beyond the single `Dashboard.js` bug fix.
-
-**Non-goals for this pass**
-- Resend email integration (Supabase's built-in mailer stays for now).
-- PayMongo payment flow.
-- Live Google Places API integration.
-- Uploading real court/event photography.
+- No build step, no framework, no npm. Node is not installed on this machine.
+- Never commit a `service_role` key, a PayMongo secret, or any mail provider key.
+- Anything requiring elevated DB access ships as a reviewed `.sql` file for the
+  owner to run — the Coder cannot and must not execute it.
+- Do not invent court prices. Rates come from the `court` table or stay blank
+  with the existing `TODO: confirm with Ms. Driz` note.
+- The paper's Limitations stand: single branch, network-dependent. Do not build
+  multi-branch support or offline mode.
 
 ## Success criteria
 
-1. `Pages/Index.html` renders Hero, Featured Events, Courts, About, Reviews, CTA,
-   Footer — with zero console errors and zero failed network requests.
-2. Courts and events render from Supabase; killing the network still renders the
-   fallback content rather than empty sections.
-3. Every court and event card shows an image **slot** placeholder, not a broken image.
-4. Exactly 3 testimonials render, randomly chosen, changing across reloads, and the
-   section is labeled as testimonials — never as a live Google Reviews feed.
-5. Nav links Home / Courts / Events / About all scroll to a real section, and
-   scroll-spy highlights correctly — **including with reduced-motion enabled**.
-6. Running the seed SQL produces 3 working logins: customer → `user_dashboard.html`,
-   staff → `staff_dashboard.html`, admin → `owner_dashboard.html`, each via the
-   correct modal panel, with the wrong panel correctly rejected.
-7. All 6 listed bugs fixed, with the XSS fix demonstrable (a court named
-   `<img onerror=alert(1)>` renders as text).
-8. Layout holds at 375px, 768px, and 1440px, in both light and dark themes.
+**Phase 1**
+1. A user registered as `<img src=x onerror=alert(1)>` renders as literal text in
+   the staff table, the admin staff list, and the customer's own bookings.
+2. A `"` in a staff member's name no longer breaks the edit modal's markup.
+3. Changing a password fails with a clear error when the current password is wrong.
+4. No UI string claims a capability the code does not have.
+5. `09171234567` is accepted; `abc` and `123` are rejected, on both signup and settings.
+6. The T&C link opens a page containing all five mandated sections.
+7. Every visible button either does something or is removed.
 
-## Status at hand-off
-
-| Criterion | Status |
-|---|---|
-| 1. All 7 sections, no console/network errors | **Partial** — code complete; `court`/`event`/`testimonial` queries will 404 until the schema SQL is run. Never opened in a browser. |
-| 2. Supabase-sourced with working fallback | Code complete, fallback traced by hand. DB path never executed. |
-| 3. Image slots, no broken images | **Verified** — courts all slot; hero/events use real photos. |
-| 4. 3 random testimonials, labeled honestly | Code complete, not visually confirmed. |
-| 5. Nav + scroll-spy incl. reduced-motion | **Verified in code** — early `return` replaced with `if/else`. |
-| 6. XSS fix | **Verified** — `escapeHtml` covers all 5 chars, all 12 interpolation sites audited. |
-| 7. Responsive 375/768/1440 × light/dark | **NOT VERIFIED** — no browser tooling available. |
-| 8. SQL valid and idempotent | Reviewed by hand only. Never executed. |
-| 3 role logins work | **NOT VERIFIED** — blocked on the owner running the seed SQL. |
-
-**No one has opened this page in a browser.** Neither the orchestrator nor any
-subagent had working preview/browser tools in this session, despite the preview
-workflow being described. Criteria 1, 4 and 7 rest on code reading alone.
+**Later phases** — restated at the start of each phase, once its owner decisions
+are settled.
 
 ## Verification steps
 
-1. `python -m http.server 8532` via the preview tool; open `/Pages/Index.html`.
-2. Read console + network for errors; screenshot at 3 widths × 2 themes.
-3. Block the Supabase host in devtools and reload to prove the fallback path.
-4. Run the seed SQL in the Supabase SQL editor, then log in as each of the 3 roles
-   and confirm the redirect target.
-5. Confirm cross-panel rejection: staff credentials on the customer panel must fail.
-
-## Decisions confirmed by the owner
-
-- **Demo credentials — generate them.** The Coder invents the 3 demo accounts and
-  documents them in `database/seed/README.md`. No specific credentials were supplied.
-- **Court rates — leave blank.** Keep the `'—'` placeholder and the
-  `TODO: confirm with Ms. Driz` note. Do not invent prices.
-- **Payment confirmation — not ours to build.** PayMongo issues its own payment
-  confirmation, so IñigoSync will not send or render one. Resend's job is limited to
-  verification/OTP codes. (Still out of scope for this pass; recorded so it isn't
-  built by mistake later.)
+Browser tooling was unavailable this session, so verification is:
+- `grep` proof that no unescaped interpolation of user data remains.
+- Backend behaviour re-probed with `curl` where the anon key permits.
+- `database/qa/001_introspect.sql` results, once the owner runs them.
+- **Anything visual remains unverified** and must be checked by the owner, or by
+  me in a session where the browser tools actually load.
 
 ## Open questions and risks
 
-- **Q1 — RESOLVED.** No free, card-free Google reviews key exists, and storing review
-  content would violate the ToS regardless. Going with labeled testimonials (D3).
-  **Owner confirmed: no real quotes available yet → ship `[PLACEHOLDER]` rows.**
-  Every seeded testimonial must be obviously fake (placeholder author names, generic
-  text) so nothing misattributed can ever reach a live page by accident.
-- **Risk.** The seed SQL writes directly into `auth.users`. It will be written to be
-  idempotent (`on conflict do nothing`) so re-running is safe, but it does touch an
-  internal Supabase schema — that's the accepted trade-off for not having the
-  service_role key in the repo.
-- **Risk.** I could not read column definitions for `booking`/`payment`/`walk_in_booking`
-  (anon key can't reach the introspection endpoint, and the tables are empty). The
-  Coder will confirm `profiles`' shape from the seed SQL's own success rather than guessing.
+- **Q1 — PayMongo account?** Blocks Phase 5 entirely.
+- **Q2 — Mail provider + verified domain?** Blocks Gmail reminders in Phase 4.
+- **Q3 — OTP on every login, as the paper states, or first-login-per-device?**
+- **Q4 — May I authenticate against the live project?** The sandbox blocked it;
+  without it, role redirects and per-role RLS stay untested.
+- **Risk.** No schema file exists in-repo for `profiles`, `booking`, `payment`,
+  or `walk_in_booking`. Their real column names and constraints are inferred from
+  application code. Phase 2+ SQL may need adjustment once introspection lands.
+- **Risk.** The `invite-staff` Edge Function is called but its source is not in
+  the repo. If it was never deployed, admin "Add staff" is already broken.

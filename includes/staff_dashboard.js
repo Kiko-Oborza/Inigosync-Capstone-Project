@@ -212,16 +212,25 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         data.forEach((booking) => {
-            const customerName = booking.profiles?.full_name || 'Customer';
-            const customerContact = booking.profiles?.contact_num || '';
+            // Every value below can be customer-controlled (full_name,
+            // contact_num) or DB content an admin can edit (courts, status)
+            // — escaped before it touches innerHTML so a name like
+            // `<img src=x onerror=alert(1)>` renders as literal text
+            // instead of running in this staff session.
+            const statusRaw = booking.status || '';
+            const customerName = window.escapeHtml(booking.profiles?.full_name || 'Customer');
+            const customerContact = window.escapeHtml(booking.profiles?.contact_num || '');
+            const courtLabel = window.escapeHtml(booking.courts || '');
+            const statusClass = window.escapeHtml(statusRaw);
+            const statusLabel = window.escapeHtml(statusRaw.charAt(0).toUpperCase() + statusRaw.slice(1));
             const row = document.createElement('tr');
-            row.dataset.status = booking.status;
+            row.dataset.status = statusRaw;
             row.innerHTML = `
                 <td class="staff-cell-main">${customerName}${customerContact ? `<span class="staff-cell-sub">${customerContact}</span>` : ''}</td>
-                <td>${booking.courts}</td>
+                <td>${courtLabel}</td>
                 <td>${formatOverviewDate(booking.time_date)}</td>
-                <td class="staff-cell-ref">#${booking.booking_id}</td>
-                <td><span class="staff-status ${booking.status}">${booking.status.charAt(0).toUpperCase() + booking.status.slice(1)}</span></td>
+                <td class="staff-cell-ref">#${window.escapeHtml(booking.booking_id)}</td>
+                <td><span class="staff-status ${statusClass}">${statusLabel}</span></td>
                 <td></td>
             `;
             overviewTableBody.appendChild(row);
@@ -419,12 +428,17 @@ document.addEventListener('DOMContentLoaded', () => {
                 const row = document.createElement('div');
                 row.className = 'staff-recent-row';
                 const amount = (walkinState.rate * walkinState.duration).toFixed(2);
+                // walkinState.name is free text a staff member typed (often
+                // relaying a walk-in customer's name) — escaped before it
+                // touches innerHTML like every other interpolated value here.
+                const safeWalkinName = window.escapeHtml(walkinState.name);
+                const safeWalkinCourt = window.escapeHtml(walkinState.court);
                 row.innerHTML = `
                     <div class="staff-recent-icon">
                         <svg viewBox="0 0 24 24" fill="none"><circle cx="24" cy="24" r="20" stroke="currentColor" stroke-width="2.5" transform="scale(0.4)"/></svg>
                     </div>
                     <div class="staff-recent-info">
-                        <h4>${walkinState.name} — ${walkinState.court}</h4>
+                        <h4>${safeWalkinName} — ${safeWalkinCourt}</h4>
                         <p>${formatTime12h(walkinState.time)} · ₱${amount} · ${walkinState.payment === 'cash' ? 'Cash' : 'GCash'}</p>
                     </div>
                     <span class="staff-status walkin">Walk-in</span>

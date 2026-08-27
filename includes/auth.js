@@ -63,6 +63,36 @@ document.addEventListener('DOMContentLoaded', () => {
         window.location.assign(redirectUrl.toString());
     }
 
+    // ------------------------------------------------------------------
+    // Forgot / Reset password — Supabase redirects the visitor back here
+    // after they click the link in the reset email, with `type=recovery`
+    // in the URL and a short-lived (but real) session already established
+    // for that user. Checked directly against the URL — not only via the
+    // PASSWORD_RECOVERY auth event below — because the Supabase client's
+    // own URL parsing can finish before this script gets a chance to
+    // subscribe to that event; missing it would silently drop the visitor
+    // into the auto-redirect further down instead of letting them set a
+    // new password. See the mode === 'reset' submit handler below for
+    // where the new password is actually set.
+    // ------------------------------------------------------------------
+    const isRecoveryRedirect = /type=recovery/.test(window.location.hash) || /type=recovery/.test(window.location.search);
+    let recoveryHandled = false;
+
+    function enterRecoveryMode() {
+        if (recoveryHandled) return;
+        recoveryHandled = true;
+        if (window.InigoLoading) window.InigoLoading.hide();
+        openModal('reset');
+    }
+
+    if (window.sb) {
+        window.sb.auth.onAuthStateChange((event) => {
+            if (event === 'PASSWORD_RECOVERY') enterRecoveryMode();
+        });
+    }
+
+    if (isRecoveryRedirect) enterRecoveryMode();
+
     // Google's OAuth flow is a full-page redirect away and back — there's no
     // in-page callback to hook into. So on every load of this page, check
     // whether a session already exists (true right after that redirect
@@ -81,7 +111,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (window.sb) {
         window.sb.auth.getSession().then(({ data: { session } }) => {
-            if (!session) return;
+            // A recovery-link session must NOT auto-complete a normal
+            // login — it exists only so mode === 'reset' below can call
+            // updateUser(); routing it into completeLogin() would skip
+            // straight past "set a new password" into the dashboard.
+            if (!session || isRecoveryRedirect || recoveryHandled) return;
             if (isOauthReturn && window.InigoLoading) window.InigoLoading.show('Signing you in…');
             completeLogin(['customer']).catch(() => {
                 if (window.InigoLoading) window.InigoLoading.hide();
@@ -101,11 +135,11 @@ document.addEventListener('DOMContentLoaded', () => {
             panel.classList.toggle('is-active', panel.dataset.authPanel === name);
         });
 
-        // Customers can switch between Log In / Sign Up, but the Admin
-        // panel is login-only and the Verify panel is a one-off step, so
-        // hide the tab bar while either is active.
+        // Customers can switch between Log In / Sign Up, but Admin, Verify,
+        // Forgot, and Reset are all one-off steps reached from elsewhere —
+        // hide the tab bar while any of them is active.
         if (authTabsEl) {
-            authTabsEl.hidden = name === 'admin' || name === 'verify';
+            authTabsEl.hidden = name === 'admin' || name === 'verify' || name === 'forgot' || name === 'reset';
         }
     }
 
@@ -258,13 +292,23 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
 
                 if (mode === 'signup') {
+                    // PH mobile validation (spec: registration must validate
+                    // the mobile number). Normalized to the local
+                    // 09XXXXXXXXX form regardless of which accepted format
+                    // was typed, so contact_num is stored one consistent way.
+                    const mobileCheck = window.validatePhMobile(data.mobile);
+                    if (!mobileCheck.valid) {
+                        setAuthNotice(mobileCheck.message, true);
+                        return;
+                    }
+
                     const { data: signUpData, error } = await window.sb.auth.signUp({
                         email: data.email,
                         password: data.password,
                         options: {
                             data: {
                                 full_name: data.fullname,
-                                contact_num: data.mobile
+                                contact_num: mobileCheck.normalized
                             }
                         }
                     });
@@ -331,6 +375,40 @@ document.addEventListener('DOMContentLoaded', () => {
                     });
                     if (error) throw error;
                     await completeLogin(['staff', 'admin']);
+                    return;
+                }
+
+                if (mode === 'forgot') {
+                    // Deliberately vague success message regardless of
+                    // whether the email is registered — resetPasswordForEmail
+                    // itself doesn't error for an unknown email either, to
+                    // avoid letting this form be used to enumerate accounts.
+                    const redirectTo = `${window.location.origin}${window.location.pathname}`;
+                    const { error } = await window.sb.auth.resetPasswordForEmail(data.email, { redirectTo });
+                    if (error) throw error;
+                    setAuthNotice("If that email is registered, we've sent a password reset link. Check your inbox.", false);
+                    form.reset();
+                    return;
+                }
+
+                if (mode === 'reset') {
+                    const newPassword = data['new-password'];
+                    const confirmPassword = data['confirm-password'];
+                    if (newPassword !== confirmPassword) {
+                        setAuthNotice('Passwords do not match.', true);
+                        return;
+                    }
+                    const { error } = await window.sb.auth.updateUser({ password: newPassword });
+                    if (error) throw error;
+                    // Sign out of the short-lived recovery session so the
+                    // visitor logs back in fresh with the new password —
+                    // simpler and safer than guessing which dashboard a
+                    // recovery link belongs on (this modal serves customer,
+                    // staff, and admin accounts alike).
+                    await window.sb.auth.signOut();
+                    form.reset();
+                    setActivePanel('login');
+                    setAuthNotice('Password updated — please log in with your new password.', false);
                     return;
                 }
             } catch (err) {
