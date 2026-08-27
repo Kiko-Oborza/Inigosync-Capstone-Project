@@ -31,12 +31,9 @@
         <!-- HERO — full-bleed rotating photo background, floating pill navbar overlaid on top -->
         <section class="hero" data-home-showcase>
 
-            <div class="hero-media">
-                <img src="../database/web/basketball.jpg" alt="Basketball game at Iñigos Sports Center" class="hero-media-img is-active" data-home-slide="0" loading="eager">
-                <img src="../database/web/announcement.jpg" alt="Weekend open play at Iñigos Sports Center" class="hero-media-img" data-home-slide="1" loading="lazy">
-                <img src="../database/web/badminton.jpg" alt="Badminton courts at Iñigos Sports Center" class="hero-media-img" data-home-slide="2" loading="lazy">
-                <img src="../database/web/bowling.jpg" alt="Bowling lanes at Iñigos Sports Center" class="hero-media-img" data-home-slide="3" loading="lazy">
-            </div>
+            <!-- Populated by includes/home-showcase.js from window.InigoContent.getEvents()
+                 (Supabase `event` table, falls back to a static list) — see bug 2/6 fixes. -->
+            <div class="hero-media" data-home-media></div>
             <div class="hero-scrim" aria-hidden="true"></div>
 
             <header class="site-nav">
@@ -52,7 +49,7 @@
                         <ul>
                             <li><a href="#" class="active">Home</a></li>
                             <li><a href="#courts">Courts</a></li>
-                            <li><a href="#whats-on">Events</a></li>
+                            <li><a href="#events">Events</a></li>
                             <li><a href="#about">About</a></li>
                         </ul>
                     </nav>
@@ -90,7 +87,7 @@
                     <ul>
                         <li><a href="#" class="active">Home</a></li>
                         <li><a href="#courts">Courts</a></li>
-                        <li><a href="#whats-on">Events</a></li>
+                        <li><a href="#events">Events</a></li>
                         <li><a href="#about">About</a></li>
                     </ul>
                     <button type="button" class="book-now nav-menu-cta" data-auth-open="login">Log In / Sign Up</button>
@@ -99,57 +96,49 @@
 
             <div class="hero-content">
                 <div class="hero-copy-wrap">
-                    <div class="hero-copy-stack" aria-live="polite">
-                        <div class="hero-copy is-active" data-home-slide="0">
-                            <span class="hero-tag">Now on court</span>
-                            <h2 class="hero-title">Bocohan Summer Basketball League</h2>
-                            <p class="hero-meta">Finals night · Aug 24 · Court 1</p>
-                        </div>
-                        <div class="hero-copy" data-home-slide="1">
-                            <span class="hero-tag">This weekend</span>
-                            <h2 class="hero-title">Weekend Open Play</h2>
-                            <p class="hero-meta">Sat &amp; Sun · 8:00 AM – 10:00 PM · all courts</p>
-                        </div>
-                        <div class="hero-copy" data-home-slide="2">
-                            <span class="hero-tag">New courts</span>
-                            <h2 class="hero-title">Four New Badminton Courts Open</h2>
-                            <p class="hero-meta">9 courts total · book any slot online</p>
-                        </div>
-                        <div class="hero-copy" data-home-slide="3">
-                            <span class="hero-tag">Lanes</span>
-                            <h2 class="hero-title">Duckpin &amp; Ten-Pin Nights</h2>
-                            <p class="hero-meta">8 duckpin + 12 ten-pin lanes · Mon–Thu</p>
-                        </div>
-                    </div>
+                    <!-- Populated by includes/home-showcase.js — same event data
+                         as the Featured Events grid below, so captions can't drift. -->
+                    <div class="hero-copy-stack" data-home-copy-stack aria-live="polite"></div>
                     <div class="cta-buttons">
                         <button type="button" class="cta-button" data-auth-open="login">Book a court</button>
-                        <a href="#whats-on" class="cta-button secondary">See what's on</a>
+                        <a href="#events" class="cta-button secondary">See what's on</a>
                     </div>
                 </div>
 
                 <div class="hero-progress">
                     <p class="hero-progress-caption">Photos change every 5s</p>
-                    <div class="hero-dots">
-                        <button class="hero-dot is-active" data-home-slide-dot="0" aria-label="Slide 1" aria-current="true"></button>
-                        <button class="hero-dot" data-home-slide-dot="1" aria-label="Slide 2"></button>
-                        <button class="hero-dot" data-home-slide-dot="2" aria-label="Slide 3"></button>
-                        <button class="hero-dot" data-home-slide-dot="3" aria-label="Slide 4"></button>
-                    </div>
+                    <div class="hero-dots" data-home-dots></div>
                 </div>
             </div>
         </section>
 
-        <!-- THIS WEEK — thin info bar under the hero, replaces the old announcements section -->
-        <section class="week-strip" id="whats-on">
-            <div class="section-inner week-strip-inner">
-                <span class="week-strip-label">This week</span>
-                <div class="week-strip-items">
-                    <span class="week-strip-item"><strong>Aug 22</strong> · Weekend Open Play — all courts</span>
-                    <span class="week-strip-divider" aria-hidden="true"></span>
-                    <span class="week-strip-item"><strong>Aug 24</strong> · Summer League finals — Court 1</span>
-                    <span class="week-strip-divider" aria-hidden="true"></span>
-                    <span class="week-strip-item"><strong>Aug 27</strong> · Duckpin night — 8 lanes</span>
-                </div>
+        <!-- FEATURED EVENTS — absorbs the old "This week" strip. Single source of
+             truth for what's on: rendered from the same window.InigoContent.getEvents()
+             the hero carousel uses (Supabase `event` table, static fallback if
+             unreachable/empty), so the two can never drift apart again. -->
+        <section class="events reveal" id="events">
+            <div class="section-inner">
+                <p class="eyebrow">Featured Events</p>
+                <h2 class="section-title">What's on at Iñigos.</h2>
+                <p class="body-text section-intro">
+                    Tournaments, open play, and new courts — updated as they're scheduled.
+                </p>
+
+                <div class="event-grid" data-event-grid></div>
+            </div>
+        </section>
+
+        <!-- COURTS & FACILITIES -->
+        <section class="courts reveal" id="courts">
+            <div class="section-inner">
+                <p class="eyebrow">Courts &amp; Facilities</p>
+                <h2 class="section-title">Eight sports. One calendar.</h2>
+                <p class="body-text section-intro">
+                    Every court, lane, and table at Iñigos, with how many of each you can book.
+                    Availability updates live as bookings come in.
+                </p>
+
+                <div class="court-grid" data-court-grid></div>
             </div>
         </section>
 
@@ -183,17 +172,21 @@
             </div>
         </section>
 
-        <!-- COURTS & FACILITIES -->
-        <section class="courts reveal" id="courts">
+        <!-- TESTIMONIALS — labeled honestly. This is NOT a live Google Reviews
+             feed: Places API review content can't legally be cached/stored, and
+             the only card-free key option explicitly excludes user-generated
+             reviews — see implementation_plan.md (D3). Exactly 3 testimonials,
+             chosen at random, on every page load. -->
+        <section class="testimonials reveal" id="testimonials">
             <div class="section-inner">
-                <p class="eyebrow">Courts &amp; Facilities</p>
-                <h2 class="section-title">Eight sports. One calendar.</h2>
+                <p class="eyebrow">Testimonials</p>
+                <h2 class="section-title">What people say about Iñigos.</h2>
                 <p class="body-text section-intro">
-                    Every court, lane, and table at Iñigos, with how many of each you can book.
-                    Availability updates live as bookings come in.
+                    A few words from the people who play here, shared with us directly —
+                    not a live review feed. Three at random, every time you load the page.
                 </p>
 
-                <div class="court-grid" data-court-grid></div>
+                <div class="testimonial-grid" data-testimonial-grid></div>
             </div>
         </section>
 
@@ -416,9 +409,12 @@
     </div>
 
     <script src="../includes/theme.js"></script>
-    <script src="../includes/home-showcase.js"></script>
     <script src="../includes/courts-data.js"></script>
+    <!-- landingPage.js must load before home-showcase.js: it defines the
+         shared window.InigoContent data module (getEvents/escapeHtml/etc.)
+         that the hero carousel below reads from. -->
     <script src="../includes/landingPage.js"></script>
+    <script src="../includes/home-showcase.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
     <script src="../Config/supabaseClient.js"></script>
     <script src="../includes/loadingOverlay.js"></script>

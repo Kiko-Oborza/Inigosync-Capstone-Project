@@ -446,25 +446,64 @@ nav ul li a.active {
     z-index: 0;
 }
 
-.hero-media-img {
+.hero-media-img,
+.hero-media-slot {
     position: absolute;
     inset: 0;
     width: 100%;
     height: 100%;
-    object-fit: cover;
     opacity: 0;
     transition: opacity 1s ease;
 }
 
+.hero-media-img {
+    object-fit: cover;
+}
+
 @media (prefers-reduced-motion: reduce) {
-    .hero-media-img {
+    .hero-media-img,
+    .hero-media-slot {
         transition: none;
     }
 }
 
-.hero-media-img.is-active {
+.hero-media-img.is-active,
+.hero-media-slot.is-active {
     opacity: 1;
     z-index: 1;
+}
+
+/* Image slot — used for hero slides whose event has no image_url yet (see
+   includes/home-showcase.js and D2 in implementation_plan.md). A soft
+   gradient + dotted pattern + a large translucent sport monogram, so a
+   slide with no photo yet still looks intentional rather than broken. */
+.hero-media-slot {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    background: radial-gradient(120% 120% at 50% 0%, var(--color-bg-elevated) 0%, var(--color-bg) 65%);
+}
+
+.hero-media-slot::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background-image: radial-gradient(var(--color-line) 1.5px, transparent 1.5px);
+    background-size: 28px 28px;
+    opacity: 0.6;
+}
+
+.hero-media-slot-monogram {
+    position: relative;
+    z-index: 1;
+    font-family: var(--font-display);
+    font-weight: 700;
+    font-size: clamp(6rem, 20vw, 13rem);
+    line-height: 1;
+    color: var(--color-primary);
+    opacity: 0.16;
+    user-select: none;
 }
 
 .hero-scrim {
@@ -605,59 +644,110 @@ nav ul li a.active {
 }
 
 /* ==========================================================================
-   This Week strip — thin info bar directly under the hero
+   Featured Events — absorbs the old "This week" strip. Fed from the same
+   window.InigoContent.getEvents() the hero carousel uses, so court/lane
+   counts and schedules can't drift into three different answers again
+   (bug 2).
    ========================================================================== */
-.week-strip {
-    padding: 22px 0;
+.events {
+    padding: 100px 0;
     background: var(--color-bg-elevated);
-    border-bottom: 1px solid var(--color-line);
-    transition: background-color 0.2s ease, border-color 0.2s ease;
+    transition: background-color 0.2s ease;
 }
 
 @media (prefers-reduced-motion: reduce) {
-    .week-strip {
+    .events {
         transition: none;
     }
 }
 
-.week-strip-inner {
-    display: flex;
-    align-items: center;
-    gap: 24px;
-    flex-wrap: wrap;
+.event-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 20px;
 }
 
-.week-strip-label {
+.event-card-body {
+    padding: 20px 24px 24px;
+}
+
+.event-card-tag {
+    display: inline-block;
     font-family: var(--font-mono);
     font-size: 0.72rem;
-    letter-spacing: 0.08em;
+    letter-spacing: 0.06em;
     text-transform: uppercase;
     color: var(--color-primary);
-    flex-shrink: 0;
+    margin-bottom: 8px;
 }
 
-.week-strip-items {
+.event-card-title {
+    font-family: var(--font-display);
+    font-size: 1.15rem;
+    font-weight: 600;
+    line-height: 1.3;
+    margin-bottom: 6px;
+}
+
+.event-card-meta {
+    font-family: var(--font-mono);
+    font-size: 0.82rem;
+    color: var(--color-ink-faint);
+}
+
+/* ==========================================================================
+   Image slots — shared by court and event cards. No photos exist in the DB
+   yet (image_url is nullable on both `court` and `event`); this renders a
+   pattern + sport monogram instead of a broken <img>, and swaps in a real
+   photo with no markup changes once image_url is set (D2 in
+   implementation_plan.md).
+   ========================================================================== */
+.media-slot {
+    position: relative;
+    width: 100%;
+    aspect-ratio: 16 / 10;
+    overflow: hidden;
+    background: linear-gradient(150deg, var(--color-bg-elevated), var(--color-bg));
+    border-bottom: 1px solid var(--color-line);
     display: flex;
     align-items: center;
-    gap: 24px;
-    flex-wrap: wrap;
+    justify-content: center;
 }
 
-.week-strip-item {
-    font-size: 0.92rem;
-    color: var(--color-ink);
-    white-space: nowrap;
+.media-slot::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background-image: radial-gradient(var(--color-line) 1px, transparent 1px);
+    background-size: 16px 16px;
+    opacity: 0.6;
 }
 
-.week-strip-item strong {
+.media-slot-monogram {
+    position: relative;
+    z-index: 1;
+    font-family: var(--font-display);
     font-weight: 700;
+    font-size: 1.6rem;
+    letter-spacing: 0.02em;
+    color: var(--color-primary);
+    opacity: 0.55;
 }
 
-.week-strip-divider {
-    width: 1px;
-    height: 16px;
-    background: var(--color-line);
-    flex-shrink: 0;
+.media-slot.has-image {
+    background: var(--color-bg-elevated);
+}
+
+.media-slot.has-image::before {
+    display: none;
+}
+
+.media-slot.has-image img {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
 }
 
 /* ==========================================================================
@@ -732,27 +822,35 @@ nav ul li a.active {
     gap: 20px;
 }
 
-.court-card {
+.court-card,
+.event-card {
     background: var(--color-bg-card);
     border: 1px solid var(--color-line);
     border-radius: 14px;
-    padding: 28px 24px;
+    overflow: hidden;
     transition: transform 0.25s ease, border-color 0.25s ease, background-color 0.2s ease;
 }
 
+.court-card-body {
+    padding: 20px 24px 24px;
+}
+
 @media (prefers-reduced-motion: reduce) {
-    .court-card {
+    .court-card,
+    .event-card {
         transition: border-color 0.25s ease, background-color 0.2s ease;
     }
 }
 
-.court-card:hover {
+.court-card:hover,
+.event-card:hover {
     transform: translateY(-4px);
     border-color: var(--color-primary);
 }
 
 @media (prefers-reduced-motion: reduce) {
-    .court-card:hover {
+    .court-card:hover,
+    .event-card:hover {
         transform: none;
     }
 }
@@ -782,6 +880,80 @@ nav ul li a.active {
 
 .court-note {
     font-size: 0.88rem;
+    color: var(--color-ink-faint);
+}
+
+/* ==========================================================================
+   Testimonials — labeled honestly as testimonials, never as a live Google
+   Reviews feed (see D3 in implementation_plan.md). Exactly 3 render per
+   load, chosen at random by includes/landingPage.js.
+   ========================================================================== */
+.testimonials {
+    padding: 100px 0;
+    background: var(--color-bg);
+    transition: background-color 0.2s ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .testimonials {
+        transition: none;
+    }
+}
+
+.testimonial-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 20px;
+}
+
+.testimonial-card {
+    background: var(--color-bg-card);
+    border: 1px solid var(--color-line);
+    border-radius: 14px;
+    padding: 28px 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    transition: border-color 0.25s ease, background-color 0.2s ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .testimonial-card {
+        transition: background-color 0.2s ease;
+    }
+}
+
+.testimonial-quote {
+    font-size: 1rem;
+    font-style: italic;
+    line-height: 1.7;
+    color: var(--color-ink);
+}
+
+.testimonial-meta {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 4px 10px;
+    margin-top: auto;
+}
+
+.testimonial-stars {
+    font-family: var(--font-mono);
+    letter-spacing: 2px;
+    color: var(--color-primary);
+    font-size: 0.95rem;
+    width: 100%;
+}
+
+.testimonial-author {
+    font-family: var(--font-display);
+    font-weight: 600;
+    font-size: 0.92rem;
+}
+
+.testimonial-source {
+    font-size: 0.78rem;
     color: var(--color-ink-faint);
 }
 
@@ -989,7 +1161,9 @@ nav ul li a.active {
         flex-wrap: wrap;
     }
 
-    .court-grid {
+    .court-grid,
+    .event-grid,
+    .testimonial-grid {
         grid-template-columns: repeat(2, 1fr);
     }
 
@@ -1174,30 +1348,17 @@ nav ul li a.active {
         display: none;
     }
 
-    /* This Week strip — scroll horizontally instead of wrapping/overflowing */
-    .week-strip-inner {
-        flex-wrap: nowrap;
-        overflow-x: auto;
-        -webkit-overflow-scrolling: touch;
-        padding-bottom: 2px;
-    }
-
-    .week-strip-items {
-        flex-wrap: nowrap;
-    }
-
-    .week-strip-item,
-    .week-strip-divider {
-        flex-shrink: 0;
-    }
-
     .about,
     .courts,
+    .events,
+    .testimonials,
     .cta-footer {
         padding: 64px 0;
     }
 
-    .court-grid {
+    .court-grid,
+    .event-grid,
+    .testimonial-grid {
         grid-template-columns: 1fr;
     }
 

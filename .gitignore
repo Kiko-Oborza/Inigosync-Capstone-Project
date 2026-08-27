@@ -1,0 +1,9 @@
+# IñigoSync — local-only files that must never reach git history
+#
+# database/seed/003_update_user_emails.sql swaps the demo accounts created
+# by 001_seed_users.sql to the project owner's real personal email addresses
+# plus a real working password. That file (and any similarly local-only seed
+# variant) must stay out of git entirely — see database/seed/README.md for
+# how to recreate it locally from the placeholder template.
+database/seed/003_update_user_emails.sql
+database/seed/*.local.sql

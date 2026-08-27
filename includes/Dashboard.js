@@ -355,9 +355,17 @@ document.addEventListener('DOMContentLoaded', () => {
             bookSubmit.disabled = true;
             bookSubmit.textContent = 'Submitting…';
 
+            // `courts` is what refreshMyBookings() below actually reads back
+            // (rate lookup via courtRates[booking.courts], and the table's
+            // main cell), so it gets the customer's selection. `sports` used
+            // to be a copy-paste duplicate of the same value — nothing in
+            // this dashboard reads it, and this simplified single-select
+            // booking flow doesn't collect a sport category separately from
+            // the court, so it's left unset here instead of writing a second
+            // copy of the same string under a misleading column.
             const { error } = await window.sb.from('booking').insert({
                 customer_id: window.inigosyncProfile.id,
-                sports: bookingState.court,
+                sports: null,
                 courts: bookingState.court,
                 time_date: new Date(`${bookingState.date}T${time24}:00`).toISOString(),
                 status: 'pending',

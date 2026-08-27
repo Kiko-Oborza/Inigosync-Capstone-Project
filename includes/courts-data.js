@@ -1,8 +1,16 @@
-// IñigoSync — Shared Courts & Facilities Inventory
-// Single source of truth for all sports, equipment counts, and unit types.
-// Used by landing page, customer dashboard, staff dashboard, and admin dashboard.
+// IñigoSync — Courts & Facilities fallback inventory
+// This is now a FALLBACK ONLY: the landing page's Courts & Facilities grid
+// (includes/landingPage.js) reads from Supabase's `court` table first, and
+// only falls back to this static array if that fetch fails or comes back
+// empty — so the section never renders blank when the database is
+// unreachable. Keep this array's shape in sync with the `court` table
+// (database/schema/002_content_tables.sql) if either one changes.
 //
-// TODO: replace with SELECT from `courts` table (PHP/MySQL)
+// image_url is intentionally null for every entry: there are no court
+// photos yet (see database/schema/002_content_tables.sql's note on
+// image_url). The old `../assets/courts/<name>.jpg` paths this file used to
+// have were dead — that directory never existed, so every one of those was
+// a 404 — and have been removed rather than replaced.
 
 const COURTS_INVENTORY = [
     {
@@ -14,7 +22,7 @@ const COURTS_INVENTORY = [
         rate: '—',
         rateUnit: '/hr',
         status: 'Available',
-        image: '../assets/courts/basketball.jpg'
+        image_url: null
     },
     {
         id: 'badminton',
@@ -25,7 +33,7 @@ const COURTS_INVENTORY = [
         rate: '—',
         rateUnit: '/hr',
         status: 'Available',
-        image: '../assets/courts/badminton.jpg'
+        image_url: null
     },
     {
         id: 'lawn-tennis',
@@ -36,7 +44,7 @@ const COURTS_INVENTORY = [
         rate: '—',
         rateUnit: '/hr',
         status: 'Available',
-        image: '../assets/courts/lawn-tennis.jpg'
+        image_url: null
     },
     {
         id: 'pickleball',
@@ -47,7 +55,7 @@ const COURTS_INVENTORY = [
         rate: '—',
         rateUnit: '/hr',
         status: 'Available',
-        image: '../assets/courts/pickleball.jpg'
+        image_url: null
     },
     {
         id: 'bowling-duckpin',
@@ -58,7 +66,7 @@ const COURTS_INVENTORY = [
         rate: '—',
         rateUnit: '/game',
         status: 'Available',
-        image: '../assets/courts/bowling-duckpin.jpg',
+        image_url: null,
         note: '// TODO: confirm if duckpin is billed per-game or per-hour; may need different booking flow'
     },
     {
@@ -70,7 +78,7 @@ const COURTS_INVENTORY = [
         rate: '—',
         rateUnit: '/game',
         status: 'Available',
-        image: '../assets/courts/bowling-tenpin.jpg',
+        image_url: null,
         note: '// TODO: confirm if ten-pin is billed per-game or per-hour; may need different booking flow'
     },
     {
@@ -82,7 +90,7 @@ const COURTS_INVENTORY = [
         rate: '—',
         rateUnit: '/hr',
         status: 'Available',
-        image: '../assets/courts/billiards.jpg'
+        image_url: null
     },
     {
         id: 'table-tennis',
@@ -93,7 +101,7 @@ const COURTS_INVENTORY = [
         rate: '—',
         rateUnit: '/hr',
         status: 'Available',
-        image: '../assets/courts/table-tennis.jpg'
+        image_url: null
     },
     {
         id: 'volleyball',
@@ -104,11 +112,11 @@ const COURTS_INVENTORY = [
         rate: '—',
         rateUnit: '/hr',
         status: 'Available',
-        image: '../assets/courts/volleyball.jpg'
+        image_url: null
     }
 ];
 
 // TODO: confirm with Ms. Driz: hourly rates for each sport (Basketball, Badminton, Lawn Tennis, Pickleball, Billiards, Table Tennis, Volleyball).
 // TODO: confirm if Bowling (duckpin & ten-pin) is billed per-game or per-hour, and rates for each lane type.
 
-console.log('[IñigoSync] courts inventory loaded from static array (demo mode). TODO: wire to GET /api/courts.php');
+console.log('[IñigoSync] courts-data.js loaded — static fallback, used only if the Supabase `court` fetch fails or is empty.');
