@@ -133,6 +133,11 @@ function normalizeCourtFromDb(row) {
         rate: (row.rate === null || row.rate === undefined) ? null : Number(row.rate),
         rateUnit: row.rate_unit || '/hr',
         imageUrl: row.image_url || null,
+        // `rating` doesn't exist on `court` until the owner runs
+        // database/schema/003_court_rating.sql — undefined and null both
+        // mean "no rating yet", never rendered as a fake one (see
+        // renderCourtCard below).
+        rating: (row.rating === null || row.rating === undefined) ? null : Number(row.rating),
     };
 }
 
@@ -148,6 +153,9 @@ function normalizeCourtFromFallback(item) {
         rate: (item.rate === '—' || item.rate === null || item.rate === undefined) ? null : Number(item.rate),
         rateUnit: item.rateUnit || '/hr',
         imageUrl: item.image_url || null,
+        // COURTS_INVENTORY never carries a rating — the offline fallback
+        // never invents one either.
+        rating: null,
     };
 }
 
@@ -187,6 +195,7 @@ function mergeCourtsBySport(items) {
             rate: group.every((c) => c.rate === null) ? null : group[0].rate,
             rateUnit: group[0].rateUnit,
             imageUrl: withImage ? withImage.imageUrl : null,
+            rating: group.every((c) => c.rating === null || c.rating === undefined) ? null : group[0].rating,
         };
     });
 }
@@ -363,12 +372,31 @@ window.InigoContent = {
 // ============================================================================
 function renderCourtCard(court) {
     const monogram = monogramFor(court.sportSlug, court.name);
+
+    // Rate: ₱<rate><rate_unit> when non-null, an honest "Rate TBA"
+    // placeholder when null — every court's rate is NULL in the live DB
+    // right now (database/seed/002_seed_content.sql leaves it unconfirmed
+    // on purpose). Never invented; this starts showing real numbers the
+    // moment the owner sets them via the admin Court Listings CRUD.
+    const rateHtml = court.rate !== null
+        ? `<p class="court-rate">₱${escapeHtml(String(court.rate))}<span>${escapeHtml(court.rateUnit)}</span></p>`
+        : `<p class="court-rate is-tba">Rate TBA</p>`;
+
+    // Rating: `court.rating` only exists once the owner runs
+    // database/schema/003_court_rating.sql, and only renders when a court
+    // actually has one — omitted entirely otherwise, never a fake number.
+    const ratingHtml = (court.rating !== null && court.rating !== undefined)
+        ? `<p class="court-rating"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2l2.9 6.9L22 9.6l-5.4 4.9L18 22l-6-3.6L6 22l1.4-7.5L2 9.6l7.1-.7z"/></svg>${escapeHtml(court.rating.toFixed(1))}<span>/ 5</span></p>`
+        : '';
+
     return `
         <article class="court-card">
             ${renderMediaSlot({ imageUrl: court.imageUrl, alt: court.name, monogram })}
             <div class="court-card-body">
                 <h3>${escapeHtml(court.name)}</h3>
+                ${ratingHtml}
                 <p class="court-count"><span class="court-count-value">${court.quantity}</span><span class="court-count-unit">${escapeHtml(court.unit)}</span></p>
+                ${rateHtml}
                 <p class="court-note">${escapeHtml(court.note)}</p>
             </div>
         </article>

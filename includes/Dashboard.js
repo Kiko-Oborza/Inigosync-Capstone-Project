@@ -4,9 +4,12 @@
 // payment-option selection with a live summary recalculation, filter chips,
 // calendar month label cycling, and password show/hide toggles.
 //
-// Booking, My Bookings, Receipts, Profile, and Settings talk to the real
-// Supabase database. Everything else here (panel switching, hero carousel,
-// filter chips, mini calendar) is UI-only, same as before.
+// Court Information, Booking (including its court dropdown), My Bookings,
+// Receipts, Profile, and Settings talk to the real Supabase database —
+// Court Information and Booking's court options both read the same
+// `court`/`sport` tables via window.InigoCourtsData (includes/courtsData.js;
+// see docs/QA_AUDIT_REPORT.md P0#8). Everything else here (panel switching,
+// hero carousel, filter chips, mini calendar) is UI-only, same as before.
 
 document.addEventListener('DOMContentLoaded', () => {
     const panels = document.querySelectorAll('[data-dash-panel]');
@@ -239,10 +242,19 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     // ------------------------------------------------------------------
-    // Booking Management — court/date/slot/payment selection with a live
-    // summary recalculation. Everything here is client-side UI state;
-    // actual availability + pricing will come from the backend later.
+    // Court Information + Booking Management — both read the same
+    // `court`/`sport` tables via window.InigoCourtsData (includes/courtsData.js),
+    // which mirrors the fetch-with-static-fallback pattern already proven in
+    // includes/landingPage.js. This replaces the two DIFFERENT hardcoded
+    // 5-court lists this page and the Booking select used to have — see
+    // docs/QA_AUDIT_REPORT.md P0#8 ("three contradictory court lists").
+    //
+    // Booking Management's court/date/slot/payment selection still does a
+    // live client-side summary recalculation; real per-slot availability and
+    // double-booking prevention are a later phase (implementation_plan.md
+    // Phase 4) — the booking table only stores a single start timestamp.
     // ------------------------------------------------------------------
+    const courtGrid = document.querySelector('[data-dash-court-grid]');
     const bookSelect = document.querySelector('[data-dash-book-select]');
     const bookDate = document.querySelector('[data-dash-book-date]');
     const slots = document.querySelectorAll('[data-dash-slot]');
@@ -256,9 +268,16 @@ document.addEventListener('DOMContentLoaded', () => {
     const summaryPayment = document.querySelector('[data-dash-summary-payment]');
     const summaryTotal = document.querySelector('[data-dash-summary-total]');
 
+    // court/rate start empty/null — the real <select> options (and their
+    // data-rate) only exist once window.InigoCourtsData.getCourts() resolves
+    // below (populateBookSelect). Every court's rate is NULL in the live DB
+    // today (the owner hasn't confirmed prices yet — see
+    // database/seed/002_seed_content.sql), so "unknown rate" has to be a
+    // first-class state here, not an assumed 300.
     let bookingState = {
-        court: bookSelect ? bookSelect.value : 'Basketball',
-        rate: bookSelect ? Number(bookSelect.selectedOptions[0].dataset.rate) : 300,
+        court: '',
+        rate: null,
+        rateUnit: '/hr',
         date: bookDate ? bookDate.value : '',
         time: null,
         paymentType: 'downpayment',
@@ -271,19 +290,23 @@ document.addEventListener('DOMContentLoaded', () => {
         return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
     }
 
+    function hasKnownRate() {
+        return typeof bookingState.rate === 'number' && !Number.isNaN(bookingState.rate);
+    }
+
     function updateSummary() {
         const isFull = bookingState.paymentType === 'full';
-        const amount = isFull ? bookingState.rate : bookingState.rate * 0.5;
+        const amount = hasKnownRate() ? (isFull ? bookingState.rate : bookingState.rate * 0.5) : null;
 
-        if (summaryCourt) summaryCourt.textContent = bookingState.court;
+        if (summaryCourt) summaryCourt.textContent = bookingState.court || '—';
         if (summaryDate) summaryDate.textContent = formatDate(bookingState.date);
         if (summaryTime) summaryTime.textContent = bookingState.time || '— Select a slot —';
-        if (summaryRate) summaryRate.textContent = `₱${bookingState.rate} / hr`;
+        if (summaryRate) summaryRate.textContent = hasKnownRate() ? `₱${bookingState.rate}${bookingState.rateUnit}` : 'Rate TBA';
         if (summaryPayment) summaryPayment.textContent = isFull ? 'Full Payment' : 'Downpayment (50%)';
-        if (summaryTotal) summaryTotal.textContent = `₱${amount.toFixed(2)}`;
+        if (summaryTotal) summaryTotal.textContent = amount !== null ? `₱${amount.toFixed(2)}` : '—';
 
         if (bookSubmit) {
-            const ready = Boolean(bookingState.time);
+            const ready = Boolean(bookingState.time) && Boolean(bookingState.court);
             bookSubmit.disabled = !ready;
             bookSubmit.textContent = ready ? 'Request Booking' : 'Select a time slot to continue';
         }
@@ -291,8 +314,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (bookSelect) {
         bookSelect.addEventListener('change', () => {
+            const opt = bookSelect.selectedOptions[0];
             bookingState.court = bookSelect.value;
-            bookingState.rate = Number(bookSelect.selectedOptions[0].dataset.rate);
+            bookingState.rate = (opt && opt.dataset.rate) ? Number(opt.dataset.rate) : null;
+            bookingState.rateUnit = (opt && opt.dataset.rateUnit) || '/hr';
             updateSummary();
         });
     }
@@ -356,7 +381,7 @@ document.addEventListener('DOMContentLoaded', () => {
             bookSubmit.textContent = 'Submitting…';
 
             // `courts` is what refreshMyBookings() below actually reads back
-            // (rate lookup via courtRates[booking.courts], and the table's
+            // (rate lookup via getCourtRate(booking.courts), and the table's
             // main cell), so it gets the customer's selection. `sports` used
             // to be a copy-paste duplicate of the same value — nothing in
             // this dashboard reads it, and this simplified single-select
@@ -389,25 +414,143 @@ document.addEventListener('DOMContentLoaded', () => {
 
     updateSummary();
 
-    // "Book Now" on a court card jumps to the Booking panel and pre-fills
-    // the court + rate so the customer doesn't have to reselect it.
-    document.querySelectorAll('[data-dash-book-court]').forEach((btn) => {
-        btn.addEventListener('click', () => {
-            const court = btn.dataset.dashBookCourt;
-            const rate = Number(btn.dataset.dashBookRate);
+    // ------------------------------------------------------------------
+    // "Book Now" (Court Information cards) — jumps to the Booking panel and
+    // pre-fills the court + rate so the customer doesn't have to reselect
+    // it. Re-wired every time renderCourtGrid() (re-)renders the grid,
+    // since the cards don't exist yet at this point in the script — they're
+    // rendered once window.InigoCourtsData.getCourts() resolves below. Same
+    // re-wire-after-render idiom includes/owner_dashboard.js uses for its
+    // dynamically rendered rows/cards.
+    // ------------------------------------------------------------------
+    function wireBookNowButtons(scope) {
+        scope.querySelectorAll('[data-dash-book-court]').forEach((btn) => {
+            btn.addEventListener('click', () => {
+                const court = btn.dataset.dashBookCourt;
+                const rateRaw = btn.dataset.dashBookRate;
+                const rate = rateRaw ? Number(rateRaw) : null;
 
-            if (bookSelect) {
-                bookSelect.value = court;
+                if (bookSelect) bookSelect.value = court;
                 bookingState.court = court;
-                bookingState.rate = rate || bookingState.rate;
-            }
+                bookingState.rate = (rate !== null && !Number.isNaN(rate)) ? rate : null;
+                bookingState.rateUnit = btn.dataset.dashBookRateUnit || '/hr';
 
-            slots.forEach((s) => s.classList.remove('is-selected'));
-            bookingState.time = null;
-            updateSummary();
-            setActivePanel('booking');
+                slots.forEach((s) => s.classList.remove('is-selected'));
+                bookingState.time = null;
+                updateSummary();
+                setActivePanel('booking');
+            });
         });
-    });
+    }
+
+    // ------------------------------------------------------------------
+    // Court data — Court Information's cards and the Booking Management
+    // court <select> are rendered from the SAME fetch
+    // (window.InigoCourtsData.getCourts(), memoized), so the two panels can
+    // never disagree about which courts exist or what they cost. Every
+    // interpolated field is escaped — a court named
+    // `<img src=x onerror=alert(1)>` (staff/admin can write `court` rows,
+    // see database/schema/002_content_tables.sql's RLS policies) must
+    // render as literal text here, not run.
+    // ------------------------------------------------------------------
+    function courtTags(court) {
+        const tags = [];
+        if (court.sportName) tags.push(court.sportName);
+        tags.push(`${court.quantity} ${court.unit}`);
+        String(court.description || '').split('·').forEach((part) => {
+            const trimmed = part.trim();
+            if (trimmed) tags.push(trimmed);
+        });
+        return tags;
+    }
+
+    function renderCourtCard(court) {
+        const isAvailable = String(court.status || '').toLowerCase() === 'available';
+        const statusClass = isAvailable ? 'confirmed' : 'cancelled';
+        const monogram = window.InigoCourtsData ? window.InigoCourtsData.monogramFor(court.sportSlug, court.name) : '?';
+        const media = court.imageUrl
+            ? `<img src="${window.escapeHtml(court.imageUrl)}" alt="${window.escapeHtml(court.name)}" loading="lazy">`
+            : `<span class="dash-court-monogram" aria-hidden="true">${window.escapeHtml(monogram)}</span>`;
+        // Rate rendering: ₱<rate><rate_unit> when non-null, an honest "Rate
+        // TBA" placeholder when null (every court's rate is NULL in the
+        // live DB right now — see database/seed/002_seed_content.sql).
+        // Never invented.
+        const rateHtml = court.rate !== null
+            ? `₱${window.escapeHtml(String(court.rate))}<span>${window.escapeHtml(court.rateUnit)}</span>`
+            : '<span>Rate TBA</span>';
+        // Rating: `court.rating` only exists once the owner runs
+        // database/schema/003_court_rating.sql, and only renders when a
+        // court actually has one — no invented ratings.
+        const ratingHtml = (court.rating !== null && court.rating !== undefined)
+            ? `<div class="dash-court-rating">
+                    <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2l2.9 6.9L22 9.6l-5.4 4.9L18 22l-6-3.6L6 22l1.4-7.5L2 9.6l7.1-.7z"/></svg>
+                    ${window.escapeHtml(court.rating.toFixed(1))}<span>/ 5</span>
+               </div>`
+            : '';
+        const tagsHtml = courtTags(court).map((t) => `<span>${window.escapeHtml(t)}</span>`).join('');
+        const bookBtn = isAvailable
+            ? `<button type="button" class="dash-btn-primary" data-dash-book-court="${window.escapeHtml(court.name)}" data-dash-book-rate="${court.rate !== null ? window.escapeHtml(String(court.rate)) : ''}" data-dash-book-rate-unit="${window.escapeHtml(court.rateUnit)}">Book Now</button>`
+            : '<button type="button" class="dash-btn-primary" disabled>Book Now</button>';
+
+        return `
+            <article class="dash-court-card">
+                <div class="dash-court-media">
+                    ${media}
+                    <span class="dash-status ${statusClass}">${window.escapeHtml(court.status || 'Unavailable')}</span>
+                </div>
+                <div class="dash-court-body">
+                    <h3>${window.escapeHtml(court.name)}</h3>
+                    ${ratingHtml}
+                    <div class="dash-court-rate">${rateHtml}</div>
+                    <div class="dash-court-tags">${tagsHtml}</div>
+                    <div class="dash-court-actions">
+                        ${bookBtn}
+                    </div>
+                </div>
+            </article>
+        `;
+    }
+
+    function renderCourtGrid(courts) {
+        if (!courtGrid) return;
+        courtGrid.innerHTML = courts.length
+            ? courts.map(renderCourtCard).join('')
+            : '<p style="color: var(--color-ink-faint); padding: 8px 4px;">No courts available right now.</p>';
+        wireBookNowButtons(courtGrid);
+    }
+
+    // Replaces the "Loading courts…" placeholder <option> with one real
+    // option per court, then re-derives bookingState from whichever one
+    // ends up selected (the first, by default) instead of the placeholder.
+    function populateBookSelect(courts) {
+        if (!bookSelect) return;
+        bookSelect.innerHTML = courts.map((court) => {
+            const rateAttr = court.rate !== null ? window.escapeHtml(String(court.rate)) : '';
+            const label = court.rate !== null
+                ? `${court.name} — ₱${court.rate}${court.rateUnit}`
+                : `${court.name} — Rate TBA`;
+            return `<option value="${window.escapeHtml(court.name)}" data-rate="${rateAttr}" data-rate-unit="${window.escapeHtml(court.rateUnit)}">${window.escapeHtml(label)}</option>`;
+        }).join('');
+
+        const firstOpt = bookSelect.selectedOptions[0];
+        bookingState.court = bookSelect.value;
+        bookingState.rate = (firstOpt && firstOpt.dataset.rate) ? Number(firstOpt.dataset.rate) : null;
+        bookingState.rateUnit = (firstOpt && firstOpt.dataset.rateUnit) || '/hr';
+        updateSummary();
+    }
+
+    if (window.InigoCourtsData) {
+        window.InigoCourtsData.getCourts().then((courts) => {
+            renderCourtGrid(courts);
+            populateBookSelect(courts);
+        }).catch((err) => {
+            console.error('[dashboard] could not load courts', err);
+        });
+    } else {
+        // Should never happen — includes/courtsData.js must load before
+        // this file (see the <script> order in Pages/user_dashboard.html).
+        console.error('[dashboard] window.InigoCourtsData is missing — check that includes/courtsData.js loads before includes/Dashboard.js.');
+    }
 
     // ------------------------------------------------------------------
     // My Bookings — real data, fetched once the signed-in profile is ready
@@ -415,14 +558,19 @@ document.addEventListener('DOMContentLoaded', () => {
     // ------------------------------------------------------------------
     const bookingsTableBody = document.querySelector('[data-dash-panel="bookings"] tbody');
 
-    // Same rate lookup already used by the booking form's <select> — reused
-    // here only to show a known amount; no cost is persisted anywhere since
-    // no payment record exists yet.
-    const courtRates = {};
-    if (bookSelect) {
-        Array.from(bookSelect.options).forEach((opt) => {
-            courtRates[opt.value] = Number(opt.dataset.rate) || null;
-        });
+    // Same rate lookup already used by the booking form's <select> — read
+    // live from its current <option data-rate> on every call rather than a
+    // one-time snapshot, since those options are now populated
+    // asynchronously by populateBookSelect() above (a snapshot taken here at
+    // DOMContentLoaded would always find the select still empty). Only used
+    // to show a known amount; no cost is persisted anywhere since no
+    // payment record exists yet.
+    function getCourtRate(courtName) {
+        if (!bookSelect) return null;
+        const opt = Array.from(bookSelect.options).find((o) => o.value === courtName);
+        if (!opt || !opt.dataset.rate) return null;
+        const rate = Number(opt.dataset.rate);
+        return Number.isNaN(rate) ? null : rate;
     }
 
     function formatBookingDate(iso) {
@@ -459,8 +607,8 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         data.forEach((booking) => {
-            const rate = courtRates[booking.courts];
-            const amount = rate ? `₱${rate.toFixed(2)}` : '—';
+            const rate = getCourtRate(booking.courts);
+            const amount = rate !== null ? `₱${rate.toFixed(2)}` : '—';
             const row = document.createElement('tr');
             // courts/status are DB content (courts is free text on the
             // booking row; status could in principle be a raw value if RLS

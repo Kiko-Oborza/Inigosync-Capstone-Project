@@ -374,106 +374,14 @@
                         </div>
                     </div>
 
-                    <div class="dash-court-grid">
-                        <article class="dash-court-card">
-                            <div class="dash-court-media">
-                                <svg viewBox="0 0 48 48" fill="none"><circle cx="24" cy="24" r="20" stroke="currentColor" stroke-width="2.5"/><path d="M24 4v40M4 24h40M9 9c6 6 6 26 0 30M39 9c-6 6-6 26 0 30" stroke="currentColor" stroke-width="2"/></svg>
-                                <span class="dash-status confirmed">Available</span>
-                            </div>
-                            <div class="dash-court-body">
-                                <h3>Basketball</h3>
-                                <div class="dash-court-tags"><span>Full court</span><span>Indoor</span><span>Scoreboard</span></div>
-                                <div class="dash-form-group" style="margin-top: 12px;">
-                                    <select class="dash-select" aria-label="Select court option">
-                                        <option>Court 1</option>
-                                        <option>Court 2</option>
-                                    </select>
-                                </div>
-                                <div class="dash-court-actions">
-                                    <button type="button" class="dash-btn-primary" data-dash-book-court="Basketball" data-dash-book-rate="300">Book Now</button>
-                                </div>
-                            </div>
-                        </article>
-
-                        <article class="dash-court-card">
-                            <div class="dash-court-media">
-                                <svg viewBox="0 0 48 48" fill="none"><rect x="4" y="20" width="40" height="8" stroke="currentColor" stroke-width="2.5"/><line x1="24" y1="6" x2="24" y2="42" stroke="currentColor" stroke-width="2"/></svg>
-                                <span class="dash-status confirmed">Available</span>
-                            </div>
-                            <div class="dash-court-body">
-                                <h3>Volleyball</h3>
-                                <div class="dash-court-tags"><span>Net included</span><span>Indoor</span></div>
-                                <div class="dash-form-group" style="margin-top: 12px;">
-                                    <select class="dash-select" aria-label="Select court option">
-                                        <option>Court 1</option>
-                                        <option>Court 2</option>
-                                    </select>
-                                </div>
-                                <div class="dash-court-actions">
-                                    <button type="button" class="dash-btn-primary" data-dash-book-court="Volleyball" data-dash-book-rate="250">Book Now</button>
-                                </div>
-                            </div>
-                        </article>
-
-                        <article class="dash-court-card">
-                            <div class="dash-court-media">
-                                <svg viewBox="0 0 48 48" fill="none"><rect x="6" y="18" width="36" height="4" stroke="currentColor" stroke-width="2.5"/><circle cx="14" cy="30" r="4" stroke="currentColor" stroke-width="2"/><line x1="14" y1="18" x2="14" y2="26" stroke="currentColor" stroke-width="2"/></svg>
-                                <span class="dash-status cancelled">Unavailable</span>
-                            </div>
-                            <div class="dash-court-body">
-                                <h3>Badminton</h3>
-                                <div class="dash-court-tags"><span>Indoor</span><span>Rackets for rent</span></div>
-                                <div class="dash-form-group" style="margin-top: 12px;">
-                                    <select class="dash-select" aria-label="Select court option">
-                                        <option>Court 1</option>
-                                        <option>Court 2</option>
-                                    </select>
-                                </div>
-                                <div class="dash-court-actions">
-                                    <button type="button" class="dash-btn-primary" disabled>Book Now</button>
-                                </div>
-                            </div>
-                        </article>
-
-                        <article class="dash-court-card">
-                            <div class="dash-court-media">
-                                <svg viewBox="0 0 48 48" fill="none"><circle cx="24" cy="16" r="8" stroke="currentColor" stroke-width="2.5"/><path d="M6 42c0-8 8-12 18-12s18 4 18 12" stroke="currentColor" stroke-width="2"/></svg>
-                                <span class="dash-status confirmed">Available</span>
-                            </div>
-                            <div class="dash-court-body">
-                                <h3>Bowling</h3>
-                                <div class="dash-court-tags"><span>2 lanes</span><span>Shoes included</span></div>
-                                <div class="dash-form-group" style="margin-top: 12px;">
-                                    <select class="dash-select" aria-label="Select court option">
-                                        <option>Court 1</option>
-                                        <option>Court 2</option>
-                                    </select>
-                                </div>
-                                <div class="dash-court-actions">
-                                    <button type="button" class="dash-btn-primary" data-dash-book-court="Bowling" data-dash-book-rate="150">Book Now</button>
-                                </div>
-                            </div>
-                        </article>
-
-                        <article class="dash-court-card">
-                            <div class="dash-court-media">
-                                <svg viewBox="0 0 48 48" fill="none"><rect x="8" y="14" width="32" height="20" rx="2" stroke="currentColor" stroke-width="2.5"/><line x1="24" y1="14" x2="24" y2="34" stroke="currentColor" stroke-width="2"/></svg>
-                                <span class="dash-status confirmed">Available</span>
-                            </div>
-                            <div class="dash-court-body">
-                                <h3>Pickleball</h3>
-                                <div class="dash-court-tags"><span>Newly added</span><span>Indoor</span></div>
-                                <div class="dash-form-group" style="margin-top: 12px;">
-                                    <select class="dash-select" aria-label="Select court option">
-                                        <option>Court 1</option>
-                                        <option>Court 2</option>
-                                    </select>
-                                </div>
-                                <div class="dash-court-actions">
-                                    <button type="button" class="dash-btn-primary" data-dash-book-court="Pickleball" data-dash-book-rate="220">Book Now</button>
-                                </div>
-                            </div>
-                        </article>
+                    <div class="dash-court-grid" data-dash-court-grid>
+                        <!-- Rendered by includes/Dashboard.js from the real
+                             `court`/`sport` tables (window.InigoCourtsData) —
+                             see docs/QA_AUDIT_REPORT.md P0#8. No hardcoded
+                             court cards live here anymore; a loading note
+                             shows until the fetch (or its static fallback)
+                             resolves. -->
+                        <p class="dash-court-loading-note" style="color: var(--color-ink-faint); padding: 8px 4px;">Loading courts…</p>
                     </div>
                 </section>
 
@@ -492,12 +400,13 @@
                         <div class="dash-card">
                             <div class="dash-form-group">
                                 <span class="dash-form-label">Court</span>
+                                <!-- Options rendered by includes/Dashboard.js
+                                     from window.InigoCourtsData.getCourts()
+                                     (the real `court` table) — no hardcoded
+                                     court list here anymore, see
+                                     docs/QA_AUDIT_REPORT.md P0#8. -->
                                 <select class="dash-select" data-dash-book-select>
-                                    <option value="Basketball" data-rate="300">Basketball — ₱300/hr</option>
-                                    <option value="Volleyball" data-rate="250">Volleyball — ₱250/hr</option>
-                                    <option value="Badminton" data-rate="200">Badminton — ₱200/hr</option>
-                                    <option value="Bowling" data-rate="150">Bowling — ₱150/game</option>
-                                    <option value="Pickleball" data-rate="220">Pickleball — ₱220/hr</option>
+                                    <option value="" data-rate="">Loading courts…</option>
                                 </select>
                             </div>
 
@@ -553,10 +462,10 @@
                         <div class="dash-card dash-summary">
                             <h3 style="font-family: var(--font-display); font-weight:600; font-size:1.05rem;">Booking Summary</h3>
 
-                            <div class="dash-summary-row"><span>Court</span><strong data-dash-summary-court>Basketball</strong></div>
+                            <div class="dash-summary-row"><span>Court</span><strong data-dash-summary-court>Loading…</strong></div>
                             <div class="dash-summary-row"><span>Date</span><strong data-dash-summary-date>Jul 14, 2026</strong></div>
                             <div class="dash-summary-row"><span>Time</span><strong data-dash-summary-time>— Select a slot —</strong></div>
-                            <div class="dash-summary-row"><span>Rate</span><strong data-dash-summary-rate>₱300 / hr</strong></div>
+                            <div class="dash-summary-row"><span>Rate</span><strong data-dash-summary-rate>—</strong></div>
 
                             <div class="dash-summary-divider"></div>
 
@@ -566,7 +475,7 @@
 
                             <div class="dash-summary-total">
                                 <span>Amount due now</span>
-                                <span data-dash-summary-total>₱150.00</span>
+                                <span data-dash-summary-total>—</span>
                             </div>
 
                             <button type="button" class="dash-btn-primary" data-dash-book-submit disabled>Select a time slot to continue</button>
@@ -841,6 +750,14 @@
          value it renders and window.validatePhMobile in Account Settings. -->
     <script src="../includes/escape.js"></script>
     <script src="../includes/phoneValidation.js"></script>
+    <!-- Court/sport data layer (Phase 2 — one source of truth for courts,
+         see implementation_plan.md D2). courts-data.js is the same static
+         fallback array the landing page uses; courtsData.js wraps it with
+         the real `court`/`sport` Supabase fetch. Both must load before
+         Dashboard.js, which renders Court Information + the Booking
+         Management court dropdown from window.InigoCourtsData. -->
+    <script src="../includes/courts-data.js"></script>
+    <script src="../includes/courtsData.js"></script>
     <script src="../includes/Dashboard.js"></script>
 </body>
 </html>

@@ -913,6 +913,27 @@ body.dash-body {
     height: 46px;
 }
 
+/* Real court photo (image_url set) vs. the placeholder monogram (null) —
+   see includes/Dashboard.js's renderCourtCard, same pattern as
+   includes/landingPage.js's .media-slot / .media-slot-monogram. */
+.dash-court-media img {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.dash-court-monogram {
+    position: relative;
+    font-family: var(--font-display);
+    font-weight: 700;
+    font-size: 1.6rem;
+    letter-spacing: 0.02em;
+    color: var(--color-primary);
+    opacity: 0.55;
+}
+
 .dash-court-media .dash-status {
     position: absolute;
     top: 12px;

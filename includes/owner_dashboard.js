@@ -1,8 +1,8 @@
 // IñigoSync — Owner Dashboard controller
-// Staff Management and Account Settings talk to the real Supabase database.
-// Court Listings, Payment Configuration, and Media Manager are still
-// UI/design only — those TODOs are unchanged. (Booking trend chart setup
-// lives in event/chart.js, loaded below.)
+// Staff Management, Account Settings, and (as of Phase 2) Court Listings
+// talk to the real Supabase database. Payment Configuration and Media
+// Manager are still UI/design only — those TODOs are unchanged. (Booking
+// trend chart setup lives in event/chart.js, loaded below.)
 
 document.addEventListener('DOMContentLoaded', () => {
     // ------------------------------------------------------------------
@@ -387,80 +387,270 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // ------------------------------------------------------------------
-    // Court Listings — filter chips, toggle add-court form, add court,
-    // edit / activate-deactivate
+    // Court Listings — real CRUD against the `court` table (Phase 2; see
+    // docs/QA_AUDIT_REPORT.md's Court Listings STUB finding and P0#8,
+    // "three contradictory court lists"). window.InigoCourtsData
+    // (includes/courtsData.js) is the same fetch-with-static-fallback data
+    // layer includes/Dashboard.js uses for the customer-facing Court
+    // Information + Booking Management panels, so an admin's edit here is
+    // visible everywhere else on next load instead of a fourth hand-copied
+    // list drifting from the rest.
     // ------------------------------------------------------------------
+    const courtGrid = document.querySelector('[data-admin-court-grid]');
+    const courtFormToggleBtns = document.querySelectorAll('[data-admin-toggle-court-form]');
+    const courtForm = document.querySelector('[data-admin-court-form]');
+    const courtSubmitBtn = document.querySelector('[data-admin-court-submit]');
+
+    // Last-fetched rows, kept so "Edit" can look up a court's full data
+    // (rate, description, sport_id, ...) by id without a second round trip
+    // — the rendered card markup alone doesn't carry all of it.
+    let currentCourts = [];
+
+    function applyCourtFilter() {
+        const activeChip = document.querySelector('[data-admin-court-filter].is-active');
+        const filter = activeChip ? activeChip.dataset.adminCourtFilter : 'all';
+        document.querySelectorAll('[data-admin-court-status]').forEach((card) => {
+            const match = filter === 'all' || card.dataset.adminCourtStatus === filter;
+            card.style.display = match ? '' : 'none';
+        });
+    }
+
     document.querySelectorAll('[data-admin-court-filter]').forEach((chip) => {
         chip.addEventListener('click', () => {
             document.querySelectorAll('[data-admin-court-filter]').forEach((c) => c.classList.remove('is-active'));
             chip.classList.add('is-active');
-            const filter = chip.dataset.adminCourtFilter;
-            document.querySelectorAll('[data-admin-court-status]').forEach((card) => {
-                const match = filter === 'all' || card.dataset.adminCourtStatus === filter;
-                card.style.display = match ? '' : 'none';
-            });
+            applyCourtFilter();
         });
     });
 
-    const courtFormToggleBtns = document.querySelectorAll('[data-admin-toggle-court-form]');
-    const courtForm = document.querySelector('[data-admin-court-form]');
+    // Resets the Add/Edit form back to "add a new court" — clears the
+    // editingId marker Edit sets (see openCourtFormForEdit below), the
+    // heading, the submit button label, and every field.
+    function resetCourtForm() {
+        if (!courtForm) return;
+        delete courtForm.dataset.editingId;
+        const heading = courtForm.querySelector('.admin-card-head h3');
+        if (heading) heading.textContent = 'New Court';
+        if (courtSubmitBtn) courtSubmitBtn.textContent = 'Add Court';
+
+        courtForm.querySelectorAll('input[type="text"], input[type="number"], input[type="url"]').forEach((el) => { el.value = ''; });
+        const quantityInput = courtForm.querySelector('[data-admin-court-quantity]');
+        if (quantityInput) quantityInput.value = '1';
+        ['[data-admin-court-unit]', '[data-admin-court-rate-unit]', '[data-admin-court-op-status]'].forEach((selector) => {
+            const el = courtForm.querySelector(selector);
+            if (el) el.selectedIndex = 0;
+        });
+        const sportSelect = courtForm.querySelector('[data-admin-court-sport]');
+        if (sportSelect && sportSelect.options.length) sportSelect.selectedIndex = 0;
+    }
 
     courtFormToggleBtns.forEach((btn) => {
         btn.addEventListener('click', () => {
-            if (courtForm) courtForm.classList.toggle('is-open');
+            if (!courtForm) return;
+            const opening = !courtForm.classList.contains('is-open');
+            courtForm.classList.toggle('is-open');
+            // Whenever the form ends up closed (Cancel, or re-clicking
+            // "+ Add New Court" while it was already open) — or opens fresh
+            // via "+ Add New Court" while NOT mid-edit — reset it to
+            // add-mode. Edit mode is entered explicitly by
+            // wireCourtCardActions' Edit handler below, which opens the
+            // form itself and runs independently of this shared toggle.
+            if (!opening || !courtForm.dataset.editingId) resetCourtForm();
         });
     });
 
-    const courtGrid = document.querySelector('[data-admin-court-grid]');
-    const courtSubmitBtn = document.querySelector('[data-admin-court-submit]');
+    // Escapes every interpolated field — a court name/description written
+    // by any staff-or-admin session (RLS lets staff write `court` too, see
+    // database/schema/002_content_tables.sql's "court_staff_write" policy)
+    // must render as literal text here, not run.
+    function renderAdminCourtCard(court) {
+        const isActive = court.isActive !== false;
+        const statusCls = isActive ? 'active' : 'inactive';
+        const statusLabel = isActive ? 'Active' : 'Deactivated';
+        const monogram = window.InigoCourtsData ? window.InigoCourtsData.monogramFor(court.sportSlug, court.name) : '?';
+        const media = court.imageUrl
+            ? `<img src="${window.escapeHtml(court.imageUrl)}" alt="${window.escapeHtml(court.name)}" loading="lazy">`
+            : `<span class="admin-court-monogram" aria-hidden="true">${window.escapeHtml(monogram)}</span>`;
+        // Rate rendering: ₱<rate><rate_unit> when non-null, an honest "Rate
+        // TBA" placeholder when null — every court's rate is NULL in the
+        // live DB right now (see database/seed/002_seed_content.sql). Never
+        // invented.
+        const rateHtml = court.rate !== null
+            ? `₱${window.escapeHtml(String(court.rate))} <span>${window.escapeHtml(court.rateUnit)}</span>`
+            : '<span>Rate TBA</span>';
+        const tags = [court.sportName, `${court.quantity} ${court.unit}`]
+            .concat(String(court.description || '').split('·').map((s) => s.trim()).filter(Boolean))
+            .filter(Boolean);
+        const tagsHtml = tags.map((t) => `<span>${window.escapeHtml(t)}</span>`).join('');
+
+        return `
+            <article class="admin-court-card" data-admin-court-status="${statusCls}" data-court-id="${window.escapeHtml(court.id)}">
+                <div class="admin-court-media">
+                    ${media}
+                    <span class="admin-status ${statusCls}">${window.escapeHtml(statusLabel)}</span>
+                </div>
+                <div class="admin-court-body">
+                    <h3>${window.escapeHtml(court.name)}</h3>
+                    <p class="admin-court-rate">${rateHtml}</p>
+                    <div class="admin-court-tags">${tagsHtml}</div>
+                    <div class="admin-court-actions">
+                        <button type="button" class="admin-btn-secondary" data-admin-court-edit>Edit</button>
+                        <button type="button" class="admin-btn-secondary" data-admin-court-toggle-status>${isActive ? 'Deactivate' : 'Activate'}</button>
+                    </div>
+                </div>
+            </article>
+        `;
+    }
+
+    // Admin sees every court (including deactivated ones, so it can
+    // reactivate them) — unlike the customer-facing fetches in
+    // includes/Dashboard.js, which default to active-only.
+    async function loadAndRenderCourts() {
+        if (!courtGrid || !window.InigoCourtsData) return;
+        window.InigoCourtsData.invalidateCourts();
+        const courts = await window.InigoCourtsData.getCourts({ includeInactive: true });
+        currentCourts = courts;
+        courtGrid.innerHTML = courts.length
+            ? courts.map(renderAdminCourtCard).join('')
+            : '<p style="color: var(--color-ink-faint); padding: 8px 4px;">No courts yet — add one above.</p>';
+        wireCourtCardActions(courtGrid);
+        applyCourtFilter();
+    }
+
+    function openCourtFormForEdit(court) {
+        if (!courtForm) return;
+        courtForm.dataset.editingId = court.id;
+        const heading = courtForm.querySelector('.admin-card-head h3');
+        if (heading) heading.textContent = `Edit — ${court.name}`;
+        if (courtSubmitBtn) courtSubmitBtn.textContent = 'Save Changes';
+
+        // .value assignment (never innerHTML) — a `"` or `<` in an existing
+        // name/description can't break out of an attribute or inject
+        // markup this way, same fix already applied to the staff-edit
+        // inputs (docs/QA_AUDIT_REPORT.md P2#2).
+        const setValue = (selector, value) => {
+            const el = courtForm.querySelector(selector);
+            if (el) el.value = value;
+        };
+        setValue('[data-admin-court-name]', court.name || '');
+        setValue('[data-admin-court-sport]', court.sportId || '');
+        setValue('[data-admin-court-quantity]', court.quantity || 1);
+        setValue('[data-admin-court-unit]', court.unit || 'courts');
+        setValue('[data-admin-court-rate]', court.rate !== null ? court.rate : '');
+        setValue('[data-admin-court-rate-unit]', court.rateUnit || '/hr');
+        setValue('[data-admin-court-description]', court.description || '');
+        setValue('[data-admin-court-op-status]', court.status || 'Available');
+        setValue('[data-admin-court-image-url]', court.imageUrl || '');
+
+        courtForm.classList.add('is-open');
+        courtForm.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
 
     if (courtSubmitBtn) {
-        courtSubmitBtn.addEventListener('click', () => {
+        courtSubmitBtn.addEventListener('click', async () => {
             const nameInput = document.querySelector('[data-admin-court-name]');
             const sportSelect = document.querySelector('[data-admin-court-sport]');
-            const rateInput = document.querySelector('[data-admin-court-rate]');
+            const quantityInput = document.querySelector('[data-admin-court-quantity]');
             const unitSelect = document.querySelector('[data-admin-court-unit]');
+            const rateInput = document.querySelector('[data-admin-court-rate]');
+            const rateUnitSelect = document.querySelector('[data-admin-court-rate-unit]');
+            const descriptionInput = document.querySelector('[data-admin-court-description]');
+            const opStatusSelect = document.querySelector('[data-admin-court-op-status]');
+            const imageUrlInput = document.querySelector('[data-admin-court-image-url]');
 
             const name = nameInput ? nameInput.value.trim() : '';
-            const rate = rateInput ? rateInput.value : '0';
-
             if (!name) {
-                if (nameInput) nameInput.focus();
+                window.InigoToast?.show('Enter a court name.', true);
+                nameInput?.focus();
                 return;
             }
 
-            // TODO: POST /api/admin/courts (multipart, for the image) once
-            // the backend is ready — this only appends a card for now.
-            console.log('[admin] court created (placeholder)', {
-                name, sport: sportSelect?.value, rate, unit: unitSelect?.value,
-            });
-
-            if (courtGrid) {
-                const card = document.createElement('article');
-                card.className = 'admin-court-card';
-                card.dataset.adminCourtStatus = 'active';
-                card.innerHTML = `
-                    <div class="admin-court-media">
-                        <svg viewBox="0 0 48 48" fill="none"><rect x="8" y="14" width="32" height="20" rx="2" stroke="currentColor" stroke-width="2.5"/></svg>
-                        <span class="admin-status active">Active</span>
-                    </div>
-                    <div class="admin-court-body">
-                        <h3>${window.escapeHtml(name)}</h3>
-                        <p class="admin-court-rate">₱${window.escapeHtml(rate)} <span>/ ${window.escapeHtml(unitSelect ? unitSelect.value : 'hour')}</span></p>
-                        <div class="admin-court-tags"><span>${window.escapeHtml(sportSelect ? sportSelect.value : '')}</span></div>
-                        <div class="admin-court-actions">
-                            <button type="button" class="admin-btn-secondary" data-admin-court-edit>Edit</button>
-                            <button type="button" class="admin-btn-secondary" data-admin-court-toggle-status>Deactivate</button>
-                        </div>
-                    </div>
-                `;
-                courtGrid.appendChild(card);
-                wireCourtCardActions(card);
+            if (!window.sb || !window.InigoCourtsData) {
+                window.InigoToast?.show('Unable to reach the server right now. Please try again shortly.', true);
+                return;
             }
 
-            if (nameInput) nameInput.value = '';
-            if (rateInput) rateInput.value = '';
-            if (courtForm) courtForm.classList.remove('is-open');
+            const sportId = sportSelect ? sportSelect.value : '';
+            if (!sportId) {
+                window.InigoToast?.show('Select a sport.', true);
+                return;
+            }
+
+            let quantity = Number(quantityInput ? quantityInput.value : NaN);
+            if (!Number.isFinite(quantity) || quantity < 1) quantity = 1;
+
+            // Rate is the one field allowed to stay blank — every court's
+            // rate is NULL in the live DB until Ms. Driz confirms prices
+            // (database/seed/002_seed_content.sql). Blank here always means
+            // "send NULL", including on Edit (so a rate can be cleared back
+            // to TBA), not "leave whatever was there before".
+            const rateRaw = rateInput ? rateInput.value.trim() : '';
+            if (rateRaw !== '' && (!Number.isFinite(Number(rateRaw)) || Number(rateRaw) < 0)) {
+                window.InigoToast?.show('Rate must be a positive number, or leave it blank until confirmed.', true);
+                return;
+            }
+            const rate = rateRaw === '' ? null : Number(rateRaw);
+
+            const payload = {
+                name,
+                sport_id: sportId,
+                quantity,
+                unit: unitSelect ? unitSelect.value : 'courts',
+                description: (descriptionInput && descriptionInput.value.trim()) ? descriptionInput.value.trim() : null,
+                rate,
+                rate_unit: rateUnitSelect ? rateUnitSelect.value : '/hr',
+                status: opStatusSelect ? opStatusSelect.value : 'Available',
+                image_url: (imageUrlInput && imageUrlInput.value.trim()) ? imageUrlInput.value.trim() : null,
+            };
+
+            const editingId = courtForm.dataset.editingId;
+            const originalLabel = courtSubmitBtn.textContent;
+            courtSubmitBtn.disabled = true;
+            courtSubmitBtn.textContent = editingId ? 'Saving…' : 'Adding…';
+
+            let error;
+            if (editingId) {
+                // .select() so `data` reflects the actually-updated row(s):
+                // an UPDATE that RLS's USING clause filters out (a
+                // logged-out or non-staff/admin session — see
+                // database/schema/002_content_tables.sql's "court_staff_write"
+                // policy) matches zero rows and comes back with NO `error`
+                // at all, just an empty result — without checking the row
+                // count that would silently report success on a write that
+                // never happened. Edits never touch `slug` — renaming a
+                // court can't collide with, or orphan, another row's slug.
+                const { error: updateError, data: updateData } = await window.sb
+                    .from('court').update(payload).eq('id', editingId).select();
+                error = updateError || ((!updateData || updateData.length === 0)
+                    ? { message: 'Could not save changes — you may not have permission, or this court may no longer exist.' }
+                    : null);
+            } else {
+                const maxOrder = currentCourts.reduce((max, c) => Math.max(max, c.displayOrder || 0), 0);
+                let slug = window.InigoCourtsData.slugify(name);
+                ({ error } = await window.sb.from('court').insert({ ...payload, slug, display_order: maxOrder + 1 }));
+                if (error && error.code === '23505') {
+                    // Slug collision (unique constraint) — retried once with
+                    // a short unique suffix rather than failing outright.
+                    slug = `${slug}-${Date.now().toString(36)}`;
+                    ({ error } = await window.sb.from('court').insert({ ...payload, slug, display_order: maxOrder + 1 }));
+                }
+            }
+
+            courtSubmitBtn.disabled = false;
+            courtSubmitBtn.textContent = originalLabel;
+
+            if (error) {
+                // Covers both a genuine DB error and RLS rejecting a
+                // non-admin/non-staff session — either way this is
+                // surfaced via the page's toast pattern instead of alert().
+                window.InigoToast?.show(error.message || 'Could not save this court. Please try again.', true);
+                return;
+            }
+
+            window.InigoToast?.show(editingId ? 'Court updated.' : 'Court added.');
+            resetCourtForm();
+            courtForm.classList.remove('is-open');
+            loadAndRenderCourts();
         });
     }
 
@@ -468,36 +658,63 @@ document.addEventListener('DOMContentLoaded', () => {
         scope.querySelectorAll('[data-admin-court-edit]').forEach((btn) => {
             btn.addEventListener('click', () => {
                 const card = btn.closest('.admin-court-card');
-                const title = card ? card.querySelector('h3').textContent : '';
-                // TODO: open a real edit form (name, rate, image) pre-filled
-                // with this court's data once the backend is ready.
-                console.log(`[admin] edit court requested for ${title} (placeholder)`);
+                const id = card ? card.dataset.courtId : null;
+                const court = currentCourts.find((c) => String(c.id) === String(id));
+                if (!court) return;
+                openCourtFormForEdit(court);
             });
         });
 
         scope.querySelectorAll('[data-admin-court-toggle-status]').forEach((btn) => {
-            btn.addEventListener('click', () => {
+            btn.addEventListener('click', async () => {
                 const card = btn.closest('.admin-court-card');
-                if (!card) return;
-                const isActive = card.dataset.adminCourtStatus === 'active';
-                const nextStatus = isActive ? 'inactive' : 'active';
-                card.dataset.adminCourtStatus = nextStatus;
+                const id = card ? card.dataset.courtId : null;
+                if (!id || !window.sb) return;
 
-                const badge = card.querySelector('.admin-court-media .admin-status');
-                if (badge) {
-                    badge.textContent = nextStatus === 'active' ? 'Active' : 'Deactivated';
-                    badge.className = `admin-status ${nextStatus === 'active' ? 'active' : 'inactive'}`;
+                const court = currentCourts.find((c) => String(c.id) === String(id));
+                const currentlyActive = card.dataset.adminCourtStatus === 'active';
+                const verb = currentlyActive ? 'deactivate' : 'activate';
+                if (!window.confirm(`Are you sure you want to ${verb} "${court ? court.name : 'this court'}"?`)) return;
+
+                btn.disabled = true;
+                // Soft toggle only, same convention already used for staff
+                // (profiles.status — see refreshStaffList above) rather
+                // than deleting the row. `status` (Available/Maintenance —
+                // day-to-day bookability) is left untouched; is_active only
+                // controls whether the court is listed at all. .select() so
+                // an RLS-filtered UPDATE (0 rows matched — see the Add/Edit
+                // handler's note above) is caught explicitly instead of
+                // silently reporting success on a write that never happened.
+                const { error: toggleError, data: toggleData } = await window.sb
+                    .from('court').update({ is_active: !currentlyActive }).eq('id', id).select();
+                const error = toggleError || ((!toggleData || toggleData.length === 0)
+                    ? { message: `Could not ${verb} this court — you may not have permission.` }
+                    : null);
+                btn.disabled = false;
+
+                if (error) {
+                    window.InigoToast?.show(error.message || `Could not ${verb} this court.`, true);
+                    return;
                 }
-                btn.textContent = nextStatus === 'active' ? 'Deactivate' : 'Activate';
-
-                // TODO: PATCH /api/admin/courts/:id { is_active } once the
-                // backend is ready.
-                console.log(`[admin] court status toggled to ${nextStatus} (placeholder)`);
+                window.InigoToast?.show(`Court ${currentlyActive ? 'deactivated' : 'activated'}.`);
+                loadAndRenderCourts();
             });
         });
     }
 
-    if (courtGrid) wireCourtCardActions(courtGrid);
+    if (window.InigoCourtsData) {
+        window.InigoCourtsData.getSports().then((sports) => {
+            const sportSelect = document.querySelector('[data-admin-court-sport]');
+            if (sportSelect) {
+                sportSelect.innerHTML = sports.map((s) => `<option value="${window.escapeHtml(s.id)}">${window.escapeHtml(s.name)}</option>`).join('');
+            }
+        });
+        loadAndRenderCourts();
+    } else {
+        // Should never happen — includes/courtsData.js must load before
+        // this file (see the <script> order in Pages/owner_dashboard.html).
+        console.error('[admin] window.InigoCourtsData is missing — check that includes/courtsData.js loads before includes/owner_dashboard.js.');
+    }
 
     // ------------------------------------------------------------------
     // Account Settings — password visibility toggles + save placeholders

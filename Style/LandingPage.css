@@ -883,6 +883,48 @@ nav ul li a.active {
     color: var(--color-ink-faint);
 }
 
+/* Rate + rating — see includes/landingPage.js's renderCourtCard. Rate is
+   NULL for every court until the owner confirms prices (rendered ".is-tba"
+   here); rating doesn't exist until database/schema/003_court_rating.sql is
+   applied and only shows once a court actually has one. */
+.court-rate {
+    font-family: var(--font-mono);
+    font-size: 1.05rem;
+    color: var(--color-primary);
+    margin-bottom: 4px;
+}
+
+.court-rate span {
+    font-family: var(--font-body);
+    font-size: 0.78rem;
+    color: var(--color-ink-faint);
+}
+
+.court-rate.is-tba {
+    font-family: var(--font-body);
+    font-size: 0.85rem;
+    color: var(--color-ink-faint);
+}
+
+.court-rating {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 0.8rem;
+    color: var(--color-primary);
+    margin-bottom: 4px;
+}
+
+.court-rating svg {
+    width: 13px;
+    height: 13px;
+}
+
+.court-rating span {
+    color: var(--color-ink-faint);
+    margin-left: 2px;
+}
+
 /* ==========================================================================
    Testimonials — labeled honestly as testimonials, never as a live Google
    Reviews feed (see D3 in implementation_plan.md). Exactly 3 render per

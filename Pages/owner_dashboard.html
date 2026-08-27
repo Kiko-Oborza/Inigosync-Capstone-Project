@@ -471,31 +471,64 @@
                         </div>
                         <div class="admin-form-group">
                             <span class="admin-form-label">Sport type</span>
+                            <!-- Options rendered by includes/owner_dashboard.js
+                                 from window.InigoCourtsData.getSports() (the
+                                 real `sport` table, all 8 rows) — no
+                                 hardcoded/incomplete sport list here anymore. -->
                             <select class="admin-select" data-admin-court-sport>
-                                <option>Basketball</option>
-                                <option>Volleyball</option>
-                                <option>Badminton</option>
-                                <option>Bowling</option>
-                                <option>Pickleball</option>
+                                <option value="">Loading sports…</option>
                             </select>
                         </div>
                     </div>
                     <div class="admin-form-row">
                         <div class="admin-form-group">
-                            <span class="admin-form-label">Rate</span>
-                            <input type="number" class="admin-input" placeholder="200" min="0" data-admin-court-rate>
+                            <span class="admin-form-label">Quantity</span>
+                            <input type="number" class="admin-input" placeholder="2" min="1" step="1" value="1" data-admin-court-quantity>
+                        </div>
+                        <div class="admin-form-group">
+                            <span class="admin-form-label">Unit</span>
+                            <select class="admin-select" data-admin-court-unit>
+                                <option value="courts">Courts</option>
+                                <option value="lanes">Lanes</option>
+                                <option value="tables">Tables</option>
+                                <option value="court">Court (singular)</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="admin-form-row">
+                        <div class="admin-form-group">
+                            <span class="admin-form-label">Rate (optional — leave blank until confirmed)</span>
+                            <input type="number" class="admin-input" placeholder="e.g. 300" min="0" step="0.01" data-admin-court-rate>
                         </div>
                         <div class="admin-form-group">
                             <span class="admin-form-label">Billing unit</span>
-                            <select class="admin-select" data-admin-court-unit>
-                                <option value="hour">Per hour</option>
-                                <option value="game">Per game</option>
+                            <select class="admin-select" data-admin-court-rate-unit>
+                                <option value="/hr">Per hour</option>
+                                <option value="/game">Per game</option>
                             </select>
                         </div>
                     </div>
                     <div class="admin-form-group">
-                        <span class="admin-form-label">Court image</span>
-                        <input type="file" class="admin-input" accept="image/*" data-admin-court-image>
+                        <span class="admin-form-label">Description</span>
+                        <input type="text" class="admin-input" placeholder="e.g. Full court · Indoor · Scoreboard" data-admin-court-description>
+                    </div>
+                    <div class="admin-form-row">
+                        <div class="admin-form-group">
+                            <span class="admin-form-label">Status</span>
+                            <select class="admin-select" data-admin-court-op-status>
+                                <option value="Available">Available</option>
+                                <option value="Maintenance">Maintenance</option>
+                            </select>
+                        </div>
+                        <div class="admin-form-group">
+                            <span class="admin-form-label">Image URL (optional)</span>
+                            <!-- Storage upload is out of scope this phase —
+                                 see includes/owner_dashboard.js's Media
+                                 Manager note. A URL still flows straight
+                                 into `court.image_url` and renders on every
+                                 card (landing, customer, admin). -->
+                            <input type="url" class="admin-input" placeholder="https://…" data-admin-court-image-url>
+                        </div>
                     </div>
                     <div class="admin-form-actions">
                         <button type="button" class="admin-btn-ghost" data-admin-toggle-court-form>Cancel</button>
@@ -504,85 +537,12 @@
                 </div>
 
                 <div class="admin-court-grid" data-admin-court-grid>
-                    <article class="admin-court-card" data-admin-court-status="active">
-                        <div class="admin-court-media">
-                            <svg viewBox="0 0 48 48" fill="none"><circle cx="24" cy="24" r="20" stroke="currentColor" stroke-width="2.5"/><path d="M24 4v40M4 24h40M9 9c6 6 6 26 0 30M39 9c-6 6-6 26 0 30" stroke="currentColor" stroke-width="2"/></svg>
-                            <span class="admin-status active">Active</span>
-                        </div>
-                        <div class="admin-court-body">
-                            <h3>Basketball — Full Court</h3>
-                            <p class="admin-court-rate">₱300 <span>/ hour</span></p>
-                            <div class="admin-court-tags"><span>Full court</span><span>Indoor</span></div>
-                            <div class="admin-court-actions">
-                                <button type="button" class="admin-btn-secondary" data-admin-court-edit>Edit</button>
-                                <button type="button" class="admin-btn-secondary" data-admin-court-toggle-status>Deactivate</button>
-                            </div>
-                        </div>
-                    </article>
-
-                    <article class="admin-court-card" data-admin-court-status="active">
-                        <div class="admin-court-media">
-                            <svg viewBox="0 0 48 48" fill="none"><rect x="4" y="20" width="40" height="8" stroke="currentColor" stroke-width="2.5"/><line x1="24" y1="6" x2="24" y2="42" stroke="currentColor" stroke-width="2"/></svg>
-                            <span class="admin-status active">Active</span>
-                        </div>
-                        <div class="admin-court-body">
-                            <h3>Volleyball Court</h3>
-                            <p class="admin-court-rate">₱250 <span>/ hour</span></p>
-                            <div class="admin-court-tags"><span>Net included</span><span>Indoor</span></div>
-                            <div class="admin-court-actions">
-                                <button type="button" class="admin-btn-secondary" data-admin-court-edit>Edit</button>
-                                <button type="button" class="admin-btn-secondary" data-admin-court-toggle-status>Deactivate</button>
-                            </div>
-                        </div>
-                    </article>
-
-                    <article class="admin-court-card" data-admin-court-status="active">
-                        <div class="admin-court-media">
-                            <svg viewBox="0 0 48 48" fill="none"><rect x="6" y="18" width="36" height="4" stroke="currentColor" stroke-width="2.5"/><circle cx="14" cy="30" r="4" stroke="currentColor" stroke-width="2"/><line x1="14" y1="18" x2="14" y2="26" stroke="currentColor" stroke-width="2"/></svg>
-                            <span class="admin-status active">Active</span>
-                        </div>
-                        <div class="admin-court-body">
-                            <h3>Badminton — Court 1</h3>
-                            <p class="admin-court-rate">₱200 <span>/ hour</span></p>
-                            <div class="admin-court-tags"><span>Indoor</span><span>Rackets for rent</span></div>
-                            <div class="admin-court-actions">
-                                <button type="button" class="admin-btn-secondary" data-admin-court-edit>Edit</button>
-                                <button type="button" class="admin-btn-secondary" data-admin-court-toggle-status>Deactivate</button>
-                            </div>
-                        </div>
-                    </article>
-
-                    <article class="admin-court-card" data-admin-court-status="active">
-                        <div class="admin-court-media">
-                            <svg viewBox="0 0 48 48" fill="none"><circle cx="24" cy="16" r="8" stroke="currentColor" stroke-width="2.5"/><path d="M6 42c0-8 8-12 18-12s18 4 18 12" stroke="currentColor" stroke-width="2"/></svg>
-                            <span class="admin-status active">Active</span>
-                        </div>
-                        <div class="admin-court-body">
-                            <h3>Bowling — Lane 1</h3>
-                            <p class="admin-court-rate">₱150 <span>/ game</span></p>
-                            <div class="admin-court-tags"><span>2 lanes</span><span>Shoes included</span></div>
-                            <div class="admin-court-actions">
-                                <button type="button" class="admin-btn-secondary" data-admin-court-edit>Edit</button>
-                                <button type="button" class="admin-btn-secondary" data-admin-court-toggle-status>Deactivate</button>
-                            </div>
-                        </div>
-                    </article>
-
-                    <article class="admin-court-card" data-admin-court-status="inactive">
-                        <div class="admin-court-media">
-                            <svg viewBox="0 0 48 48" fill="none"><rect x="8" y="14" width="32" height="20" rx="2" stroke="currentColor" stroke-width="2.5"/><line x1="24" y1="14" x2="24" y2="34" stroke="currentColor" stroke-width="2"/></svg>
-                            <span class="admin-status inactive">Deactivated</span>
-                        </div>
-                        <div class="admin-court-body">
-                            <h3>Pickleball — Court 1</h3>
-                            <p class="admin-court-rate">₱220 <span>/ hour</span></p>
-                            <div class="admin-court-tags"><span>Under maintenance</span></div>
-                            <div class="admin-court-actions">
-                                <button type="button" class="admin-btn-secondary" data-admin-court-edit>Edit</button>
-                                <button type="button" class="admin-btn-secondary" data-admin-court-toggle-status>Activate</button>
-                            </div>
-                        </div>
-                    </article>
+                    <!-- Rendered by includes/owner_dashboard.js from the real
+                         `court`/`sport` tables (window.InigoCourtsData) — see
+                         docs/QA_AUDIT_REPORT.md's Court Listings STUB finding
+                         and P0#8 ("three contradictory court lists"). No
+                         hardcoded court cards live here anymore. -->
+                    <p class="admin-court-loading-note" style="color: var(--color-ink-faint); padding: 8px 4px;">Loading courts…</p>
                 </div>
             </section>
 
@@ -862,6 +822,14 @@
 <!-- Shared HTML-escaping helper — must load before owner_dashboard.js,
      which uses window.escapeHtml on every staff/court name it renders. -->
 <script src="../includes/escape.js"></script>
+
+<!-- Court/sport data layer (Phase 2 — one source of truth for courts, see
+     implementation_plan.md D2). courts-data.js is the same static fallback
+     array the landing page + customer dashboard use; courtsData.js wraps it
+     with the real `court`/`sport` Supabase fetch and the CRUD helpers Court
+     Listings needs. Both must load before owner_dashboard.js. -->
+<script src="../includes/courts-data.js"></script>
+<script src="../includes/courtsData.js"></script>
 
 <!-- Script for owner dashboard functionality -->
 <script src="../includes/owner_dashboard.js"></script>
