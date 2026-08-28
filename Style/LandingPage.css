@@ -1,24 +1,68 @@
 /* ==========================================================================
    IñigoSync — Design Tokens (Dark & Light Mode)
+
+   Two layers, on purpose (see implementation_plan.md L2):
+
+   1. SURFACE ELEVATION — --surface-page < --surface-band < --surface-card,
+      plus the border and shadow that make each step readable. The old token
+      set reused --color-bg-elevated for both "section band" and "card", which
+      in light mode meant #FFFFFF for both: every card was white-on-white with
+      a near-invisible #EFE3D2 hairline and no shadow. The invariant this
+      layer exists to enforce is: **a card's background is never the same
+      colour as the section it sits on, in either theme, and every card
+      carries a visible border AND a shadow.**
+
+   2. BACK-COMPAT ALIASES — Style/Auth.css, Style/Dashboard.css and
+      Pages/user_dashboard.html all consume --color-bg / --color-bg-elevated /
+      --color-bg-card / --color-line. Those names stay, as aliases of layer 1
+      and never as independent values, so the dashboards keep working.
+      They are declared once in :root and resolve through whichever
+      --surface-* is active, so they are deliberately NOT redeclared in the
+      light block below.
+
+   Every --color-ink* value clears WCAG AA (4.5:1) against the lightest
+   (dark mode) / darkest (light mode) surface it can land on. Do not lighten
+   --color-ink-faint in light mode or darken it in dark mode without
+   re-checking those ratios.
    ========================================================================== */
 
 /* Dark mode (default) */
 :root {
-    /* Color */
-    --color-bg: #14110d;
-    --color-bg-elevated: #1c1712;
-    --color-bg-card: #201a14;
+    /* Surface elevation */
+    --surface-page: #14110d;
+    --surface-band: #191410;
+    --surface-card: #241d16;
+    --surface-card-hover: #2b231a;
+    --border-soft: rgba(244, 239, 230, 0.14);
+    --border-card: rgba(244, 239, 230, 0.20);
+    --shadow-card: 0 6px 20px rgba(0, 0, 0, 0.35);
+    --shadow-card-hover: 0 12px 34px rgba(0, 0, 0, 0.45);
+
+    /* Back-compat aliases — see layer 2 above */
+    --color-bg: var(--surface-page);
+    --color-bg-elevated: var(--surface-band);
+    --color-bg-card: var(--surface-card);
+    --color-line: var(--border-soft);
+
+    /* Ink */
     --color-ink: #f4efe6;
     --color-ink-dim: #c9c2b4;
-    --color-ink-faint: #8a8177;
+    --color-ink-faint: #988e83;
+
+    /* Accent */
     --color-primary: #FF6115;
     --color-primary-dim: #D4410A;
+    /* The accent used as *text*. #FF6115 clears AA on dark surfaces but only
+       reaches ~2.9:1 on the light surfaces, so light mode swaps in a deeper
+       burnt orange of the same hue family. Buttons/borders keep
+       --color-primary; only text switches. */
+    --color-accent-text: #FF6115;
+
     --color-court-green: #3e7a5e;
     --color-alert: #d6482f;
-    --color-line: rgba(244, 239, 230, 0.12);
 
     /* Floating pill navbar (overlaid on the hero photo, so it needs its own
-       translucent surface + shadow rather than the flat --color-bg-elevated) */
+       translucent surface + shadow rather than a flat section surface) */
     --color-nav-bg: rgba(28, 23, 18, 0.75);
     --color-nav-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
 
@@ -30,20 +74,25 @@
 
 /* Light mode */
 :root[data-theme="light"] {
-    /* Surfaces */
-    --color-bg: #FFFCF4;
-    --color-bg-elevated: #FFFFFF;
-    --color-bg-card: #FFFFFF;
-    --color-line: #EFE3D2;
+    /* Surface elevation */
+    --surface-page: #FFFCF4;
+    --surface-band: #F7F0E4;
+    --surface-card: #FFFFFF;
+    --surface-card-hover: #FFFDF8;
+    --border-soft: #E6D8C2;
+    --border-card: #DCCBB1;
+    --shadow-card: 0 6px 18px rgba(90, 64, 30, 0.10);
+    --shadow-card-hover: 0 14px 32px rgba(90, 64, 30, 0.16);
 
-    /* Text */
+    /* Ink */
     --color-ink: #1F1B16;
     --color-ink-dim: #6B6055;
-    --color-ink-faint: #9A8E80;
+    --color-ink-faint: #756C61;
 
     /* Accent (secondary role in light mode) */
     --color-primary: #FF6115;
     --color-primary-dim: #C4430A;
+    --color-accent-text: #B93E08;
 
     /* Semantic */
     --color-court-green: #1E8E4A;
@@ -69,7 +118,7 @@ html {
 }
 
 body {
-    background-color: var(--color-bg);
+    background-color: var(--surface-page);
     color: var(--color-ink);
     font-family: var(--font-body);
     line-height: 1.5;
@@ -117,7 +166,7 @@ a {
     font-size: 0.8rem;
     letter-spacing: 0.08em;
     text-transform: uppercase;
-    color: var(--color-primary);
+    color: var(--color-accent-text);
     margin-bottom: 14px;
 }
 
@@ -166,31 +215,19 @@ a {
 
 /* ==========================================================================
    Header / Nav
+
+   There is deliberately NO bare `header { ... }` rule here any more. This file
+   used to carry a full-width `header { position: fixed; background:
+   rgba(20,17,13,.5); backdrop-filter: blur(10px) }` block left over from
+   before the navbar became a floating pill, plus a
+   `:root[data-theme="light"] header { background: rgba(255,252,244,.5) }`
+   override. `.site-nav` (0,1,0) could beat the base rule (0,0,1) but not the
+   light override (0,2,1) — so light mode painted a full-bleed translucent
+   white, blurred band across the top of the hero while dark mode looked fine.
+   Both blocks are deleted rather than overridden (implementation_plan.md L1);
+   the floating pill below is the only navbar. Do not reintroduce a bare
+   element selector here.
    ========================================================================== */
-header {
-    position: fixed;
-    top: 0;
-    width: 100%;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 20px 80px;
-    background: rgba(20, 17, 13, 0.5);
-    backdrop-filter: blur(10px);
-    z-index: 5;
-    transition: background-color 0.2s ease;
-}
-
-:root[data-theme="light"] header {
-    background: rgba(255, 252, 244, 0.5);
-}
-
-@media (prefers-reduced-motion: reduce) {
-    header {
-        transition: none;
-        position: fixed;
-    }
-}
 
 /* Floating pill navbar — overlaid on top of the hero photo and fixed to the
    viewport, so it stays visible while the page scrolls. */
@@ -206,6 +243,20 @@ header {
     backdrop-filter: none;
 }
 
+/* Cross-page fallout from deleting the legacy `header` rules above.
+   Pages/user_dashboard.html loads this stylesheet *and* Style/Dashboard.css,
+   and its `<header class="dash-topbar">` was silently picking up its
+   light-mode surface from `:root[data-theme="light"] header` (0,2,1 beat
+   `.dash-topbar`'s 0,1,0). Dashboard.css ships no light-mode override of its
+   own — it only sets `background: rgba(20,17,13,.6)` — so without this the
+   customer dashboard's topbar would turn into a dark grey band on a light
+   page. Style/Dashboard.css is out of scope for this change, so the surface
+   it was already getting is restated here explicitly rather than left to a
+   deleted rule. Delete this the day Dashboard.css grows its own light block. */
+:root[data-theme="light"] .dash-topbar {
+    background: rgba(255, 252, 244, 0.5);
+}
+
 .site-nav-pill {
     display: flex;
     align-items: center;
@@ -214,7 +265,7 @@ header {
     background: var(--color-nav-bg);
     backdrop-filter: blur(14px);
     -webkit-backdrop-filter: blur(14px);
-    border: 1px solid var(--color-line);
+    border: 1px solid var(--border-soft);
     border-radius: 999px;
     padding: 10px 14px 10px 18px;
     box-shadow: var(--color-nav-shadow);
@@ -261,7 +312,7 @@ header {
 
 .site-nav-links a:hover {
     background: rgba(255, 97, 21, 0.12);
-    color: var(--color-primary);
+    color: var(--color-accent-text);
 }
 
 .site-nav-links a.active {
@@ -353,16 +404,16 @@ nav ul li a {
 }
 
 nav ul li a:hover {
-    color: var(--color-primary);
+    color: var(--color-accent-text);
 }
 
 nav ul li a.active {
-    color: var(--color-primary);
+    color: var(--color-accent-text);
 }
 
 .theme-toggle {
     background: transparent;
-    border: 1px solid var(--color-line);
+    border: 1px solid var(--border-soft);
     border-radius: 8px;
     width: 40px;
     height: 40px;
@@ -482,14 +533,14 @@ nav ul li a.active {
     align-items: center;
     justify-content: center;
     overflow: hidden;
-    background: radial-gradient(120% 120% at 50% 0%, var(--color-bg-elevated) 0%, var(--color-bg) 65%);
+    background: radial-gradient(120% 120% at 50% 0%, var(--surface-band) 0%, var(--surface-page) 65%);
 }
 
 .hero-media-slot::before {
     content: '';
     position: absolute;
     inset: 0;
-    background-image: radial-gradient(var(--color-line) 1.5px, transparent 1.5px);
+    background-image: radial-gradient(var(--border-soft) 1.5px, transparent 1.5px);
     background-size: 28px 28px;
     opacity: 0.6;
 }
@@ -644,71 +695,26 @@ nav ul li a.active {
 }
 
 /* ==========================================================================
-   Featured Events — absorbs the old "This week" strip. Fed from the same
-   window.InigoContent.getEvents() the hero carousel uses, so court/lane
-   counts and schedules can't drift into three different answers again
-   (bug 2).
-   ========================================================================== */
-.events {
-    padding: 100px 0;
-    background: var(--color-bg-elevated);
-    transition: background-color 0.2s ease;
-}
+   Image slots — shared by the court grid cards and the court viewer modal.
+   The standalone Featured Events section (and with it .event-grid /
+   .event-card*) was removed in the landing-page redesign; the event data it
+   used still drives the hero carousel through the same
+   window.InigoContent.getEvents() (see includes/home-showcase.js), it just
+   no longer has a second grid of its own.
 
-@media (prefers-reduced-motion: reduce) {
-    .events {
-        transition: none;
-    }
-}
-
-.event-grid {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 20px;
-}
-
-.event-card-body {
-    padding: 20px 24px 24px;
-}
-
-.event-card-tag {
-    display: inline-block;
-    font-family: var(--font-mono);
-    font-size: 0.72rem;
-    letter-spacing: 0.06em;
-    text-transform: uppercase;
-    color: var(--color-primary);
-    margin-bottom: 8px;
-}
-
-.event-card-title {
-    font-family: var(--font-display);
-    font-size: 1.15rem;
-    font-weight: 600;
-    line-height: 1.3;
-    margin-bottom: 6px;
-}
-
-.event-card-meta {
-    font-family: var(--font-mono);
-    font-size: 0.82rem;
-    color: var(--color-ink-faint);
-}
-
-/* ==========================================================================
-   Image slots — shared by court and event cards. No photos exist in the DB
-   yet (image_url is nullable on both `court` and `event`); this renders a
-   pattern + sport monogram instead of a broken <img>, and swaps in a real
-   photo with no markup changes once image_url is set (D2 in
-   implementation_plan.md).
+   No court photos exist in the DB yet (image_url is nullable on `court`);
+   this renders a pattern + sport monogram instead of a broken <img>, and
+   swaps in a real photo with no markup changes once the owner sets image_url
+   through admin Court Listings (D2 in implementation_plan.md, OQ1 resolved:
+   images are database-driven, none ship in the repo).
    ========================================================================== */
 .media-slot {
     position: relative;
     width: 100%;
     aspect-ratio: 16 / 10;
     overflow: hidden;
-    background: linear-gradient(150deg, var(--color-bg-elevated), var(--color-bg));
-    border-bottom: 1px solid var(--color-line);
+    background: linear-gradient(150deg, var(--surface-band), var(--surface-page));
+    border-bottom: 1px solid var(--border-soft);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -718,7 +724,7 @@ nav ul li a.active {
     content: '';
     position: absolute;
     inset: 0;
-    background-image: radial-gradient(var(--color-line) 1px, transparent 1px);
+    background-image: radial-gradient(var(--border-card) 1px, transparent 1px);
     background-size: 16px 16px;
     opacity: 0.6;
 }
@@ -730,12 +736,12 @@ nav ul li a.active {
     font-weight: 700;
     font-size: 1.6rem;
     letter-spacing: 0.02em;
-    color: var(--color-primary);
+    color: var(--color-accent-text);
     opacity: 0.55;
 }
 
 .media-slot.has-image {
-    background: var(--color-bg-elevated);
+    background: var(--surface-band);
 }
 
 .media-slot.has-image::before {
@@ -751,11 +757,20 @@ nav ul li a.active {
 }
 
 /* ==========================================================================
-   About
+   About — the Iñigos story + stats, then the Feedback & Reviews sub-block,
+   then the CTA band. All three live inside #about so the nav's "About" link
+   covers everything between Pricing and the site footer
+   (implementation_plan.md L3/L6).
+
+   Note the section itself is NOT .reveal: it is now several viewports tall,
+   and the shared IntersectionObserver in includes/landingPage.js uses
+   `threshold: 0.15` of the *target's own area*, which a very tall section can
+   struggle to satisfy on short viewports. The three sub-blocks carry .reveal
+   individually instead, which also gives a nicer staged reveal.
    ========================================================================== */
 .about {
-    padding: 100px 0;
-    background: var(--color-bg-elevated);
+    padding: 100px 0 0;
+    background: var(--surface-page);
     transition: background-color 0.2s ease;
 }
 
@@ -776,7 +791,7 @@ nav ul li a.active {
     display: flex;
     flex-direction: column;
     gap: 28px;
-    border-left: 1px solid var(--color-line);
+    border-left: 1px solid var(--border-soft);
     padding-left: 32px;
     transition: border-color 0.2s ease;
 }
@@ -792,7 +807,7 @@ nav ul li a.active {
     font-family: var(--font-display);
     font-size: 2.4rem;
     font-weight: 700;
-    color: var(--color-primary);
+    color: var(--color-accent-text);
     line-height: 1;
 }
 
@@ -802,11 +817,17 @@ nav ul li a.active {
 }
 
 /* ==========================================================================
-   Courts & Pricing
+   Courts & Facilities
+
+   Each card is a real <button> (includes/landingPage.js renderCourtCard) that
+   opens the court viewer for that sport, so keyboard and screen-reader
+   support come for free — no tabindex/role patching. The rules below undo the
+   UA button defaults (font, colour, alignment, width) so it still reads as a
+   card, not a form control.
    ========================================================================== */
 .courts {
     padding: 100px 0;
-    background: var(--color-bg);
+    background: var(--surface-page);
     transition: background-color 0.2s ease;
 }
 
@@ -822,35 +843,85 @@ nav ul li a.active {
     gap: 20px;
 }
 
-.court-card,
-.event-card {
-    background: var(--color-bg-card);
-    border: 1px solid var(--color-line);
+.court-card {
+    /* Button reset. `display: flex` rather than `block` is deliberate: Chrome
+       vertically centres a <button>'s anonymous content box when the button is
+       taller than its contents, so in a stretched grid row the cards with a
+       shorter note floated their photo and text in the middle instead of
+       filling the card. An explicit flex column takes that layout over. */
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    justify-content: flex-start;
+    width: 100%;
+    margin: 0;
+    padding: 0;
+    font: inherit;
+    color: inherit;
+    text-align: left;
+    cursor: pointer;
+    -webkit-appearance: none;
+    appearance: none;
+
+    /* Card surface — never the same colour as .courts, always bordered and
+       lifted, in both themes (implementation_plan.md L2). */
+    background: var(--surface-card);
+    border: 1px solid var(--border-card);
     border-radius: 14px;
     overflow: hidden;
-    transition: transform 0.25s ease, border-color 0.25s ease, background-color 0.2s ease;
+    box-shadow: var(--shadow-card);
+    transition: transform 0.25s ease, border-color 0.25s ease,
+                background-color 0.2s ease, box-shadow 0.25s ease;
+}
+
+.court-card .media-slot {
+    flex-shrink: 0;
 }
 
 .court-card-body {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
     padding: 20px 24px 24px;
 }
 
+.court-card:hover,
+.court-card:focus-visible {
+    transform: translateY(-4px);
+    background: var(--surface-card-hover);
+    border-color: var(--color-primary);
+    box-shadow: var(--shadow-card-hover);
+}
+
+/* Affordance that the card opens something, without adding markup.
+   margin-top: auto pins it to the bottom of the card body so the row of
+   "View" labels lines up across cards with different note lengths. */
+.court-card-open {
+    display: inline-flex;
+    align-items: center;
+    align-self: flex-start;
+    gap: 6px;
+    margin-top: auto;
+    padding-top: 12px;
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--color-accent-text);
+}
+
+.court-card-open svg {
+    width: 12px;
+    height: 12px;
+}
+
 @media (prefers-reduced-motion: reduce) {
-    .court-card,
-    .event-card {
+    .court-card {
         transition: border-color 0.25s ease, background-color 0.2s ease;
     }
-}
 
-.court-card:hover,
-.event-card:hover {
-    transform: translateY(-4px);
-    border-color: var(--color-primary);
-}
-
-@media (prefers-reduced-motion: reduce) {
     .court-card:hover,
-    .event-card:hover {
+    .court-card:focus-visible {
         transform: none;
     }
 }
@@ -865,7 +936,7 @@ nav ul li a.active {
 .court-count {
     font-family: var(--font-mono);
     font-size: 1.25rem;
-    color: var(--color-primary);
+    color: var(--color-accent-text);
     margin-bottom: 4px;
     display: flex;
     align-items: baseline;
@@ -890,7 +961,7 @@ nav ul li a.active {
 .court-rate {
     font-family: var(--font-mono);
     font-size: 1.05rem;
-    color: var(--color-primary);
+    color: var(--color-accent-text);
     margin-bottom: 4px;
 }
 
@@ -911,7 +982,7 @@ nav ul li a.active {
     align-items: center;
     gap: 4px;
     font-size: 0.8rem;
-    color: var(--color-primary);
+    color: var(--color-accent-text);
     margin-bottom: 4px;
 }
 
@@ -926,18 +997,311 @@ nav ul li a.active {
 }
 
 /* ==========================================================================
-   Testimonials — labeled honestly as testimonials, never as a live Google
-   Reviews feed (see D3 in implementation_plan.md). Exactly 3 render per
-   load, chosen at random by includes/landingPage.js.
+   Court viewer — ONE reusable dialog for every court card. Opened by
+   includes/landingPage.js with the same normalized court object the grid
+   renders, and the same renderMediaSlot() output, so while image_url is NULL
+   it shows an honest large placeholder ("Photo coming soon") and swaps to the
+   real photo the moment the owner sets one (OQ1). No image paths live in the
+   repo.
    ========================================================================== */
-.testimonials {
+.court-viewer {
+    position: fixed;
+    inset: 0;
+    z-index: 90;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.25s ease;
+}
+
+.court-viewer[data-open] {
+    opacity: 1;
+    pointer-events: auto;
+}
+
+/* .court-viewer sets `display: flex`, and an author declaration beats the UA
+   `[hidden] { display: none }` — so [hidden] has to be restated here or the
+   dialog would stay laid out, focusable and exposed to screen readers while
+   "closed". (Style/Auth.css restates it as `display: flex` for its own
+   overlay, which is why that one keeps a tabbable close button while hidden;
+   this dialog does not copy that.) The fade-out still runs because
+   includes/landingPage.js only sets [hidden] after the transition finishes. */
+.court-viewer[hidden] {
+    display: none;
+}
+
+body.court-viewer-lock {
+    overflow: hidden;
+}
+
+.court-viewer-backdrop {
+    position: absolute;
+    inset: 0;
+    background: rgba(10, 8, 6, 0.72);
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+}
+
+.court-viewer-dialog {
+    position: relative;
+    width: 100%;
+    max-width: 620px;
+    max-height: calc(100vh - 48px);
+    overflow-y: auto;
+    background: var(--surface-card);
+    border: 1px solid var(--border-card);
+    border-radius: 20px;
+    box-shadow: var(--shadow-card-hover);
+    transform: translateY(16px) scale(0.98);
+    opacity: 0;
+    transition: transform 0.28s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.22s ease;
+}
+
+.court-viewer[data-open] .court-viewer-dialog {
+    transform: translateY(0) scale(1);
+    opacity: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .court-viewer,
+    .court-viewer-dialog {
+        transition: none;
+    }
+
+    .court-viewer-dialog {
+        transform: none;
+    }
+}
+
+.court-viewer-close {
+    position: absolute;
+    top: 14px;
+    right: 14px;
+    z-index: 2;
+    width: 38px;
+    height: 38px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid var(--border-card);
+    border-radius: 999px;
+    background: var(--surface-card);
+    color: var(--color-ink);
+    cursor: pointer;
+    transition: background-color 0.2s ease, border-color 0.2s ease;
+}
+
+.court-viewer-close:hover {
+    background: var(--surface-card-hover);
+    border-color: var(--color-primary);
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .court-viewer-close {
+        transition: none;
+    }
+}
+
+/* The modal reuses the grid's .media-slot markup verbatim — only the framing
+   changes, so a future real photo needs no new CSS. */
+.court-viewer-media .media-slot {
+    aspect-ratio: 16 / 9;
+    border-bottom: 1px solid var(--border-soft);
+    border-radius: 19px 19px 0 0;
+}
+
+.court-viewer-media .media-slot-monogram {
+    font-size: clamp(2.6rem, 9vw, 4.4rem);
+}
+
+.court-viewer-body {
+    padding: 24px 28px 28px;
+}
+
+.court-viewer-title {
+    font-family: var(--font-display);
+    font-weight: 600;
+    font-size: 1.6rem;
+    line-height: 1.2;
+    margin-bottom: 10px;
+}
+
+.court-viewer-count {
+    font-family: var(--font-mono);
+    font-size: 1.15rem;
+    color: var(--color-accent-text);
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+    margin-bottom: 10px;
+}
+
+.court-viewer-count .court-count-unit {
+    font-family: var(--font-body);
+    font-size: 0.8rem;
+    color: var(--color-ink-faint);
+}
+
+.court-viewer-note {
+    font-size: 0.98rem;
+    line-height: 1.7;
+    color: var(--color-ink-dim);
+    margin-bottom: 14px;
+}
+
+.court-viewer-rate {
+    font-family: var(--font-mono);
+    font-size: 1rem;
+    color: var(--color-accent-text);
+    margin-bottom: 14px;
+}
+
+.court-viewer-rate.is-tba {
+    font-family: var(--font-body);
+    font-size: 0.9rem;
+    color: var(--color-ink-dim);
+}
+
+.court-viewer-photo-status {
+    font-size: 0.85rem;
+    color: var(--color-ink-faint);
+    padding-top: 14px;
+    border-top: 1px solid var(--border-soft);
+}
+
+/* ==========================================================================
+   Pricing — rendered from the SAME window.InigoContent.getCourts() promise
+   the Courts grid uses (memoized, so this is not a second fetch and not a
+   second price list — D2). Every court's `rate` is NULL until the owner
+   confirms them, so every row currently reads "Rate TBA"; the layout is
+   built to look deliberate in exactly that state rather than apologetic.
+   ========================================================================== */
+.pricing {
     padding: 100px 0;
-    background: var(--color-bg);
+    background: var(--surface-band);
     transition: background-color 0.2s ease;
 }
 
 @media (prefers-reduced-motion: reduce) {
-    .testimonials {
+    .pricing {
+        transition: none;
+    }
+}
+
+.pricing-head {
+    display: grid;
+    grid-template-columns: 1.6fr 1fr 1fr;
+    gap: 20px;
+    padding: 0 24px 10px;
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--color-ink-faint);
+}
+
+.pricing-list {
+    list-style: none;
+    display: grid;
+    gap: 12px;
+}
+
+.pricing-row {
+    display: grid;
+    grid-template-columns: 1.6fr 1fr 1fr;
+    gap: 20px;
+    align-items: center;
+    padding: 20px 24px;
+    background: var(--surface-card);
+    border: 1px solid var(--border-card);
+    border-radius: 14px;
+    box-shadow: var(--shadow-card);
+}
+
+.pricing-sport h3 {
+    font-family: var(--font-display);
+    font-size: 1.1rem;
+    font-weight: 600;
+    margin-bottom: 4px;
+}
+
+.pricing-note {
+    font-size: 0.85rem;
+    color: var(--color-ink-faint);
+}
+
+.pricing-cell-label {
+    display: none;
+}
+
+.pricing-unit-value {
+    font-family: var(--font-mono);
+    font-size: 0.95rem;
+    color: var(--color-ink-dim);
+}
+
+.pricing-rate-value {
+    font-family: var(--font-mono);
+    font-size: 1.05rem;
+    color: var(--color-accent-text);
+}
+
+/* "Rate TBA" is the state of every row today. Rendered as a deliberate
+   neutral chip rather than a greyed-out apology — no invented prices (D1). */
+.pricing-rate-value.is-tba {
+    display: inline-block;
+    font-family: var(--font-body);
+    font-size: 0.8rem;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    color: var(--color-ink-dim);
+    background: var(--surface-band);
+    border: 1px solid var(--border-soft);
+    border-radius: 999px;
+    padding: 6px 14px;
+}
+
+.pricing-foot {
+    margin-top: 22px;
+    font-size: 0.88rem;
+    line-height: 1.7;
+    color: var(--color-ink-dim);
+    max-width: 640px;
+}
+
+.pricing-empty,
+.court-grid-empty {
+    padding: 28px 24px;
+    background: var(--surface-card);
+    border: 1px solid var(--border-card);
+    border-radius: 14px;
+    box-shadow: var(--shadow-card);
+    color: var(--color-ink-dim);
+    font-size: 0.95rem;
+}
+
+/* ==========================================================================
+   Feedback & Reviews — the old standalone .testimonials section, now a
+   sub-block inside #about (implementation_plan.md L6). Labeled honestly as
+   testimonials, never as a live Google Reviews feed (D3). Exactly 3 render
+   per load, chosen at random by includes/landingPage.js.
+
+   It gets its own full-bleed --surface-band strip inside the
+   --surface-page #about section so the testimonial cards (--surface-card)
+   still sit on a surface they contrast against.
+   ========================================================================== */
+.about-reviews {
+    margin-top: 96px;
+    padding: 84px 0;
+    background: var(--surface-band);
+    transition: background-color 0.2s ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .about-reviews {
         transition: none;
     }
 }
@@ -949,9 +1313,10 @@ nav ul li a.active {
 }
 
 .testimonial-card {
-    background: var(--color-bg-card);
-    border: 1px solid var(--color-line);
+    background: var(--surface-card);
+    border: 1px solid var(--border-card);
     border-radius: 14px;
+    box-shadow: var(--shadow-card);
     padding: 28px 24px;
     display: flex;
     flex-direction: column;
@@ -983,7 +1348,7 @@ nav ul li a.active {
 .testimonial-stars {
     font-family: var(--font-mono);
     letter-spacing: 2px;
-    color: var(--color-primary);
+    color: var(--color-accent-text);
     font-size: 0.95rem;
     width: 100%;
 }
@@ -1000,12 +1365,21 @@ nav ul li a.active {
 }
 
 /* ==========================================================================
-   CTA Footer
+   CTA band — now the last block inside #about, immediately above the site
+   footer (implementation_plan.md L3).
+
+   The overlay alphas are stronger than they used to be (dark .80/.55 →
+   .86/.70, light .90/.75 → .94/.90). The photo underneath is arbitrary, so
+   the weakest point of the old gradient left body copy at ~3.3:1 in light
+   mode and ~3.9:1 in dark against a worst-case pixel. At these alphas the
+   worst case is 4.8:1 (light) / 6.5:1 (dark) regardless of the photo, and the
+   background is still clearly visible.
    ========================================================================== */
 .cta-footer {
+    margin-top: 96px;
     padding: 90px 0;
     background:
-        linear-gradient(90deg, rgba(4, 12, 18, 0.8), rgba(4, 12, 18, 0.55)),
+        linear-gradient(90deg, rgba(4, 12, 18, 0.86), rgba(4, 12, 18, 0.7)),
         url("../assets/Backgroung.png") center/cover no-repeat;
     text-align: center;
     color: #fff;
@@ -1013,7 +1387,7 @@ nav ul li a.active {
 
 :root[data-theme="light"] .cta-footer {
     background:
-        linear-gradient(90deg, rgba(255, 252, 244, 0.9), rgba(255, 252, 244, 0.75)),
+        linear-gradient(90deg, rgba(255, 252, 244, 0.94), rgba(255, 252, 244, 0.9)),
         url("../assets/Backgroung.png") center/cover no-repeat;
     color: var(--color-ink);
 }
@@ -1050,8 +1424,8 @@ nav ul li a.active {
    Site Footer
    ========================================================================== */
 .site-footer {
-    background: var(--color-bg-elevated);
-    border-top: 1px solid var(--color-line);
+    background: var(--surface-band);
+    border-top: 1px solid var(--border-soft);
     padding: 48px 0 40px;
     transition: background-color 0.2s ease, border-color 0.2s ease;
 }
@@ -1100,14 +1474,14 @@ nav ul li a.active {
 }
 
 .footer-card {
-    background: var(--color-bg-card);
-    border: 1px solid var(--color-line);
+    background: var(--surface-card);
+    border: 1px solid var(--border-card);
     border-radius: 16px;
     padding: 18px;
     display: flex;
     flex-direction: column;
     gap: 8px;
-    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.18);
+    box-shadow: var(--shadow-card);
     transition: background-color 0.2s ease, border-color 0.2s ease;
 }
 
@@ -1117,15 +1491,11 @@ nav ul li a.active {
     }
 }
 
-:root[data-theme="light"] .footer-card {
-    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.06);
-}
-
 .footer-card h3 {
     font-family: var(--font-display);
     font-size: 1rem;
     font-weight: 600;
-    color: var(--color-primary);
+    color: var(--color-accent-text);
     margin-bottom: 2px;
 }
 
@@ -1152,7 +1522,7 @@ nav ul li a.active {
 }
 
 .footer-card a:hover {
-    color: var(--color-primary);
+    color: var(--color-accent-text);
 }
 
 .footer-social-icon {
@@ -1196,7 +1566,7 @@ nav ul li a.active {
     .about-stats {
         flex-direction: row;
         border-left: none;
-        border-top: 1px solid var(--color-line);
+        border-top: 1px solid var(--border-soft);
         padding-left: 0;
         padding-top: 28px;
         gap: 20px;
@@ -1204,9 +1574,30 @@ nav ul li a.active {
     }
 
     .court-grid,
-    .event-grid,
     .testimonial-grid {
         grid-template-columns: repeat(2, 1fr);
+    }
+
+    /* Rate sheet loses its header row and stacks each cell with its own
+       label, so the three columns stay readable without a horizontal
+       scroller. */
+    .pricing-head {
+        display: none;
+    }
+
+    .pricing-row {
+        grid-template-columns: 1fr;
+        gap: 12px;
+    }
+
+    .pricing-cell-label {
+        display: block;
+        font-family: var(--font-mono);
+        font-size: 0.7rem;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--color-ink-faint);
+        margin-bottom: 4px;
     }
 
     .site-nav {
@@ -1300,7 +1691,7 @@ nav ul li a.active {
         gap: 10px;
         padding: 0 20px 20px;
         margin-bottom: 8px;
-        border-bottom: 1px solid var(--color-line);
+        border-bottom: 1px solid var(--border-soft);
     }
 
     .nav-menu-logo {
@@ -1333,7 +1724,7 @@ nav ul li a.active {
     }
 
     .nav-menu ul li + li {
-        border-top: 1px solid var(--color-line);
+        border-top: 1px solid var(--border-soft);
     }
 
     .nav-menu-cta {
@@ -1390,21 +1781,43 @@ nav ul li a.active {
         display: none;
     }
 
-    .about,
     .courts,
-    .events,
-    .testimonials,
+    .pricing,
     .cta-footer {
         padding: 64px 0;
     }
 
+    .about {
+        padding: 64px 0 0;
+    }
+
+    .about-reviews {
+        margin-top: 64px;
+        padding: 56px 0;
+    }
+
+    .cta-footer {
+        margin-top: 64px;
+    }
+
     .court-grid,
-    .event-grid,
     .testimonial-grid {
         grid-template-columns: 1fr;
     }
 
     .about-stats {
         flex-direction: column;
+    }
+
+    .court-viewer {
+        padding: 16px;
+    }
+
+    .court-viewer-body {
+        padding: 20px 20px 24px;
+    }
+
+    .pricing-row {
+        padding: 18px 18px;
     }
 }

@@ -9,11 +9,19 @@
 //      includes/home-showcase.js — which loads *after* this file — can use
 //      it too, keeping courts/events to ONE source of truth instead of the
 //      three drifting hardcoded copies this page used to have.
-//   2. Rendering the Courts & Facilities grid, the Featured Events grid,
-//      and the Testimonials grid from that shared data, with every piece of
-//      untrusted text escaped before it touches innerHTML.
-//   3. Scroll-reveal for `.reveal` sections, nav scroll-spy, the mobile
+//   2. Rendering the Courts & Facilities grid, the Pricing rate sheet and
+//      the Feedback & Reviews grid from that shared data, with every piece
+//      of untrusted text escaped before it touches innerHTML. Courts and
+//      Pricing both read the SAME memoized getCourts() promise — one fetch,
+//      one list, never a second hardcoded price sheet (D2).
+//   3. The court viewer: one reusable modal that shows a single sport's
+//      photo (or its honest placeholder) large, opened from the court cards.
+//   4. Scroll-reveal for `.reveal` sections, nav scroll-spy, the mobile
 //      menu, and the theme-toggle button wiring.
+//
+// The standalone Featured Events section was removed in the landing-page
+// redesign; getEvents() below stays because includes/home-showcase.js still
+// drives the hero carousel and its captions from it.
 //
 // See database/schema/002_content_tables.sql for the `court` / `event` /
 // `testimonial` table shapes this reads, and includes/courts-data.js for
@@ -389,32 +397,53 @@ function renderCourtCard(court) {
         ? `<p class="court-rating"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2l2.9 6.9L22 9.6l-5.4 4.9L18 22l-6-3.6L6 22l1.4-7.5L2 9.6l7.1-.7z"/></svg>${escapeHtml(court.rating.toFixed(1))}<span>/ 5</span></p>`
         : '';
 
+    // A real <button>, not an <article> with a click handler: that buys
+    // keyboard activation (Enter/Space), focus order and the correct
+    // screen-reader role for free, with no tabindex or role patching.
+    // data-court-id carries the sport slug, which mergeCourtsBySport
+    // guarantees is unique across the rendered list.
     return `
-        <article class="court-card">
+        <button type="button" class="court-card" data-court-id="${escapeHtml(court.sportSlug)}" aria-haspopup="dialog">
             ${renderMediaSlot({ imageUrl: court.imageUrl, alt: court.name, monogram })}
             <div class="court-card-body">
                 <h3>${escapeHtml(court.name)}</h3>
                 ${ratingHtml}
-                <p class="court-count"><span class="court-count-value">${court.quantity}</span><span class="court-count-unit">${escapeHtml(court.unit)}</span></p>
+                <p class="court-count"><span class="court-count-value">${escapeHtml(String(court.quantity))}</span><span class="court-count-unit">${escapeHtml(court.unit)}</span></p>
                 ${rateHtml}
                 <p class="court-note">${escapeHtml(court.note)}</p>
+                <span class="court-card-open">View
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                </span>
             </div>
-        </article>
+        </button>
     `;
 }
 
-function renderEventCard(ev) {
-    const monogram = monogramFor(ev.sportSlug, ev.title);
-    const metaText = formatEventMeta(ev);
+// One row of the Pricing rate sheet. Same normalized court object the grid
+// renders — there is deliberately no second court/price list anywhere (D2).
+// `rate` is NULL for every court until the owner enters rates through admin
+// Court Listings, so today every row renders the "Rate TBA" chip. Never a
+// placeholder number.
+function renderPricingRow(court) {
+    const rateHtml = court.rate !== null
+        ? `<span class="pricing-rate-value">₱${escapeHtml(String(court.rate))}${escapeHtml(court.rateUnit)}</span>`
+        : `<span class="pricing-rate-value is-tba">Rate TBA</span>`;
+
     return `
-        <article class="event-card">
-            ${renderMediaSlot({ imageUrl: ev.imageUrl, alt: ev.title, monogram })}
-            <div class="event-card-body">
-                <span class="event-card-tag">${escapeHtml(ev.tag || 'Featured')}</span>
-                <h3 class="event-card-title">${escapeHtml(ev.title)}</h3>
-                <p class="event-card-meta">${escapeHtml(metaText)}</p>
+        <li class="pricing-row">
+            <div class="pricing-sport">
+                <h3>${escapeHtml(court.name)}</h3>
+                <p class="pricing-note">${escapeHtml(court.note)}</p>
             </div>
-        </article>
+            <p class="pricing-unit">
+                <span class="pricing-cell-label">What you book</span>
+                <span class="pricing-unit-value">${escapeHtml(String(court.quantity))} ${escapeHtml(court.unit)}</span>
+            </p>
+            <p class="pricing-rate">
+                <span class="pricing-cell-label">Rate</span>
+                ${rateHtml}
+            </p>
+        </li>
     `;
 }
 
@@ -433,32 +462,228 @@ function renderTestimonialCard(t) {
     `;
 }
 
+// ============================================================================
+// Court viewer — ONE reusable modal for every court card.
+//
+// Court cards are real <button>s (see renderCourtCard), so activation by
+// mouse, Enter and Space all arrive here as a plain click. The dialog:
+//   • shows the sport's photo large — or, while `image_url` is NULL, the same
+//     honest .media-slot placeholder the grid uses plus "Photo coming soon";
+//   • closes on Escape, on a backdrop click and on the close button;
+//   • moves focus into the dialog on open and back to the invoking card on
+//     close, and traps Tab in between;
+//   • locks body scroll while open (body.court-viewer-lock).
+//
+// Every value it injects is either set with textContent or escaped with
+// escapeHtml first (D3). No image path is hardcoded anywhere — the photo is
+// whatever `court.image_url` holds, which the owner sets through admin Court
+// Listings (OQ1).
+// ============================================================================
+function createCourtViewer() {
+    const root = document.querySelector('[data-court-viewer]');
+    if (!root) return null;
+
+    const dialog = root.querySelector('[data-court-viewer-dialog]');
+    const mediaEl = root.querySelector('[data-court-viewer-media]');
+    const titleEl = root.querySelector('[data-court-viewer-title]');
+    const countEl = root.querySelector('[data-court-viewer-count]');
+    const noteEl = root.querySelector('[data-court-viewer-note]');
+    const rateEl = root.querySelector('[data-court-viewer-rate]');
+    const photoEl = root.querySelector('[data-court-viewer-photo-status]');
+    const closeBtn = root.querySelector('[data-court-viewer-close]');
+    const backdrop = root.querySelector('[data-court-viewer-backdrop]');
+
+    if (!dialog || !mediaEl || !titleEl || !countEl || !noteEl || !rateEl || !photoEl) {
+        console.error('[IñigoSync] #courtViewer markup is incomplete — court cards cannot open. Check Pages/Index.html.');
+        return null;
+    }
+
+    // Matches the CSS opacity transition on .court-viewer; the same 250ms
+    // includes/auth.js uses for its overlay.
+    const CLOSE_DELAY_MS = 250;
+    const FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
+    let lastFocused = null;
+    let isOpen = false;
+    let hideTimer = null;
+
+    function open(court, invoker) {
+        if (!court) return;
+
+        lastFocused = invoker || document.activeElement;
+
+        const monogram = monogramFor(court.sportSlug, court.name);
+        // renderMediaSlot escapes the alt text and the image URL itself.
+        mediaEl.innerHTML = renderMediaSlot({ imageUrl: court.imageUrl, alt: court.name, monogram });
+
+        titleEl.textContent = court.name;
+        countEl.innerHTML = `<span class="court-count-value">${escapeHtml(String(court.quantity))}</span><span class="court-count-unit">${escapeHtml(court.unit)}</span>`;
+
+        noteEl.textContent = court.note || '';
+        noteEl.hidden = !court.note;
+
+        // Same rule as the grid card and the pricing row: a real number when
+        // the owner has set one, an honest TBA otherwise. Never invented.
+        if (court.rate !== null && court.rate !== undefined) {
+            rateEl.className = 'court-viewer-rate';
+            rateEl.textContent = `₱${court.rate}${court.rateUnit}`;
+        } else {
+            rateEl.className = 'court-viewer-rate is-tba';
+            rateEl.textContent = 'Rate TBA — rates are still being confirmed with the front desk.';
+        }
+
+        photoEl.textContent = court.imageUrl
+            ? 'Photo provided by Iñigos Sports Center.'
+            : 'Photo coming soon — court photos are added by Iñigos through admin Court Listings.';
+
+        if (hideTimer) {
+            window.clearTimeout(hideTimer);
+            hideTimer = null;
+        }
+
+        root.hidden = false;
+        document.body.classList.add('court-viewer-lock');
+        // Force a synchronous layout flush so the browser commits the
+        // opacity:0 / display:flex state *before* [data-open] flips opacity
+        // to 1. Batching both into one style recalc would skip the fade
+        // entirely; requestAnimationFrame is not a reliable barrier here
+        // because rAF callbacks run before the next style recalc, not after
+        // the current one.
+        void root.offsetWidth;
+        root.setAttribute('data-open', '');
+        isOpen = true;
+        // The dialog carries tabindex="-1" and aria-labelledby, so focusing it
+        // announces the sport name before anything else.
+        dialog.focus();
+    }
+
+    function close() {
+        if (!isOpen) return;
+        isOpen = false;
+
+        root.removeAttribute('data-open');
+        document.body.classList.remove('court-viewer-lock');
+
+        hideTimer = window.setTimeout(() => {
+            root.hidden = true;
+            // Drop the media so reopening never flashes the previous sport,
+            // and a large photo isn't held decoded once it's off-screen.
+            mediaEl.innerHTML = '';
+            hideTimer = null;
+        }, CLOSE_DELAY_MS);
+
+        // Return focus to the card that opened this, if it's still in the DOM
+        // (the grid re-renders only once per load, so it normally is).
+        if (lastFocused && typeof lastFocused.focus === 'function' && document.contains(lastFocused)) {
+            lastFocused.focus();
+        }
+        lastFocused = null;
+    }
+
+    if (closeBtn) closeBtn.addEventListener('click', close);
+    if (backdrop) backdrop.addEventListener('click', close);
+    // Belt and braces: a click on the dialog's own padding/margin area.
+    root.addEventListener('click', (e) => {
+        if (e.target === root) close();
+    });
+
+    document.addEventListener('keydown', (e) => {
+        if (!isOpen) return;
+
+        if (e.key === 'Escape') {
+            e.preventDefault();
+            close();
+            return;
+        }
+
+        if (e.key !== 'Tab') return;
+
+        // Focus trap. The dialog normally holds exactly one focusable child
+        // (the close button), so without this Tab would walk straight out
+        // into the page behind the backdrop.
+        const focusables = Array.from(dialog.querySelectorAll(FOCUSABLE));
+        if (focusables.length === 0) {
+            e.preventDefault();
+            dialog.focus();
+            return;
+        }
+
+        const first = focusables[0];
+        const last = focusables[focusables.length - 1];
+        const active = document.activeElement;
+
+        if (e.shiftKey && (active === first || active === dialog || !dialog.contains(active))) {
+            e.preventDefault();
+            last.focus();
+        } else if (!e.shiftKey && (active === last || !dialog.contains(active))) {
+            e.preventDefault();
+            first.focus();
+        }
+    });
+
+    return { open, close };
+}
+
 document.addEventListener('DOMContentLoaded', () => {
+    const courtViewer = createCourtViewer();
+
     // Courts & Facilities grid — Supabase's `court` table first, falling
     // back to COURTS_INVENTORY (includes/courts-data.js) if that fetch
     // fails or is empty, which is what will actually happen until the
     // owner runs database/schema + database/seed in the Supabase SQL editor.
+    //
+    // Keyed by sport slug so a card click can find its court object without
+    // re-reading the DOM. mergeCourtsBySport guarantees the slug is unique
+    // across the rendered list.
     const courtGrid = document.querySelector('[data-court-grid]');
+    const courtsBySlug = new Map();
+
     if (courtGrid) {
         getCourts().then((courts) => {
-            courtGrid.innerHTML = courts.map(renderCourtCard).join('');
+            courtsBySlug.clear();
+            courts.forEach((court) => courtsBySlug.set(court.sportSlug, court));
+
+            courtGrid.innerHTML = courts.length
+                ? courts.map(renderCourtCard).join('')
+                : '<p class="court-grid-empty">Court information is being set up. Please check back shortly, or ask at the front desk.</p>';
         }).catch((err) => {
             console.error('[IñigoSync] Could not render the courts grid.', err);
         });
-    }
 
-    // Featured Events grid — same getEvents() the hero carousel uses (see
-    // includes/home-showcase.js), so the two can never drift apart.
-    const eventGrid = document.querySelector('[data-event-grid]');
-    if (eventGrid) {
-        getEvents().then((events) => {
-            eventGrid.innerHTML = events.map(renderEventCard).join('');
-        }).catch((err) => {
-            console.error('[IñigoSync] Could not render the events grid.', err);
+        // Delegated, so it works no matter when the cards finish rendering.
+        // The cards are real <button>s, so Enter and Space arrive here as
+        // clicks too — no separate keydown handling needed.
+        courtGrid.addEventListener('click', (e) => {
+            const card = e.target && e.target.closest ? e.target.closest('.court-card') : null;
+            if (!card || !courtGrid.contains(card)) return;
+
+            const court = courtsBySlug.get(card.dataset.courtId);
+            if (!court) {
+                console.warn('[IñigoSync] No court matched data-court-id="%s" — the viewer was not opened.', card.dataset.courtId);
+                return;
+            }
+            if (!courtViewer) return;
+            courtViewer.open(court, card);
         });
     }
 
-    // Testimonials — exactly 3, chosen at random on every load.
+    // Pricing rate sheet — the SAME memoized getCourts() promise the grid
+    // above uses. Calling it twice does not fetch twice (see the memoized
+    // courtsPromise), and there is deliberately no second court/price list
+    // anywhere in the codebase (D2 in implementation_plan.md).
+    const pricingList = document.querySelector('[data-pricing-list]');
+    if (pricingList) {
+        getCourts().then((courts) => {
+            pricingList.innerHTML = courts.length
+                ? courts.map(renderPricingRow).join('')
+                : '<li class="pricing-empty">Rates are being set up. Please check back shortly, or ask at the front desk.</li>';
+        }).catch((err) => {
+            console.error('[IñigoSync] Could not render the pricing list.', err);
+        });
+    }
+
+    // Feedback & Reviews — exactly 3 testimonials, chosen at random on
+    // every load (D3: testimonials shared with us, never a live review feed).
     const testimonialGrid = document.querySelector('[data-testimonial-grid]');
     if (testimonialGrid) {
         getTestimonials().then((testimonials) => {
@@ -530,6 +755,15 @@ document.addEventListener('DOMContentLoaded', () => {
     // The pill navbar's inline links and the off-canvas mobile menu both
     // render the same links (see Index.html), so there are two <a> elements
     // per href — match by href, not by node identity, so both stay in sync.
+    //
+    // The nav is Home / Courts / Pricing / About, and each of those resolves
+    // to a real section: the hero now carries id="home", so `#home` maps
+    // through the normal document.querySelector path. The `href === '#'`
+    // branch below is kept as a fallback for any nav that still ships a bare
+    // '#' Home link — it is no longer used by Pages/Index.html.
+    // Pages/terms.html's nav links out to Index.html rather than to an
+    // in-page anchor, so its sectionMap is empty and this whole block
+    // no-ops there, exactly as before.
     // ------------------------------------------------------------------
     const navLinks = document.querySelectorAll('nav ul li a[href^="#"]');
     const sectionMap = Array.from(navLinks).map((link) => {

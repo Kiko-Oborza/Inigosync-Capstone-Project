@@ -29,7 +29,7 @@
         <h1 class="sr-only">IñigoSync — book courts at Iñigos Sports Center, Lucena City</h1>
 
         <!-- HERO — full-bleed rotating photo background, floating pill navbar overlaid on top -->
-        <section class="hero" data-home-showcase>
+        <section class="hero" id="home" data-home-showcase>
 
             <!-- Populated by includes/home-showcase.js from window.InigoContent.getEvents()
                  (Supabase `event` table, falls back to a static list) — see bug 2/6 fixes. -->
@@ -47,9 +47,9 @@
 
                     <nav class="site-nav-links" aria-label="Primary">
                         <ul>
-                            <li><a href="#" class="active">Home</a></li>
-                            <li><a href="#events">Events</a></li>
+                            <li><a href="#home" class="active">Home</a></li>
                             <li><a href="#courts">Courts</a></li>
+                            <li><a href="#pricing">Pricing</a></li>
                             <li><a href="#about">About</a></li>
                         </ul>
                     </nav>
@@ -85,9 +85,9 @@
                         <div class="logo-text">IñigoSync</div>
                     </div>
                     <ul>
-                        <li><a href="#" class="active">Home</a></li>
-                        <li><a href="#events">Events</a></li>
+                        <li><a href="#home" class="active">Home</a></li>
                         <li><a href="#courts">Courts</a></li>
+                        <li><a href="#pricing">Pricing</a></li>
                         <li><a href="#about">About</a></li>
                     </ul>
                     <button type="button" class="book-now nav-menu-cta" data-auth-open="login">Log In / Sign Up</button>
@@ -96,12 +96,13 @@
 
             <div class="hero-content">
                 <div class="hero-copy-wrap">
-                    <!-- Populated by includes/home-showcase.js — same event data
-                         as the Featured Events grid below, so captions can't drift. -->
+                    <!-- Populated by includes/home-showcase.js from the same
+                         window.InigoContent.getEvents() data that drives the
+                         hero photos, so photo and caption can't drift. -->
                     <div class="hero-copy-stack" data-home-copy-stack aria-live="polite"></div>
                     <div class="cta-buttons">
                         <button type="button" class="cta-button" data-auth-open="login">Book a court</button>
-                        <a href="#events" class="cta-button secondary">See what's on</a>
+                        <a href="#courts" class="cta-button secondary">See the courts</a>
                     </div>
                 </div>
 
@@ -112,39 +113,65 @@
             </div>
         </section>
 
-        <!-- FEATURED EVENTS — absorbs the old "This week" strip. Single source of
-             truth for what's on: rendered from the same window.InigoContent.getEvents()
-             the hero carousel uses (Supabase `event` table, static fallback if
-             unreachable/empty), so the two can never drift apart again. -->
-        <section class="events reveal" id="events">
-            <div class="section-inner">
-                <p class="eyebrow">Featured Events</p>
-                <h2 class="section-title">What's on at Iñigos.</h2>
-                <p class="body-text section-intro">
-                    Tournaments, open play, and new courts — updated as they're scheduled.
-                </p>
-
-                <div class="event-grid" data-event-grid></div>
-            </div>
-        </section>
-
-        <!-- COURTS & FACILITIES -->
+        <!-- COURTS & FACILITIES — every card is a real <button> rendered by
+             includes/landingPage.js; clicking (or Enter/Space on) one opens the
+             #courtViewer dialog at the bottom of this file for that sport. -->
         <section class="courts reveal" id="courts">
             <div class="section-inner">
                 <p class="eyebrow">Courts &amp; Facilities</p>
                 <h2 class="section-title">Eight sports. One calendar.</h2>
                 <p class="body-text section-intro">
                     Every court, lane, and table at Iñigos, with how many of each you can book.
-                    Availability updates live as bookings come in.
+                    Pick a sport to see it up close. Availability updates live as bookings come in.
                 </p>
 
                 <div class="court-grid" data-court-grid></div>
             </div>
         </section>
 
-        <!-- ABOUT -->
-        <section class="about reveal" id="about">
-            <div class="section-inner about-grid">
+        <!-- PRICING — rendered from the SAME window.InigoContent.getCourts()
+             promise the Courts grid above uses (memoized, so this is not a
+             second fetch and never a second price list — D2 in
+             implementation_plan.md). Every court's `rate` is NULL in the
+             database today, so every row reads "Rate TBA". No invented
+             numbers: see database/seed/002_seed_content.sql. -->
+        <section class="pricing reveal" id="pricing">
+            <div class="section-inner">
+                <p class="eyebrow">Pricing</p>
+                <h2 class="section-title">Rates, once they're confirmed.</h2>
+                <p class="body-text section-intro">
+                    Every sport Iñigos runs is listed below with exactly what you book —
+                    a court, a lane, or a table. The published rate sheet is still being
+                    confirmed with the front desk, so rates read <strong>Rate TBA</strong>
+                    here rather than showing a number that might be wrong. Ask at the
+                    counter in the meantime; this page updates the moment rates are set.
+                </p>
+
+                <div class="pricing-head" aria-hidden="true">
+                    <span>Sport</span>
+                    <span>What you book</span>
+                    <span>Rate</span>
+                </div>
+                <ul class="pricing-list" data-pricing-list></ul>
+
+                <p class="pricing-foot">
+                    Rates are managed by Iñigos through the admin Court Listings screen and
+                    appear here automatically — there is no separate price list to keep in sync.
+                </p>
+            </div>
+        </section>
+
+        <!-- ABOUT — the Iñigos story + stats, then Feedback & Reviews, then the
+             CTA band. All three sit inside #about so the nav's "About" link covers
+             everything between Pricing and the site footer.
+
+             The section itself is deliberately NOT .reveal: it is several
+             viewports tall and the shared IntersectionObserver in
+             includes/landingPage.js uses `threshold: 0.15` of the target's own
+             area, which a very tall section can fail to reach. Each sub-block
+             carries .reveal instead. -->
+        <section class="about" id="about">
+            <div class="section-inner about-grid reveal">
                 <div class="about-copy">
                     <p class="eyebrow">Since 2011</p>
                     <h2 class="section-title">A Lucena staple, now running on its own system.</h2>
@@ -170,32 +197,34 @@
                     </div>
                 </div>
             </div>
-        </section>
 
-        <!-- TESTIMONIALS — labeled honestly. This is NOT a live Google Reviews
-             feed: Places API review content can't legally be cached/stored, and
-             the only card-free key option explicitly excludes user-generated
-             reviews — see implementation_plan.md (D3). Exactly 3 testimonials,
-             chosen at random, on every page load. -->
-        <section class="testimonials reveal" id="testimonials">
-            <div class="section-inner">
-                <p class="eyebrow">Testimonials</p>
-                <h2 class="section-title">What people say about Iñigos.</h2>
-                <p class="body-text section-intro">
-                    A few words from the people who play here, shared with us directly —
-                    not a live review feed. Three at random, every time you load the page.
-                </p>
+            <!-- FEEDBACK & REVIEWS — labeled honestly. This is NOT a live Google
+                 Reviews feed: Places API review content can't legally be
+                 cached/stored, and the only card-free key option explicitly
+                 excludes user-generated reviews — see implementation_plan.md (D3).
+                 The disclosure wording below is a legal/accuracy constraint, not
+                 copy: do not reword it. Exactly 3 testimonials, chosen at random,
+                 on every page load. -->
+            <div class="about-reviews reveal" id="testimonials">
+                <div class="section-inner">
+                    <p class="eyebrow">Feedback &amp; Reviews</p>
+                    <h2 class="section-title">What people say about Iñigos.</h2>
+                    <p class="body-text section-intro">
+                        A few words from the people who play here, shared with us directly —
+                        not a live review feed. Three at random, every time you load the page.
+                    </p>
 
-                <div class="testimonial-grid" data-testimonial-grid></div>
+                    <div class="testimonial-grid" data-testimonial-grid></div>
+                </div>
             </div>
-        </section>
 
-        <!-- CTA FOOTER -->
-        <section class="cta-footer reveal">
-            <div class="section-inner cta-footer-inner">
-                <h2 class="section-title">Ready to lock in your slot?</h2>
-                <p class="body-text">Skip the back-and-forth. Book your court in a few taps.</p>
-                <button type="button" class="cta-button" data-auth-open="login">Book Now</button>
+            <!-- CTA band — closes out #about, directly above the site footer. -->
+            <div class="cta-footer reveal">
+                <div class="section-inner cta-footer-inner">
+                    <h2 class="section-title">Ready to lock in your slot?</h2>
+                    <p class="body-text">Skip the back-and-forth. Book your court in a few taps.</p>
+                    <button type="button" class="cta-button" data-auth-open="login">Book Now</button>
+                </div>
             </div>
         </section>
 
@@ -251,6 +280,42 @@
             </div>
         </div>
     </footer>
+
+    <!-- ==========================================================================
+         COURT VIEWER — ONE reusable dialog for every court card in #courts.
+         Opened by includes/landingPage.js with the normalized court object the
+         grid already rendered; every text node it injects goes through
+         escapeHtml (D3). Escape, a backdrop click and the close button all
+         dismiss it, focus moves into the dialog on open and returns to the
+         card that opened it on close, and body scroll locks while it is open.
+
+         The media panel reuses the grid's renderMediaSlot() output verbatim,
+         so today it shows the sport monogram placeholder plus "Photo coming
+         soon" and the day the owner sets `image_url` through admin Court
+         Listings it shows the real photo — with no markup change here. No
+         image paths are hardcoded anywhere in this repo (OQ1).
+         ========================================================================== -->
+    <div class="court-viewer" id="courtViewer" data-court-viewer hidden>
+        <div class="court-viewer-backdrop" data-court-viewer-backdrop></div>
+
+        <div class="court-viewer-dialog" role="dialog" aria-modal="true"
+             aria-labelledby="courtViewerTitle" tabindex="-1" data-court-viewer-dialog>
+
+            <button type="button" class="court-viewer-close" data-court-viewer-close aria-label="Close">
+                <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M5 5l14 14M19 5L5 19" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+            </button>
+
+            <div class="court-viewer-media" data-court-viewer-media></div>
+
+            <div class="court-viewer-body">
+                <h2 class="court-viewer-title" id="courtViewerTitle" data-court-viewer-title></h2>
+                <p class="court-viewer-count" data-court-viewer-count></p>
+                <p class="court-viewer-note" data-court-viewer-note></p>
+                <p class="court-viewer-rate" data-court-viewer-rate></p>
+                <p class="court-viewer-photo-status" data-court-viewer-photo-status></p>
+            </div>
+        </div>
+    </div>
 
     <!-- ==========================================================================
          AUTH MODAL — Login / Sign up / Verify OTP / Admin

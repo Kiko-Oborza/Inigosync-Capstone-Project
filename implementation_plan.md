@@ -1,4 +1,264 @@
-# IñigoSync — QA Remediation Plan
+# Landing Page Redesign — Light/Dark Legibility + Nav Restructure
+
+> **Active plan.** The previous QA Remediation Plan is retained verbatim in the
+> Appendix at the bottom of this file, so existing code comments that cite
+> "implementation_plan.md (D2)" / "(D3)" / "Phase 3" still resolve here.
+
+## Goal
+
+Rebuild `Pages/Index.html` + `Style/LandingPage.css` so that (a) the light-mode
+white haze over the navbar is gone, (b) every card and section is clearly
+readable in *both* themes, and (c) the site navigation is exactly **Home ·
+Courts · Pricing · About**, where Courts opens a per-sport photo viewer and
+About contains the Iñigos story, reviews/feedback, and the footer.
+
+## Context and current state
+
+Static, no-build site: plain `<script src>` tags, hand-written CSS with
+`:root` / `:root[data-theme="light"]` token blocks. `includes/theme.js` owns the
+`data-theme` attribute; `includes/landingPage.js` renders the Courts, Events and
+Testimonials grids from Supabase with a static fallback
+(`includes/courts-data.js`); `includes/home-showcase.js` drives the hero photo
+carousel from the same event data.
+
+Three concrete defects confirmed by reading the source:
+
+1. **The white haze.** `Style/LandingPage.css:159` still carries a legacy
+   full-width `header { position: fixed; background: rgba(20,17,13,.5);
+   backdrop-filter: blur(10px); padding: 20px 80px }` rule from before the
+   navbar became a floating pill, plus `:root[data-theme="light"] header {
+   background: rgba(255,252,244,.5) }` at line 170. `.site-nav` tries to undo it
+   with `background: none; backdrop-filter: none`, but its specificity is `0,1,0`
+   against the light override's `0,2,1` — **so the light rule wins and paints a
+   full-bleed translucent white band with a blur across the top of the hero.**
+   In dark mode the base `header` rule is only `0,0,1`, so `.site-nav` beats it
+   and no band appears. That is exactly the "white shadow only in light mode"
+   the user is seeing.
+
+2. **Invisible cards.** In light mode `--color-bg-card` and
+   `--color-bg-elevated` are *both* `#FFFFFF`, so every `.event-card` /
+   `.court-card` / `.testimonial-card` sitting inside `.events` or `.about`
+   (both `background: var(--color-bg-elevated)`) is white-on-white, separated
+   only by a `#EFE3D2` hairline and no shadow. Dark mode is nearly as bad:
+   `#201a14` card on `#1c1712` section is a ~2% luminance step.
+
+3. **Nav does not match the requested IA.** Current links are Home · Events ·
+   Courts · About; there is no Pricing section, courts are not clickable, and
+   testimonials sit in their own top-level section unreachable from the nav.
+
+## Approach and architectural decisions
+
+**L1 — Delete the legacy `header` rules outright; do not patch specificity.**
+The floating pill (`.site-nav` + `.site-nav-pill`) is the only navbar this page
+has. Both the base `header {}` block and its `:root[data-theme="light"] header`
+override are dead weight from the previous design and are removed, not
+overridden. `.site-nav` keeps `background: none; backdrop-filter: none` so the
+hero photo runs edge to edge behind a genuinely floating pill in both themes.
+The pill itself keeps its own translucent surface + blur — that is intentional
+and stays.
+
+**L2 — Introduce explicit surface-elevation tokens instead of reusing
+`--color-bg-elevated` for two different jobs.** A card must never share a colour
+with the section it sits on. New tokens, defined in both theme blocks:
+
+| Token | Dark | Light | Role |
+|---|---|---|---|
+| `--surface-page` | `#14110d` | `#FFFCF4` | default section background |
+| `--surface-band` | `#191410` | `#F7F0E4` | alternating section band |
+| `--surface-card` | `#241d16` | `#FFFFFF` | every card |
+| `--surface-card-hover` | `#2b231a` | `#FFFDF8` | card hover |
+| `--border-soft` | `rgba(244,239,230,.14)` | `#E6D8C2` | hairlines |
+| `--border-card` | `rgba(244,239,230,.20)` | `#DCCBB1` | card outline |
+| `--shadow-card` | `0 6px 20px rgba(0,0,0,.35)` | `0 6px 18px rgba(90,64,30,.10)` | card lift |
+| `--shadow-card-hover` | `0 12px 34px rgba(0,0,0,.45)` | `0 14px 32px rgba(90,64,30,.16)` | card hover lift |
+
+Existing `--color-bg*` / `--color-line` names are **kept as aliases** of the new
+tokens so nothing in `Auth.css`, `Dashboard.css`, or the dashboard pages breaks.
+The rule the redesign must satisfy: **card surface ≠ section surface in both
+themes, and every card carries both a visible border and a shadow.** Light-mode
+cards get a warm-grey border rather than the near-invisible `#EFE3D2`.
+
+**L3 — Nav = Home · Courts · Pricing · About, and the page sections match
+one-to-one.** Section order becomes: Hero (`#home`) → Courts (`#courts`) →
+Pricing (`#pricing`) → About (`#about`, containing the Iñigos story + stats,
+then Reviews/Feedback, then the CTA band) → site footer. The standalone
+"Featured Events" section is **removed from the page and the nav** — the events
+data is still fetched and still drives the hero carousel and its captions, which
+is the "Home" the user said was already good. `includes/home-showcase.js` and
+`getEvents()` are untouched. The hero's secondary CTA `href="#events"` is
+repointed to `#courts`.
+
+**L4 — Court cards become buttons that open a photo lightbox.** Each
+`.court-card` renders as `<button class="court-card" data-court-id>` (real
+button = keyboard + screen-reader support for free, no `tabindex` hacks). Click
+opens a single reusable modal (`#courtViewer`) showing the court photo at full
+size with the sport name, unit count, and note. Escape / backdrop click /
+close-button all dismiss it; focus moves into the dialog on open and returns to
+the invoking card on close; `body` scroll locks while open.
+**Photo source:** the modal reads `court.imageUrl` — the same `image_url` column
+the grid already reads. There are **no court photos in the repo today**
+(`assets/` has only Logo/NavBar/Background) and `image_url` is NULL for every
+row, so the viewer must degrade honestly: it shows the existing monogram
+placeholder panel plus "Photo coming soon" rather than a broken `<img>`. The
+moment the owner sets `image_url` via admin Court Listings, real photos appear
+with zero code changes. If the user drops files into `assets/courts/`, the
+fallback array in `includes/courts-data.js` is where the local paths go —
+one line per sport, no other change needed. *(See Open questions.)*
+
+**L5 — Pricing is a new section rendered from the same court data, and stays
+honest.** No second hardcoded price list — this is the D2 rule from the
+Appendix and it still applies. Pricing renders a table/card grid from
+`getCourts()` using `rate` / `rateUnit`, showing "Rate TBA" where `rate` is
+NULL, which is currently every row (`database/seed/002_seed_content.sql` leaves
+prices unconfirmed on purpose). No invented numbers.
+
+**L6 — Reviews live inside About; the testimonial honesty label stays.**
+The existing `.testimonials` block moves under `#about` as a sub-block titled
+Feedback & Reviews. The "these are testimonials shared with us, not a live
+Google Reviews feed" wording from D3 (Appendix) is preserved verbatim — it is a
+legal/accuracy constraint, not a style choice.
+
+**L7 — Same theme, no rebrand.** Oswald / Inter / Space Mono, `#FF6115` orange,
+warm near-black and warm off-white, pill navbar, rounded cards. This is a
+legibility and IA fix, not a visual identity change.
+
+## Files to change (with intent for each)
+
+| File | Intent |
+|---|---|
+| `Style/LandingPage.css` | Delete legacy `header` + light-`header` rules (L1). Add the elevation token set to both `:root` blocks with back-compat aliases (L2). Restyle `.court-card` / `.event-card` / `.testimonial-card` / `.footer-card` / `.media-slot` for card-vs-section contrast + shadows in both themes. Add `.pricing`, `.pricing-grid`, `.court-viewer` (modal) blocks. Add `button.court-card` resets (font/text-align/width/cursor). Update responsive rules for the new sections. |
+| `Pages/Index.html` | Nav links → Home/Courts/Pricing/About in both the pill nav and the off-canvas menu. Remove the `#events` section; repoint the hero secondary CTA to `#courts`. Add `#pricing` section shell + `[data-pricing-grid]`. Nest the testimonial block inside `#about` as Feedback & Reviews. Add the `#courtViewer` modal markup. Keep `<h1 class="sr-only">`, the auth modal, and all script tags/order unchanged. |
+| `includes/landingPage.js` | `renderCourtCard` emits a `<button>` with `data-court-id`. New `renderPricingRow` + pricing-grid wiring off the *same* `getCourts()` promise (do not add a second fetch). New court-viewer open/close/focus-management module. Scroll-spy `sectionMap` still works off `nav ul li a[href^="#"]` — verify against the new anchors. |
+| `includes/courts-data.js` | Only if local court photos are added: set `image_url` per sport. Otherwise unchanged. |
+| `implementation_plan.md` | This file; update if the approach shifts. |
+
+## Constraints and non-goals
+
+- **No build step, no framework, no new dependencies.** Plain `<script src>`,
+  hand-written CSS, exactly as today.
+- **Do not touch** `includes/theme.js`, `includes/home-showcase.js`, the auth
+  modal markup, `includes/auth.js`, `Config/`, `api/`, `database/`, or any
+  dashboard page. The redesign is scoped to the landing page.
+- **Do not break the dashboards:** `Auth.css`, `Dashboard.css` and the dashboard
+  HTML consume `--color-bg`, `--color-bg-card`, `--color-bg-elevated`,
+  `--color-ink*`, `--color-line`. Those names must keep working (L2 aliases).
+- Keep the fetch-with-static-fallback pattern; never add a second source of
+  truth for courts or prices (D2).
+- Keep the `escapeHtml` usage on every `innerHTML` interpolation (D3) —
+  including the new pricing rows and modal content.
+- Keep every `@media (prefers-reduced-motion: reduce)` guard; new animations
+  (modal transitions, card hover lift) need their own guards.
+- No invented prices, no fake ratings, no fake review feed.
+- Not in scope: sourcing/creating actual court photography, changing the colour
+  palette or typefaces, touching booking logic.
+
+## Success criteria
+
+1. In **light mode**, no translucent white band or blur strip spans the top of
+   the hero — the hero photo is visible edge-to-edge behind a floating pill.
+   Computed style of `header.site-nav` has `background-color: rgba(0,0,0,0)` and
+   `backdrop-filter: none` in both themes.
+2. In **both themes**, every card (`.court-card`, `.testimonial-card`,
+   `.footer-card`, pricing cards) has a background colour different from its
+   parent section's, plus a visible border and shadow. No white-on-white.
+3. Body text on every section meets WCAG AA (≥4.5:1) in both themes; large
+   headings ≥3:1.
+4. The nav shows exactly **Home, Courts, Pricing, About** — in both the desktop
+   pill and the mobile off-canvas menu — and each link scrolls to a real
+   section. Scroll-spy highlights the correct link.
+5. Clicking any court card opens the photo viewer for that sport; it shows the
+   photo when `image_url` exists and an honest placeholder when it does not.
+   Escape, backdrop click, and the close button all dismiss it; focus returns to
+   the card that opened it; the modal is reachable and operable by keyboard.
+6. The Pricing section lists every sport from the same `getCourts()` data, with
+   "Rate TBA" where the rate is NULL. No hardcoded price list.
+7. `#about` contains the Iñigos story, the stats, and the Feedback & Reviews
+   block with its "not a live review feed" disclosure intact, followed by the
+   CTA band and the footer.
+8. Zero console errors on load in both themes; the theme toggle still flips
+   instantly with no flash and persists across reload.
+9. Layout holds at 1440 / 1024 / 768 / 390 px wide in both themes.
+10. The three dashboard pages still render correctly (token aliases intact).
+
+## Verification steps
+
+Dev server is `.claude/launch.json` → **static-server** (`python -m http.server
+8532`); the landing page is at `/Pages/Index.html`.
+
+1. Load the page in light mode. Screenshot the hero — confirm no white band.
+2. Toggle to dark. Screenshot again. Confirm the pill still reads clearly.
+3. Scroll each section in both themes; confirm card edges are visible in
+   screenshots, not inferred from the CSS.
+4. Read computed `background-color` of `header.site-nav`, and of a
+   `.court-card` vs its parent section, in both themes.
+5. Click a court card → viewer opens. Press Escape → closes, focus back on the
+   card. Tab into a card and press Enter → same result.
+6. Click each nav link; confirm scroll target and active-link highlight.
+7. Check the console for errors and the network tab for 404s (particularly any
+   court image paths).
+8. Resize to 768 and 390; open the off-canvas menu; confirm 4 links.
+9. Load `Pages/user_dashboard.html` and `Pages/owner_dashboard.html` in both
+   themes to confirm the token aliases did not regress them.
+
+## Open questions and risks
+
+- **OQ1 — RESOLVED (user, 2026-08-28): images come from the database; build the
+  slot.** No local `assets/courts/` directory, no bundled photos, no hardcoded
+  image paths. Court photos and hero/featured photos are DB-driven via
+  `image_url`. Both the grid card and the new court viewer render the existing
+  `.media-slot` placeholder (pattern + sport monogram) while `image_url` is
+  NULL, and swap in the real `<img>` with zero markup changes once the owner
+  sets it through admin Court Listings. `includes/courts-data.js` keeps
+  `image_url: null` for every fallback row.
+- **OQ2 — RESOLVED (user): remove the standalone Featured Events section.**
+  Confirmed. The hero carousel keeps reading the same DB-backed event data via
+  `getEvents()` / `includes/home-showcase.js` — untouched.
+- **OQ3 — RESOLVED (user): no rate sheet for now.** Pricing renders "Rate TBA"
+  for every sport until the owner enters rates. Hardcoding prices would violate
+  D1/D2 and is not being done. The section must still look deliberate and
+  finished while every row reads TBA.
+- **Risk — token renaming ripple.** `--color-bg-card` etc. are used by
+  `Auth.css`, `Dashboard.css`, and three dashboard controllers. Mitigated by
+  keeping the old names as aliases and by verification step 9.
+- **Risk — scroll-spy.** `includes/landingPage.js` builds `sectionMap` from
+  `nav ul li a[href^="#"]`; the `Home` link is `href="#"` and special-cased to
+  `.hero`. Changing anchors requires re-checking that branch.
+
+## Execution notes (2026-08-28) — deviations accepted
+
+Implemented and verified. Six deviations from the plan as written, all accepted:
+
+1. **Added `--color-accent-text`** (dark `#FF6115`, light `#B93E08`). L2 covered
+   surfaces but not text: `#FF6115` measures only 2.94:1 on `#FFFCF4`, failing AA
+   for `.eyebrow`, `.court-count`, `.testimonial-stars`, `.footer-card h3`. Brand
+   orange is unchanged for buttons, borders, and dark mode.
+2. **Adjusted `--color-ink-faint`** (dark `#8a8177 → #988e83`, light
+   `#9A8E80 → #756C61`) — the light value was already failing at 2.83:1.
+3. **`#about` is not itself `.reveal`;** its three children are. The section is
+   several viewports tall and the shared observer's `threshold: 0.15` of the
+   target's own area could never fire on short viewports, leaving it invisible.
+4. **Added `:root[data-theme="light"] .dash-topbar` to LandingPage.css.**
+   `user_dashboard.html` loads LandingPage.css and its topbar was silently
+   inheriting its light surface from the deleted legacy `header` rule.
+   Dashboard.css has no light block and is do-not-touch, so the surface was
+   restated with a "delete when Dashboard.css grows its own light block" note.
+5. **Raised the CTA band's overlay alphas** — over a worst-case photo pixel the
+   old gradient left body copy at ~3.3:1.
+6. **Deleted `renderEventCard` / `[data-event-grid]`** rather than leaving dead code.
+
+Two bugs found and fixed during verification: `.court-viewer[hidden]` inherited
+Auth.css's `display: flex`, leaving the close button focusable while closed; and
+Chrome's anonymous content box centring made short court cards float their content.
+
+**Outstanding, user's call:** `--color-bg-elevated` in light mode changed
+`#FFFFFF → #F7F0E4`, which warms the auth modal panel and dashboard
+sidebar/inputs. This resolves the same white-on-white defect there, but is a
+visible change outside the landing page. `.court-card` is a `<button>` containing
+flow content — works in every browser, will fail a W3C validator.
+
+---
+
+# Appendix — QA Remediation Plan (decisions D1–D8, still authoritative)
 
 > Supersedes the previous landing-page plan, which is complete and archived in
 > git history. Driven by `docs/QA_AUDIT_REPORT.md` (2026-08-27).
