@@ -224,6 +224,155 @@ Dev server is `.claude/launch.json` → **static-server** (`python -m http.serve
   `nav ul li a[href^="#"]`; the `Home` link is `href="#"` and special-cased to
   `.hero`. Changing anchors requires re-checking that branch.
 
+## Increment 2 — Remove the CTA band; per-court combobox in the viewer
+
+**Goal.** (a) Delete the "Ready to lock in your slot?" CTA section entirely.
+(b) Give the court viewer a combobox listing every individual court/lane/table
+for that sport, switching the displayed image per selection.
+
+**Blocker found and resolved (user chose Option B, 2026-08-28).** `public.court`
+is **one row per sport**, not per unit: Badminton is a single row with
+`quantity: 9` and exactly **one** `image_url`. No per-unit rows or per-unit
+images exist anywhere in the schema, so a naive combobox could list Court 1–9 but
+could never change the picture. The one genuine exception is **Bowling**, which
+already has two real rows (Duckpin 8 lanes, Ten-Pin 12 lanes) with independent
+`image_url`s that `mergeCourtsBySport()` collapses into one card.
+
+**D-B — Add `unit_images jsonb` to `public.court`** via a new owner-applied
+migration, `database/schema/006_court_unit_images.sql`. Shape:
+`[{"label": "Court 1", "image_url": "https://…"}, …]`. Nullable; a CHECK
+constrains it to a JSON array when present. This follows the established
+owner-applied migration pattern (003/004/005), needs no new table and no join,
+and does not touch booking or the dashboards.
+
+**Unit resolution order** (the viewer builds its option list from the first that
+applies):
+1. `unit_images` is a non-empty array → one option per entry, each with its own
+   `image_url`. Fully per-court.
+2. The sport has multiple merged DB rows (Bowling) → one option per row, using
+   that row's own name and `image_url`. Real today, no migration needed.
+3. Otherwise → derive `quantity` options from the unit noun
+   (`courts → Court N`, `lanes → Lane N`, `tables → Table N`), all sharing the
+   sport's single `image_url` (placeholder while NULL).
+
+Cases 2 and 3 mean the combobox works **before** the owner runs the migration,
+and each sport upgrades to real per-court images the moment `unit_images` is
+populated. Where a sport resolves to exactly one option, the combobox is hidden
+rather than rendered as a dead single-item control.
+
+**Constraints for this increment.** Everything from the sections above still
+applies. Additionally: the `<select>` must carry a visible label, sit inside the
+existing focus trap without breaking it, and be operable by keyboard; every label
+and URL from the DB goes through `escapeHtml`; images that fail to load fall back
+to the `.media-slot` placeholder rather than a broken `<img>`; removing
+`.cta-footer` must also remove its CSS block and every responsive reference to
+it, leaving `#about` ending on Feedback & Reviews followed by the site footer.
+
+**Success criteria.** CTA section gone from markup, CSS and responsive rules,
+with no layout gap left behind in either theme. Opening any court with more than
+one unit shows a labelled combobox; changing the selection swaps the image (or
+placeholder) and the unit label without closing the dialog. Bowling lists Duckpin
+and Ten-Pin by name. Volleyball (quantity 1) shows no combobox. Migration file
+parses as valid Postgres and is idempotent (`add column if not exists`). Zero
+console errors; dashboards unaffected.
+
+### Increment 2 — execution notes (2026-08-29)
+
+Implemented and verified. Four deviations/additions, all small:
+
+1. **`.about-reviews` bottom padding is now asymmetric** (desktop `84px 0` →
+   `84px 0 56px`, ≤768px `56px 0` → `56px 0 40px`). With the CTA band gone, the
+   reviews strip runs straight into `.site-footer` — both are `--surface-band`,
+   so a symmetric 84px plus the footer's own 48px read as one ~132px dead
+   stripe. Measured: the reviews/footer boxes now abut exactly (gap = 0 at
+   1440/1024/768/390 in both themes) with 105px (desktop) / 89px (mobile) of
+   whitespace between the last testimonial card and the footer brand.
+2. **The unit label is an `.eyebrow`, above the sport name, not a chip below
+   the count.** Rendered under the count it sat ~70px above a `<select>`
+   displaying the identical string. As an eyebrow it captions the photo it
+   names, matches the page-wide eyebrow→title rhythm, and is typographically
+   distinct. Measured 5.52:1 (dark) / 5.59:1 (light) — AA.
+3. **`mergeCourtsBySport()` now also emits `variants` and a concatenated
+   `unitImages`.** Every field the grid card and pricing row read is byte-for-
+   byte unchanged — verified by diffing rendered `.court-card` innerHTML and
+   computed styles against the pre-change commit in both themes.
+4. **`docs/OWNER_ACTION_LIST.md` gained an A4 row** for the new migration,
+   matching the A1–A3 pattern.
+
+Two things worth knowing:
+
+- **The combobox is `disabled` whenever it is `[hidden]`.** The focus trap
+  selects `select:not([disabled])` and `querySelectorAll` ignores `[hidden]`,
+  so an enabled-but-hidden `<select>` would put an unfocusable element in the
+  Tab rotation and drop focus to `<body>`. Do not remove the `disabled` toggle.
+- **`unit_images` is read defensively.** undefined (column absent — the live
+  state today), null, a non-array, an unparseable string, and non-object array
+  entries all degrade to "no per-unit images" with one `console.warn`, never an
+  error. A `unit_images` URL that 404s falls back to the `.media-slot`
+  placeholder and an honest "could not be loaded" status line.
+
+**Not verified here:** pressing Escape while the native `<select>` popup is
+open. Chrome renders that popup as an OS widget that headless cannot drive, so
+whether the browser swallows the Escape or the dialog also closes is untested —
+it is the standard behaviour of any hand-rolled modal containing a `<select>`.
+
+## Increment 3 — Auth modal redesign
+
+Five defects in the Log In / Sign Up modal (`Pages/Index.html`'s
+`.auth-overlay`, `Style/Auth.css`, `includes/auth.js`).
+
+**A1 — Log In and Sign Up must render at the same card size.** `.auth-modal` has
+no height floor and shrink-wraps whichever `.auth-form.is-active` is showing, so
+switching tabs visibly resizes the card. Prefer a *structural* fix over a magic
+`min-height` number that silently breaks when a field is added: place the two
+tabbed panels in a shared grid cell so the taller one sets the height for both.
+Only Log In and Sign Up are in scope — Admin, Verify, Forgot and Reset are
+one-off panels and must keep shrink-wrapping. Any wrapper added must preserve
+every `[data-auth-panel]` hook; `includes/auth.js` queries them with
+`overlay.querySelectorAll`, which is descendant-based, so a wrapper is safe.
+
+**A2 — Sign Up asks for email and password first.** Current order is Full name →
+Email → Mobile → Password. New order: **Email → Password → Full name → Mobile**,
+then the Terms checkbox. Field markup, `name` attributes, validation and the
+submit handler are otherwise unchanged — this is a reorder, not a rewrite, and
+`includes/phoneValidation.js` / `window.validatePhMobile` must still fire.
+
+**A3 — Terms & Conditions opens as a popup, not a new tab.** The signup
+checkbox's link currently targets `terms.html` with `target="_blank"`. It becomes
+an in-page dialog. **Do not duplicate the terms text** — that would create a
+second source of truth for a legal document. Fetch `terms.html` and extract its
+`.terms-content` container into the dialog. Cache after first fetch. If the fetch
+fails, fall back to the existing new-tab behaviour rather than showing an empty
+dialog. `Pages/terms.html` stays as a standalone page (it is linked elsewhere and
+is the fallback target).
+
+**A4 — Design the auth brand header.** "IñigoSync / Book your court in a few
+taps." is currently unstyled text. Give it a proper lockup — the existing
+`assets/Logo/WebLogo.png` mark plus wordmark, with real hierarchy — matching the
+landing page's visual language. *Interpretation of an ambiguous request; flag it
+for confirmation.*
+
+**A5 — Fix the Google logo.** The four-colour "G" in `includes/auth.js:838-843`
+is hand-drawn and wrong — the `#FBBC05` yellow path in particular
+(`M6.41 13.93A5.98 5.98 0 0 1 6.41 8.07V5.49H3.07a10 10 0 0 0 0 16.88l3.34-2.44z`)
+arcs incorrectly and overshoots. Replace all four paths with Google's official
+24×24 brand geometry. Colours stay `#4285F4` / `#34A853` / `#FBBC05` / `#EA4335`;
+Google's branding rules forbid recolouring or distorting the mark.
+
+**Constraints.** All prior constraints hold. Additionally: do not change any
+authentication logic, Supabase calls, OAuth flow, validation rules, or `name`
+attributes; the modal keeps its focus trap, Escape/backdrop close, and scroll
+lock; the terms dialog must not fight the auth modal for focus or scroll lock
+when stacked on top of it; both dialogs work in light and dark mode.
+
+**Success criteria.** Log In and Sign Up measure identical card heights, with no
+resize jump on tab switch, at every breakpoint in both themes. Sign Up field
+order is Email, Password, Full name, Mobile. The Terms link opens an in-page
+dialog containing the real `terms.html` copy, closes back to signup with the
+checkbox state intact, and never opens a tab unless the fetch failed. The Google
+"G" matches the official mark. Signup still succeeds end to end, including PH
+mobile validation and the OTP step.
+
 ## Execution notes (2026-08-28) — deviations accepted
 
 Implemented and verified. Six deviations from the plan as written, all accepted:

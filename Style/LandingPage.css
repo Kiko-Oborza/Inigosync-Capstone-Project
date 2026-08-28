@@ -1003,6 +1003,10 @@ nav ul li a.active {
    it shows an honest large placeholder ("Photo coming soon") and swaps to the
    real photo the moment the owner sets one (OQ1). No image paths live in the
    repo.
+
+   It also carries the per-unit combobox (.court-viewer-units, further down)
+   that switches the photo between the individual courts/lanes/tables of one
+   sport — Increment 2 in implementation_plan.md.
    ========================================================================== */
 .court-viewer {
     position: fixed;
@@ -1143,6 +1147,107 @@ body.court-viewer-lock {
     font-family: var(--font-body);
     font-size: 0.8rem;
     color: var(--color-ink-faint);
+}
+
+/* --------------------------------------------------------------------------
+   Per-unit picker — which individual court / lane / table the photo above
+   belongs to, and the combobox that switches between them. Both are set to
+   [hidden] by includes/landingPage.js whenever a sport resolves to a single
+   unit (Volleyball, quantity 1): a one-item <select> is a dead control, and
+   a lone "Court 1" caption says nothing the title and count don't already.
+
+   Neither needs an explicit `[hidden] { display: none }` restatement — that
+   is only necessary where an author rule sets `display` itself, as
+   .court-viewer[hidden] does above.
+   -------------------------------------------------------------------------- */
+
+/* Carries .eyebrow as well, so it inherits the page-wide mono/uppercase/accent
+   caption treatment and sits above the sport name exactly like every other
+   eyebrow on this page. Only the spacing is tightened for the modal. */
+.court-viewer-unit {
+    margin-bottom: 8px;
+}
+
+.court-viewer-units {
+    margin-bottom: 16px;
+}
+
+.court-viewer-units-label {
+    display: block;
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--color-ink-faint);
+    margin-bottom: 8px;
+}
+
+.court-viewer-select-shell {
+    position: relative;
+    max-width: 320px;
+}
+
+/* The chevron lives on the shell rather than the <select> so it can be drawn
+   in a theme token — a background-image data-URI would need one hardcoded
+   copy per theme, and the browser's own arrow is what `appearance: none`
+   removes. Purely decorative: the selected option's text carries the meaning,
+   so `content: ""` keeps it out of the accessibility tree and
+   `pointer-events: none` keeps it from ever swallowing a click on the field. */
+.court-viewer-select-shell::after {
+    content: "";
+    position: absolute;
+    top: 50%;
+    right: 16px;
+    width: 8px;
+    height: 8px;
+    border-right: 2px solid var(--color-ink-dim);
+    border-bottom: 2px solid var(--color-ink-dim);
+    transform: translateY(-70%) rotate(45deg);
+    pointer-events: none;
+}
+
+/* Same field treatment as .dash-select / .auth-field input elsewhere in the
+   project (--surface-band inset on a --surface-card panel, 10px radius,
+   1px token border, --color-primary on hover/focus), so it reads as an
+   IñigoSync control in both themes rather than an OS default white box with
+   a system arrow on a dark card.
+
+   No `outline: none` on :focus — the global :focus-visible ring in Base is
+   the keyboard indicator and must survive. */
+.court-viewer-select {
+    appearance: none;
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    width: 100%;
+    padding: 11px 40px 11px 14px;
+    font-family: var(--font-body);
+    font-size: 0.95rem;
+    line-height: 1.4;
+    color: var(--color-ink);
+    background: var(--surface-band);
+    border: 1px solid var(--border-card);
+    border-radius: 10px;
+    cursor: pointer;
+    transition: border-color 0.2s ease, background-color 0.2s ease;
+}
+
+.court-viewer-select:hover,
+.court-viewer-select:focus {
+    border-color: var(--color-primary);
+}
+
+/* The dropdown list itself is painted by the OS, and Chrome/Edge take its
+   colours from the <option>, not the <select> — without this the open list
+   is dark-on-dark in dark mode. */
+.court-viewer-select option {
+    background-color: var(--surface-band);
+    color: var(--color-ink);
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .court-viewer-select {
+        transition: none;
+    }
 }
 
 .court-viewer-note {
@@ -1292,10 +1397,19 @@ body.court-viewer-lock {
    It gets its own full-bleed --surface-band strip inside the
    --surface-page #about section so the testimonial cards (--surface-card)
    still sit on a surface they contrast against.
+
+   Since Increment 2 removed the CTA band, this is the LAST block in #about
+   and its strip runs straight into .site-footer, which is the same
+   --surface-band. The bottom padding is therefore deliberately smaller than
+   the top (56 vs 84): the footer contributes its own 48px of top padding
+   below the hairline, so a symmetric 84px here would read as one ~132px
+   dead stripe between the testimonial cards and the footer. 56 + hairline +
+   48 keeps the seam looking intentional. Same reasoning for the 768px
+   override further down.
    ========================================================================== */
 .about-reviews {
     margin-top: 96px;
-    padding: 84px 0;
+    padding: 84px 0 56px;
     background: var(--surface-band);
     transition: background-color 0.2s ease;
 }
@@ -1365,63 +1479,10 @@ body.court-viewer-lock {
 }
 
 /* ==========================================================================
-   CTA band — now the last block inside #about, immediately above the site
-   footer (implementation_plan.md L3).
-
-   The overlay alphas are stronger than they used to be (dark .80/.55 →
-   .86/.70, light .90/.75 → .94/.90). The photo underneath is arbitrary, so
-   the weakest point of the old gradient left body copy at ~3.3:1 in light
-   mode and ~3.9:1 in dark against a worst-case pixel. At these alphas the
-   worst case is 4.8:1 (light) / 6.5:1 (dark) regardless of the photo, and the
-   background is still clearly visible.
-   ========================================================================== */
-.cta-footer {
-    margin-top: 96px;
-    padding: 90px 0;
-    background:
-        linear-gradient(90deg, rgba(4, 12, 18, 0.86), rgba(4, 12, 18, 0.7)),
-        url("../assets/Backgroung.png") center/cover no-repeat;
-    text-align: center;
-    color: #fff;
-}
-
-:root[data-theme="light"] .cta-footer {
-    background:
-        linear-gradient(90deg, rgba(255, 252, 244, 0.94), rgba(255, 252, 244, 0.9)),
-        url("../assets/Backgroung.png") center/cover no-repeat;
-    color: var(--color-ink);
-}
-
-.cta-footer-inner {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 18px;
-}
-
-.cta-footer .section-title {
-    margin-bottom: 0;
-    color: #fff;
-}
-
-:root[data-theme="light"] .cta-footer .section-title {
-    color: var(--color-ink);
-}
-
-.cta-footer .body-text {
-    color: rgba(255, 255, 255, 0.9);
-}
-
-:root[data-theme="light"] .cta-footer .body-text {
-    color: var(--color-ink-dim);
-}
-
-.cta-footer .cta-button {
-    margin-top: 10px;
-}
-
-/* ==========================================================================
-   Site Footer
+   Site Footer — now sits directly below .about-reviews (Increment 2 removed
+   the "Ready to lock in your slot?" CTA band that used to close out #about,
+   along with the background-photo treatment that was this stylesheet's only
+   url() reference into assets/). The image file itself is untouched on disk.
    ========================================================================== */
 .site-footer {
     background: var(--surface-band);
@@ -1782,8 +1843,7 @@ body.court-viewer-lock {
     }
 
     .courts,
-    .pricing,
-    .cta-footer {
+    .pricing {
         padding: 64px 0;
     }
 
@@ -1791,13 +1851,12 @@ body.court-viewer-lock {
         padding: 64px 0 0;
     }
 
+    /* Asymmetric bottom padding for the same reason as the desktop rule —
+       .site-footer has no narrow-width override, so its 48px of top padding
+       continues this strip at every width. */
     .about-reviews {
         margin-top: 64px;
-        padding: 56px 0;
-    }
-
-    .cta-footer {
-        margin-top: 64px;
+        padding: 56px 0 40px;
     }
 
     .court-grid,

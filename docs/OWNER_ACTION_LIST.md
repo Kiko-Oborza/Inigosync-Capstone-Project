@@ -24,6 +24,7 @@ paste the file's contents → **Run**.
 | A1 | `database/schema/003_court_rating.sql` | Adds a nullable `rating` column to `court` (0–5, `CHECK`ed) | Court cards never show a rating. Nothing breaks. |
 | A2 | `database/schema/004_staff_module.sql` | Adds `booking.checked_in_at` / `checked_out_at` / `duration_minutes`, creates the `audit_log` table + RLS, adds walk-in name/mobile columns | Staff Time-In/Out and Transaction Records stay unavailable; the UI degrades to an honest empty state rather than erroring |
 | A3 | `database/schema/005_session_security.sql` | Creates the `active_session` table + RLS for one-device-at-a-time enforcement | Single-session silently no-ops. Login and dashboards work normally. |
+| A4 | `database/schema/006_court_unit_images.sql` | Adds a nullable `unit_images` jsonb column to `court`, so one sport can carry a photo per individual court/lane/table | The landing page's court viewer still lists every unit (Court 1–9, Duckpin/Ten-Pin, Table 1–2) — they just all share the sport's single photo. Nothing breaks. |
 
 > All frontend code is written to **work correctly before these are applied**.
 > Missing columns/tables degrade gracefully — they never break the app. Applying
@@ -195,7 +196,7 @@ Get the real answers and I'll drop them in, or edit the file directly.
 
 | Do this | Unlocks |
 |---|---|
-| **A1–A3** (run SQL) | Court ratings, staff Time-In/Out, audit trail, single-session |
+| **A1–A4** (run SQL) | Court ratings, staff Time-In/Out, audit trail, single-session, per-court photos |
 | **B** (`pg_cron` check) | Lets me *design* auto-cancellation + reminders correctly |
 | **C** (PayMongo) | Payment Automation objective, receipts, payment loading phase |
 | **D** (Resend) | Gmail booking reminders |
@@ -204,6 +205,6 @@ Get the real answers and I'll drop them in, or edit the file directly.
 | **F** (court rates) | Replaces every "Rate TBA" with real pricing |
 | **G** (T&C values) | Completes the Terms & Conditions page |
 
-**Cheapest high-impact combination:** A1–A3 and E. That's roughly ten minutes of
+**Cheapest high-impact combination:** A1–A4 and E. That's roughly ten minutes of
 copy-paste in the Supabase dashboard and it activates most of what's already
 built and sitting dormant.

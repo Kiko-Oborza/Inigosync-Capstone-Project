@@ -161,9 +161,12 @@
             </div>
         </section>
 
-        <!-- ABOUT — the Iñigos story + stats, then Feedback & Reviews, then the
-             CTA band. All three sit inside #about so the nav's "About" link covers
-             everything between Pricing and the site footer.
+        <!-- ABOUT — the Iñigos story + stats, then Feedback & Reviews. Both sit
+             inside #about so the nav's "About" link covers everything between
+             Pricing and the site footer. #about ends on Feedback & Reviews; the
+             old "Ready to lock in your slot?" CTA band that used to close it out
+             was removed (Increment 2) — the hero's "Book a court" button and the
+             navbar's "Log In / Sign Up" already open the same auth modal.
 
              The section itself is deliberately NOT .reveal: it is several
              viewports tall and the shared IntersectionObserver in
@@ -215,15 +218,6 @@
                     </p>
 
                     <div class="testimonial-grid" data-testimonial-grid></div>
-                </div>
-            </div>
-
-            <!-- CTA band — closes out #about, directly above the site footer. -->
-            <div class="cta-footer reveal">
-                <div class="section-inner cta-footer-inner">
-                    <h2 class="section-title">Ready to lock in your slot?</h2>
-                    <p class="body-text">Skip the back-and-forth. Book your court in a few taps.</p>
-                    <button type="button" class="cta-button" data-auth-open="login">Book Now</button>
                 </div>
             </div>
         </section>
@@ -293,7 +287,16 @@
          so today it shows the sport monogram placeholder plus "Photo coming
          soon" and the day the owner sets `image_url` through admin Court
          Listings it shows the real photo — with no markup change here. No
-         image paths are hardcoded anywhere in this repo (OQ1).
+         image paths are hardcoded anywhere in this repo (OQ1). A photo whose
+         URL fails to load falls back to that same placeholder rather than a
+         broken-image icon.
+
+         The unit combobox below is populated per sport by
+         includes/landingPage.js resolveCourtUnits() — Duckpin / Ten-Pin for
+         Bowling, Court 1..9 for Badminton, and so on. It stays empty,
+         disabled and [hidden] in the markup: a sport with only one unit
+         (Volleyball) never shows it, and leaving it enabled while hidden
+         would put an unfocusable element inside the dialog's Tab trap.
          ========================================================================== -->
     <div class="court-viewer" id="courtViewer" data-court-viewer hidden>
         <div class="court-viewer-backdrop" data-court-viewer-backdrop></div>
@@ -308,8 +311,20 @@
             <div class="court-viewer-media" data-court-viewer-media></div>
 
             <div class="court-viewer-body">
+                <!-- Which unit the photo above is of. Reuses the page-wide
+                     .eyebrow treatment so it reads as a caption for the media
+                     rather than competing with the sport name below it. -->
+                <p class="eyebrow court-viewer-unit" data-court-viewer-unit hidden></p>
                 <h2 class="court-viewer-title" id="courtViewerTitle" data-court-viewer-title></h2>
                 <p class="court-viewer-count" data-court-viewer-count></p>
+
+                <div class="court-viewer-units" data-court-viewer-units hidden>
+                    <label class="court-viewer-units-label" for="courtViewerUnitSelect" data-court-viewer-units-label>Choose a court</label>
+                    <div class="court-viewer-select-shell">
+                        <select class="court-viewer-select" id="courtViewerUnitSelect" data-court-viewer-select disabled></select>
+                    </div>
+                </div>
+
                 <p class="court-viewer-note" data-court-viewer-note></p>
                 <p class="court-viewer-rate" data-court-viewer-rate></p>
                 <p class="court-viewer-photo-status" data-court-viewer-photo-status></p>
@@ -327,9 +342,23 @@
                 <svg viewBox="0 0 24 24" width="20" height="20"><path d="M5 5l14 14M19 5L5 19" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
             </button>
 
+            <!-- Brand lockup: the same WebLogo.png mark the navbar and footer
+                 use, then the wordmark with the strapline set under it, so the
+                 modal reads as part of the site rather than a bare form.
+                 Laid out side by side on purpose — it gives the mark/name/
+                 strapline hierarchy without making the card any taller than
+                 the plain two-line header it replaces.
+                 Decorative alt="": the wordmark beside it carries the name. -->
             <div class="auth-brand">
-                <div class="logo-text">IñigoSync</div>
-                <p class="auth-tagline">Book your court in a few taps.</p>
+                <div class="auth-brand-lockup">
+                    <span class="auth-brand-mark">
+                        <img src="../assets/Logo/WebLogo.png" alt="" width="28" height="28">
+                    </span>
+                    <span class="auth-brand-text">
+                        <span class="logo-text">IñigoSync</span>
+                        <span class="auth-tagline">Book your court in a few taps.</span>
+                    </span>
+                </div>
             </div>
 
             <!-- Log In / Sign Up tabs — hidden automatically while the Admin or Verify panel is active -->
@@ -337,6 +366,19 @@
                 <button type="button" class="auth-tab is-active" data-auth-tab="login" role="tab" aria-selected="true">Log In</button>
                 <button type="button" class="auth-tab" data-auth-tab="signup" role="tab" aria-selected="false">Sign Up</button>
             </div>
+
+            <!-- Log In and Sign Up share ONE grid cell (see .auth-panel-stack in
+                 Style/Auth.css) so the taller of the two sets the card height and
+                 switching tabs never resizes the modal. The inactive panel keeps
+                 its box but is visibility:hidden, which also takes it out of the
+                 tab order and the accessibility tree.
+                 Only these two panels are stacked — Verify, Admin, Forgot and
+                 Reset are one-off steps and still shrink-wrap their own content,
+                 so includes/auth.js hides this whole wrapper while one of them is
+                 active (otherwise it would pad the card to sign-up height).
+                 Every [data-auth-panel] hook is untouched: includes/auth.js finds
+                 them with overlay.querySelectorAll, which is descendant-based. -->
+            <div class="auth-panel-stack" data-auth-panel-stack>
 
             <!-- LOGIN FORM -->
             <form class="auth-form is-active" data-auth-panel="login" novalidate>
@@ -374,23 +416,17 @@
                 <p class="auth-switch">Are you a staff member or the owner? <button type="button" class="auth-link" data-auth-tab="admin">Log in as Admin</button></p>
             </form>
 
-            <!-- SIGN UP FORM -->
+            <!-- SIGN UP FORM — field order is Email → Password → Full name →
+                 Mobile on purpose: the two credentials the account is actually
+                 keyed on come first, the profile details after. Reorder only;
+                 every name/autocomplete/validation attribute is unchanged, and
+                 includes/auth.js reads the fields by name via FormData. -->
             <form class="auth-form" data-auth-panel="signup" novalidate>
                 <h2 class="auth-heading">Create your account</h2>
 
                 <label class="auth-field">
-                    <span class="auth-label">Full name</span>
-                    <input type="text" name="fullname" placeholder="Juan Dela Cruz" autocomplete="name" required>
-                </label>
-
-                <label class="auth-field">
                     <span class="auth-label">Email address</span>
                     <input type="email" name="email" placeholder="you@email.com" autocomplete="email" required>
-                </label>
-
-                <label class="auth-field">
-                    <span class="auth-label">Mobile number</span>
-                    <input type="tel" name="mobile" placeholder="09XX XXX XXXX" autocomplete="tel" required>
                 </label>
 
                 <label class="auth-field">
@@ -403,9 +439,22 @@
                     </div>
                 </label>
 
+                <label class="auth-field">
+                    <span class="auth-label">Full name</span>
+                    <input type="text" name="fullname" placeholder="Juan Dela Cruz" autocomplete="name" required>
+                </label>
+
+                <label class="auth-field">
+                    <span class="auth-label">Mobile number</span>
+                    <input type="tel" name="mobile" placeholder="09XX XXX XXXX" autocomplete="tel" required>
+                </label>
+
+                <!-- The Terms link opens the in-page dialog below; includes/auth.js
+                     intercepts the click. The href/target/rel stay on it so it
+                     still works as a plain link if the fetch ever fails. -->
                 <label class="auth-checkbox auth-terms">
                     <input type="checkbox" name="terms" required>
-                    <span>I agree to the <a href="terms.html" class="auth-link" target="_blank" rel="noopener noreferrer">Terms &amp; Conditions</a></span>
+                    <span>I agree to the <a href="terms.html" class="auth-link" data-terms-open target="_blank" rel="noopener noreferrer">Terms &amp; Conditions</a></span>
                 </label>
 
                 <button type="submit" class="auth-submit">Create Account</button>
@@ -415,6 +464,8 @@
                 <div class="auth-google-btn" id="google-signin-signup" data-google-btn></div>
 
             </form>
+
+            </div><!-- /.auth-panel-stack -->
 
             <!-- OTP VERIFICATION PANEL — shown automatically after Sign Up is submitted -->
             <form class="auth-form" data-auth-panel="verify" novalidate>
@@ -516,6 +567,37 @@
                 <button type="submit" class="auth-submit">Update Password</button>
             </form>
 
+        </div>
+    </div>
+
+    <!-- ==========================================================================
+         TERMS & CONDITIONS DIALOG — stacks on top of the auth modal, opened by the
+         Sign Up checkbox's "Terms & Conditions" link.
+
+         Deliberately EMPTY in markup: the copy is fetched from Pages/terms.html on
+         first open and cached (see includes/auth.js), so the policy has exactly one
+         source of truth. If that fetch fails the link falls back to its own
+         href/target="_blank" and this dialog never opens.
+
+         It is a SIBLING of .auth-overlay, not a child: .auth-overlay carries
+         backdrop-filter, which makes it a containing block for position:fixed
+         descendants and would trap this dialog inside its padding box — and its
+         opacity/pointer-events would leak in too.
+         ========================================================================== -->
+    <div class="auth-terms-overlay" data-terms-overlay hidden>
+        <div class="auth-terms-backdrop" data-terms-close></div>
+        <div class="auth-terms-dialog" data-terms-dialog role="dialog" aria-modal="true"
+             aria-labelledby="authTermsTitle" tabindex="-1">
+            <div class="auth-terms-head">
+                <h2 class="auth-terms-title" id="authTermsTitle">Terms &amp; Conditions</h2>
+                <button type="button" class="auth-terms-close" data-terms-close aria-label="Close terms and conditions">
+                    <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M5 5l14 14M19 5L5 19" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+                </button>
+            </div>
+            <div class="auth-terms-body" data-terms-body></div>
+            <div class="auth-terms-foot">
+                <button type="button" class="auth-terms-done" data-terms-close>Back to sign up</button>
+            </div>
         </div>
     </div>
 

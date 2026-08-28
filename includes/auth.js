@@ -16,7 +16,11 @@ document.addEventListener('DOMContentLoaded', () => {
     const modal = overlay.querySelector('.auth-modal');
     const authTabsEl = overlay.querySelector('[data-auth-tabs]');
     const tabs = overlay.querySelectorAll('[data-auth-tab]');
+    // Descendant query, so the .auth-panel-stack wrapper that now holds the
+    // Log In and Sign Up panels (see Pages/Index.html) is transparent here —
+    // all six panels are still found, in document order.
     const panels = overlay.querySelectorAll('[data-auth-panel]');
+    const panelStack = overlay.querySelector('[data-auth-panel-stack]');
     let lastFocusedEl = null;
     let pendingSignupEmail = '';
     // Set while a password login is gated behind a first-login-per-device
@@ -338,8 +342,18 @@ document.addEventListener('DOMContentLoaded', () => {
         // Customers can switch between Log In / Sign Up, but Admin, Verify,
         // Forgot, and Reset are all one-off steps reached from elsewhere —
         // hide the tab bar while any of them is active.
+        const isTabbedPanel = name === 'login' || name === 'signup';
         if (authTabsEl) {
-            authTabsEl.hidden = name === 'admin' || name === 'verify' || name === 'forgot' || name === 'reset';
+            authTabsEl.hidden = !isTabbedPanel;
+        }
+
+        // Log In and Sign Up sit in one shared grid cell so the taller of the
+        // two fixes the card height (see .auth-panel-stack in Style/Auth.css).
+        // The inactive one is visibility:hidden, which means it still occupies
+        // that cell — so while a one-off panel is showing, the whole wrapper
+        // has to come out of flow or it would pad the card to sign-up height.
+        if (panelStack) {
+            panelStack.hidden = !isTabbedPanel;
         }
     }
 
@@ -394,7 +408,241 @@ document.addEventListener('DOMContentLoaded', () => {
         if (e.target === overlay) closeModal();
     });
 
+    // ------------------------------------------------------------------
+    // Terms & Conditions dialog
+    //
+    // The Sign Up checkbox's "Terms & Conditions" link used to open
+    // Pages/terms.html in a new tab, which threw away a half-filled
+    // registration form. It now opens an in-page dialog stacked on top of
+    // this modal instead.
+    //
+    // The copy is NOT duplicated into the markup — a legal document with two
+    // sources of truth is a defect waiting to happen. Pages/terms.html is
+    // fetched once on first open, its .terms-content container is lifted out,
+    // and the result is cached for the rest of the page's life. That page
+    // stays exactly as it is: it is still linked from elsewhere, and it is
+    // still this feature's fallback.
+    //
+    // Nesting contract with the auth modal (both are open at once):
+    //   • Body scroll lock stays with the auth modal (body.auth-lock). This
+    //     dialog never touches that class, so closing it cannot unlock the
+    //     page behind a modal that is still open. Its own copy scrolls inside
+    //     .auth-terms-body.
+    //   • Escape and the Tab focus trap are taken over by this dialog while it
+    //     is open (see the keydown handler below) and handed straight back on
+    //     close, so Escape only ever closes the topmost dialog.
+    //   • The auth overlay is marked aria-hidden while this is open, after
+    //     focus has already moved into the dialog, so assistive tech sees one
+    //     dialog at a time.
+    // ------------------------------------------------------------------
+    const FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+    const TERMS_CLOSE_DELAY_MS = 250;
+
+    const termsOverlay = document.querySelector('[data-terms-overlay]');
+    const termsDialog = termsOverlay && termsOverlay.querySelector('[data-terms-dialog]');
+    const termsBody = termsOverlay && termsOverlay.querySelector('[data-terms-body]');
+    const termsLinks = overlay.querySelectorAll('[data-terms-open]');
+
+    // Cached document fragment of the fetched terms copy, plus the one-way
+    // latch that sends every later click straight to the plain-link fallback
+    // once a fetch has failed.
+    let termsFragment = null;
+    let termsFetchFailed = false;
+    let termsLastFocused = null;
+    let termsHideTimer = null;
+    // Tracked as a flag rather than derived from [hidden], which is only set
+    // once the fade-out finishes: an Escape pressed during those 250ms belongs
+    // to the auth modal underneath, not to a dialog already on its way out.
+    // Same reasoning as the court viewer's own `isOpen` in landingPage.js.
+    let termsIsOpen = false;
+
+    function isTermsOpen() {
+        return termsIsOpen;
+    }
+
+    // Fetches Pages/terms.html and resolves to a fragment of its
+    // .terms-content children. Throws on anything that would leave the dialog
+    // empty — network error, non-2xx, or a page whose structure no longer
+    // matches — so the caller can fall back to opening the page in a tab.
+    async function loadTermsFragment(sourceUrl) {
+        if (termsFragment) return termsFragment;
+
+        const response = await fetch(sourceUrl, { credentials: 'same-origin' });
+        if (!response.ok) throw new Error(`terms.html responded ${response.status}`);
+
+        // Parsed with DOMParser into an inert document — NOT matched with a
+        // regex, and never handed to innerHTML. The nodes are then imported
+        // into this document, so the browser's own parser is the only thing
+        // that ever interprets the markup and no HTML string is re-parsed on
+        // this side. This is same-origin, in-repo, developer-authored content
+        // (Pages/terms.html), not user input, so there is nothing here for
+        // escapeHtml to escape — escapeHtml exists for the opposite case,
+        // untrusted values being interpolated into an HTML string.
+        const parsed = new DOMParser().parseFromString(await response.text(), 'text/html');
+        const source = parsed.querySelector('.terms-content');
+        if (!source) throw new Error('terms.html has no .terms-content container');
+
+        const imported = document.importNode(source, true);
+
+        // Belt and braces. DOMParser output is inert and .terms-content holds
+        // no scripts today, but nothing should be able to smuggle one in via
+        // a later edit to that page.
+        imported.querySelectorAll('script').forEach((el) => el.remove());
+
+        // The dialog has its own sticky header carrying the title, so drop the
+        // page's "Legal" eyebrow and its <h1> to avoid showing the heading
+        // twice. Page furniture only — not one word of the policy text is
+        // altered. Guarded: if terms.html ever loses them, nothing happens.
+        imported.querySelectorAll('.eyebrow, .section-title').forEach((el) => el.remove());
+
+        const fragment = document.createDocumentFragment();
+        while (imported.firstChild) fragment.appendChild(imported.firstChild);
+
+        termsFragment = fragment;
+        return termsFragment;
+    }
+
+    // `returnFocusTo` is the element close() should hand focus back to — the
+    // Terms link itself, passed explicitly rather than read off
+    // document.activeElement. A mouse click on an <a> focuses it in Chrome but
+    // not in every engine, and a programmatic .click() never does, so reading
+    // the active element would sometimes drop focus to <body> on close.
+    function openTermsDialog(returnFocusTo) {
+        if (!termsOverlay || !termsDialog) return;
+
+        termsLastFocused = returnFocusTo || document.activeElement;
+
+        if (termsHideTimer) {
+            window.clearTimeout(termsHideTimer);
+            termsHideTimer = null;
+        }
+
+        termsOverlay.hidden = false;
+        // Synchronous layout flush so the opacity:0 / display:flex state is
+        // committed before [data-open] flips it — same reason as the court
+        // viewer in includes/landingPage.js.
+        void termsOverlay.offsetWidth;
+        termsOverlay.setAttribute('data-open', '');
+        termsIsOpen = true;
+
+        // Focus first, aria-hidden second: marking an ancestor of the focused
+        // element aria-hidden is exactly the bug this ordering avoids.
+        termsDialog.focus();
+        overlay.setAttribute('aria-hidden', 'true');
+    }
+
+    function closeTermsDialog() {
+        if (!termsIsOpen) return;
+        termsIsOpen = false;
+
+        overlay.removeAttribute('aria-hidden');
+        termsOverlay.removeAttribute('data-open');
+
+        if (termsHideTimer) window.clearTimeout(termsHideTimer);
+        termsHideTimer = window.setTimeout(() => {
+            termsOverlay.hidden = true;
+            termsHideTimer = null;
+        }, TERMS_CLOSE_DELAY_MS);
+
+        // Back to the link that opened this, with the sign-up form and every
+        // value in it exactly as it was left — nothing is reset or re-rendered.
+        if (termsLastFocused && typeof termsLastFocused.focus === 'function' && document.contains(termsLastFocused)) {
+            termsLastFocused.focus();
+        }
+        termsLastFocused = null;
+    }
+
+    if (termsOverlay && termsDialog && termsBody) {
+        termsOverlay.querySelectorAll('[data-terms-close]').forEach((el) => {
+            el.addEventListener('click', closeTermsDialog);
+        });
+
+        termsLinks.forEach((link) => {
+            link.addEventListener('click', async (e) => {
+                // A previous attempt already failed: let the anchor's own
+                // href/target="_blank" run, so the terms are still reachable.
+                if (termsFetchFailed) return;
+
+                e.preventDefault();
+
+                try {
+                    // link.href is the browser-resolved absolute URL, so this
+                    // does not depend on where this script happens to live.
+                    const fragment = await loadTermsFragment(link.href);
+                    // Re-inserting the cached fragment moves its nodes, which
+                    // empties it — so hand over a clone and keep the original.
+                    termsBody.replaceChildren(fragment.cloneNode(true));
+                    termsBody.scrollTop = 0;
+                    openTermsDialog(link);
+                } catch (err) {
+                    // Never show an empty dialog. Fall back to the original
+                    // new-tab behaviour and latch, so every later click skips
+                    // straight to it.
+                    console.warn('Terms dialog unavailable, opening terms.html in a new tab instead:', err);
+                    termsFetchFailed = true;
+
+                    // Deliberately NOT the 'noopener' feature string: with it,
+                    // window.open returns null whether the popup opened or was
+                    // blocked, so the blocked-popup branch below could not tell
+                    // the two apart and fired on success. The opener reference
+                    // is severed on the returned window instead — the anchor's
+                    // own rel="noopener" does not cover a programmatic open.
+                    const opened = window.open(link.href, '_blank');
+                    if (opened) {
+                        try {
+                            opened.opener = null;
+                        } catch (_) {
+                            // Some engines refuse the assignment; the popup is
+                            // our own same-origin page either way.
+                        }
+                    } else {
+                        // Popup blocked — the click's user activation can lapse
+                        // while the failing request is in flight. The next click
+                        // is a fresh gesture and goes through the plain link
+                        // above, which the blocker will not stop.
+                        setAuthNotice('Could not open the Terms & Conditions here — tap the link again to open them in a new tab.', true);
+                    }
+                }
+            });
+        });
+    }
+
     document.addEventListener('keydown', (e) => {
+        // The Terms dialog stacks on top of this modal, so while it is open it
+        // owns Escape and the Tab rotation and this modal ignores both.
+        if (isTermsOpen()) {
+            if (e.key === 'Escape') {
+                e.preventDefault();
+                closeTermsDialog();
+                return;
+            }
+
+            if (e.key !== 'Tab') return;
+
+            // Focus trap. The auth modal underneath has no trap of its own, so
+            // without this Tab would walk out of the dialog and straight into
+            // the sign-up form behind the backdrop.
+            const focusables = Array.from(termsDialog.querySelectorAll(FOCUSABLE));
+            if (focusables.length === 0) {
+                e.preventDefault();
+                termsDialog.focus();
+                return;
+            }
+
+            const first = focusables[0];
+            const last = focusables[focusables.length - 1];
+            const active = document.activeElement;
+
+            if (e.shiftKey && (active === first || active === termsDialog || !termsDialog.contains(active))) {
+                e.preventDefault();
+                last.focus();
+            } else if (!e.shiftKey && (active === last || !termsDialog.contains(active))) {
+                e.preventDefault();
+                first.focus();
+            }
+            return;
+        }
+
         if (e.key === 'Escape' && !overlay.hidden) closeModal();
     });
 
@@ -833,13 +1081,19 @@ document.addEventListener('DOMContentLoaded', () => {
         const button = document.createElement('button');
         button.type = 'button';
         button.className = 'auth-google-button';
+        // Google's official four-colour "G", 24×24 brand geometry, unmodified.
+        // The previous paths here were hand-drawn approximations — the yellow
+        // arc in particular swept the wrong way and overshot the mark. Google's
+        // branding rules forbid recolouring, distorting, cropping or otherwise
+        // restyling the mark, so these four `d`/`fill` pairs and the
+        // `viewBox="0 0 24 24"` they are drawn against must stay verbatim.
         button.innerHTML = `
             <span class="auth-google-icon" aria-hidden="true">
                 <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
-                    <path fill="#4285F4" d="M21.6 12.23c0-.78-.07-1.53-.2-2.25H12v4.26h5.38a4.6 4.6 0 0 1-2 3.02v2.5h3.24c1.9-1.75 2.98-4.32 2.98-7.53z"></path>
-                    <path fill="#34A853" d="M12 22c2.7 0 4.96-.9 6.62-2.43l-3.24-2.5c-.9.6-2.04.96-3.38.96-2.6 0-4.8-1.75-5.59-4.1H3.07v2.58A10 10 0 0 0 12 22z"></path>
-                    <path fill="#FBBC05" d="M6.41 13.93A5.98 5.98 0 0 1 6.41 8.07V5.49H3.07a10 10 0 0 0 0 16.88l3.34-2.44z"></path>
-                    <path fill="#EA4335" d="M12 6.04c1.47 0 2.79.5 3.83 1.49l2.87-2.87A9.96 9.96 0 0 0 12 2a10 10 0 0 0-8.93 5.49l3.34 2.44C7.2 7.79 9.4 6.04 12 6.04z"></path>
+                    <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"></path>
+                    <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"></path>
+                    <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"></path>
+                    <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"></path>
                 </svg>
             </span>
             <span>Login / Sign up with Google</span>

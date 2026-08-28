@@ -1,0 +1,97 @@
+-- ============================================================================
+-- IñigoSync — Schema: per-unit court images (Increment 2)
+-- ============================================================================
+-- Run this in the Supabase SQL editor (Project → SQL Editor) any time after
+-- database/schema/002_content_tables.sql — order relative to 003/004/005 and
+-- the seed files in database/seed/ doesn't matter. Safe to re-run: uses
+-- `add column if not exists`, so a second run is a no-op, not an error.
+--
+-- Why this exists: `public.court` is one row per SPORT, not one row per
+-- bookable unit. Badminton is a single row with quantity = 9 and exactly ONE
+-- image_url, so the landing page's court viewer can list "Court 1" through
+-- "Court 9" but every one of them would show the same picture. There are no
+-- per-unit rows and no per-unit images anywhere in the schema today.
+-- (implementation_plan.md → "Increment 2", decision D-B.)
+--
+-- The one existing exception is Bowling, which really is two rows —
+-- 'bowling-duckpin' (8 lanes) and 'bowling-tenpin' (12 lanes) — each with its
+-- own image_url. includes/landingPage.js merges those into a single "Bowling"
+-- card, and its viewer already offers them as two named options with their
+-- own photos. This column gives every OTHER sport the same ability without
+-- inventing a second table, a join, or ~40 extra `court` rows that would each
+-- need their own slug, rate, status and display_order — and without touching
+-- booking, the dashboards, or any existing column.
+--
+-- ----------------------------------------------------------------------------
+-- Shape — a JSON array of {label, image_url} objects, in the order the viewer
+-- should list them:
+--
+--   [
+--     {"label": "Court 1", "image_url": "https://example.com/badminton-1.jpg"},
+--     {"label": "Court 2", "image_url": "https://example.com/badminton-2.jpg"}
+--   ]
+--
+--   * label     — what the combobox shows for that unit. Free text. The
+--                 frontend escapes it before it reaches innerHTML
+--                 (implementation_plan.md D3), so a stray < or & is safe,
+--                 just ugly. Omitted/blank → the frontend derives
+--                 "Court N" / "Lane N" / "Table N" from `unit` and position.
+--   * image_url — that unit's photo. Omitted, null or blank → that option
+--                 shows the same honest "Photo coming soon" placeholder the
+--                 grid card already uses. A URL that 404s degrades to the
+--                 same placeholder at runtime rather than a broken-image
+--                 icon, so a typo here is cosmetic, never fatal.
+--
+-- There is deliberately NO check on the shape of each ELEMENT: jsonb has no
+-- per-element schema constraint that stays readable in a migration, and the
+-- frontend already tolerates missing labels and missing/blank URLs. The CHECK
+-- below enforces only the one thing the frontend cannot recover from — being
+-- handed an object, a string or a number where it expects an array.
+--
+-- NULL (the default, and every row today) means "no per-unit images yet",
+-- which is NOT an error state. includes/landingPage.js resolveCourtUnits()
+-- falls through to the sport's merged DB rows (Bowling → Duckpin / Ten-Pin)
+-- or derives "Court N" / "Lane N" / "Table N" from quantity + unit, all
+-- sharing the sport's single image_url. Do NOT backfill this with invented
+-- photo URLs — leave it NULL until real per-unit photos exist, exactly like
+-- `rate` in database/seed/002_seed_content.sql and `rating` in
+-- database/schema/003_court_rating.sql.
+--
+-- ----------------------------------------------------------------------------
+-- GRACEFUL DEGRADATION — the landing page never asks for this column by name.
+-- Its query is `select('*, sport(slug, name)')`, so before this file is
+-- applied the column simply is not in the response and the normalizer reads
+-- `undefined`, which it treats exactly like NULL. The court viewer's combobox
+-- works today, unmigrated, on cases 2 and 3 above; applying this file only
+-- switches per-unit photos on for whichever rows the owner then fills in.
+-- Nothing breaks before, during, or after this migration.
+--
+-- No RLS changes needed: this is one more column on a table that already has
+-- RLS enabled with a public SELECT policy and a staff-or-admin write policy
+-- (see database/schema/002_content_tables.sql, "court_public_read" /
+-- "court_staff_write") — those apply to the whole row automatically, this
+-- column included.
+--
+-- Admin Court Listings (includes/owner_dashboard.js) saves a partial UPDATE
+-- that never mentions unit_images, so editing a court there does not clear
+-- this column. Until that screen grows a field for it, populate it from the
+-- SQL editor, e.g.:
+--
+--   update public.court
+--      set unit_images = '[
+--            {"label": "Court 1", "image_url": "https://example.com/bd-1.jpg"},
+--            {"label": "Court 2", "image_url": "https://example.com/bd-2.jpg"}
+--          ]'::jsonb
+--    where slug = 'badminton';
+--
+-- and to undo it:
+--
+--   update public.court set unit_images = null where slug = 'badminton';
+-- ============================================================================
+
+alter table public.court
+    add column if not exists unit_images jsonb
+        check (unit_images is null or jsonb_typeof(unit_images) = 'array');
+
+comment on column public.court.unit_images is
+    'Optional per-unit photo list for one sport: a JSON array of {"label","image_url"} objects, one per individual court/lane/table, in display order. NULL = none yet — the landing-page court viewer then falls back to the sport''s merged rows (Bowling → Duckpin/Ten-Pin) or derives Court/Lane/Table N from quantity + unit. Never backfill with invented URLs. See database/schema/006_court_unit_images.sql and resolveCourtUnits() in includes/landingPage.js.';

@@ -76,19 +76,109 @@ body.auth-lock {
     color: var(--color-ink);
 }
 
+/* --------------------------------------------------------------------------
+   Brand lockup — mark tile, then the wordmark with the strapline under it,
+   closed off by a short accent rule that separates the header from the tabs.
+   Same visual language as the landing page: Oswald display face, the #FF6115
+   accent, and the surface/border/shadow token set.
+
+   Set side by side rather than stacked so the whole header stays the same
+   height as the plain two-line title it replaced — the sign-up panel already
+   runs to the modal's `max-height: calc(100vh - 48px)` on a 900px-tall
+   viewport, so a taller header would have cost it internal scrolling.
+
+   Everything here is scoped to .auth-brand, so the .auth-tagline reused by the
+   Verify / Admin / Forgot / Reset panels keeps its existing look.
+   -------------------------------------------------------------------------- */
 .auth-brand {
+    position: relative;
     text-align: center;
     margin-bottom: 24px;
+    padding-bottom: 18px;
+}
+
+/* The accent rule. Not a full-width hairline: a short centred bar reads as
+   part of the lockup rather than as a divider stranded above the tabs. */
+.auth-brand::after {
+    content: '';
+    position: absolute;
+    left: 50%;
+    bottom: 0;
+    transform: translateX(-50%);
+    width: 44px;
+    height: 3px;
+    border-radius: 999px;
+    background: var(--color-primary);
+}
+
+/* inline-flex inside a text-align:center parent = a centred block that is only
+   as wide as its content, with the text inside it left-aligned. */
+.auth-brand-lockup {
+    display: inline-flex;
+    align-items: center;
+    gap: 12px;
+    max-width: 100%;
+    min-width: 0;
+    text-align: left;
+}
+
+/* Tile behind the mark, so the logo sits on a surface of its own instead of
+   floating on the modal panel — the same card treatment used site-wide. */
+.auth-brand-mark {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    width: 44px;
+    height: 44px;
+    border-radius: 13px;
+    background: var(--color-bg-card);
+    border: 1px solid var(--color-line);
+    box-shadow: var(--shadow-card);
+}
+
+.auth-brand-mark img {
+    display: block;
+    width: 28px;
+    height: 28px;
+    object-fit: contain;
+}
+
+.auth-brand-text {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
 }
 
 .auth-brand .logo-text {
-    font-size: 1.5rem;
+    font-family: var(--font-display);
+    font-weight: 600;
+    font-size: 1.45rem;
+    line-height: 1.15;
+    letter-spacing: -0.01em;
+    color: var(--color-ink);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 .auth-tagline {
     font-size: 0.85rem;
     color: var(--color-ink-faint);
     margin-top: 4px;
+}
+
+/* Stronger than --color-ink-faint: this line is the strapline half of the
+   lockup, not a caption. `display: block` because the brand markup uses a
+   <span> here (it is inline content inside the lockup), while the Verify /
+   Admin / Forgot / Reset panels use a <p>. */
+.auth-brand .auth-tagline {
+    display: block;
+    margin-top: 0;
+    font-size: 0.8rem;
+    line-height: 1.35;
+    color: var(--color-ink-dim);
 }
 
 /* Tabs */
@@ -135,6 +225,48 @@ body.auth-lock {
 
 .auth-form.is-active {
     display: flex;
+}
+
+/* --------------------------------------------------------------------------
+   Log In / Sign Up share one card height
+   --------------------------------------------------------------------------
+   Both panels are placed in the SAME grid cell, so the row is sized by the
+   taller of the two (Sign Up) and the card no longer resizes when the tabs are
+   switched. A min-height would do the same thing today and silently break the
+   next time a field is added; this cannot.
+
+   The inactive panel keeps its box but is visibility:hidden, which — unlike
+   opacity — also removes it from the tab order and from the accessibility
+   tree, so the hidden form's inputs are never focusable or announced.
+
+   These rules must come AFTER `.auth-form.is-active` above: both selectors
+   have the same specificity (0,2,0), so source order decides `display`.
+
+   Only Log In and Sign Up live here. Verify / Admin / Forgot / Reset are
+   one-off panels that still shrink-wrap their own content, which is why
+   includes/auth.js sets [hidden] on this wrapper whenever one of them is
+   active — the stack's hidden child still occupies its grid cell, so leaving
+   the wrapper laid out would pad those panels to sign-up height.
+   -------------------------------------------------------------------------- */
+.auth-panel-stack {
+    display: grid;
+    align-items: start;
+}
+
+/* `display: grid` above is an author declaration and would beat the UA
+   `[hidden] { display: none }`, exactly like .auth-overlay/.court-viewer. */
+.auth-panel-stack[hidden] {
+    display: none;
+}
+
+.auth-panel-stack > .auth-form {
+    grid-area: 1 / 1;
+    display: flex;
+    visibility: hidden;
+}
+
+.auth-panel-stack > .auth-form.is-active {
+    visibility: visible;
 }
 
 .auth-heading {
@@ -457,11 +589,291 @@ body.auth-lock {
     pointer-events: none;
 }
 
+/* ==========================================================================
+   Terms & Conditions dialog
+
+   Stacks on top of the auth modal (z-index 110 vs .auth-overlay's 100) and is
+   a sibling of it in the DOM, not a child — see the markup comment in
+   Pages/Index.html.
+
+   Ownership while both are open:
+     • body scroll lock  — stays with the auth modal (body.auth-lock). This
+       dialog never adds or removes it, so closing it cannot unlock the page
+       behind a still-open modal. Its own long copy scrolls inside
+       .auth-terms-body.
+     • Escape and the Tab focus trap — taken over by this dialog while it is
+       open and handed straight back on close (see includes/auth.js).
+
+   The blur lives on .auth-terms-backdrop rather than on the overlay itself,
+   the same way .court-viewer does it, so the overlay does not become a
+   containing block for anything positioned inside it.
+   ========================================================================== */
+.auth-terms-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 110;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.25s ease;
+}
+
+.auth-terms-overlay[data-open] {
+    opacity: 1;
+    pointer-events: auto;
+}
+
+/* `display: flex` above is an author declaration and beats the UA
+   `[hidden] { display: none }`, so [hidden] has to be restated — otherwise
+   the dialog would stay laid out, focusable and exposed to screen readers
+   while closed. */
+.auth-terms-overlay[hidden] {
+    display: none;
+}
+
+.auth-terms-backdrop {
+    position: absolute;
+    inset: 0;
+    background: rgba(10, 8, 6, 0.72);
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+}
+
+.auth-terms-dialog {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    max-width: 560px;
+    max-height: calc(100vh - 48px);
+    background: var(--color-bg-elevated);
+    border: 1px solid var(--color-line);
+    border-radius: 20px;
+    box-shadow: 0 24px 60px rgba(0, 0, 0, 0.45);
+    transform: translateY(16px) scale(0.98);
+    opacity: 0;
+    transition: transform 0.28s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.22s ease;
+}
+
+.auth-terms-overlay[data-open] .auth-terms-dialog {
+    transform: translateY(0) scale(1);
+    opacity: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .auth-terms-overlay,
+    .auth-terms-dialog {
+        transition: none;
+    }
+
+    .auth-terms-dialog {
+        transform: none;
+    }
+}
+
+.auth-terms-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    flex-shrink: 0;
+    padding: 22px 24px 16px;
+    border-bottom: 1px solid var(--color-line);
+}
+
+.auth-terms-title {
+    font-family: var(--font-display);
+    font-weight: 600;
+    font-size: 1.25rem;
+    line-height: 1.2;
+    color: var(--color-ink);
+}
+
+.auth-terms-close {
+    flex-shrink: 0;
+    width: 34px;
+    height: 34px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--color-bg-card);
+    border: 1px solid var(--color-line);
+    border-radius: 50%;
+    color: var(--color-ink-dim);
+    cursor: pointer;
+    transition: background 0.2s, color 0.2s, border-color 0.2s;
+}
+
+.auth-terms-close:hover {
+    color: var(--color-ink);
+    border-color: var(--color-primary);
+}
+
+/* The long copy scrolls HERE, not on the page or the dialog, so the header
+   and footer stay put and the dialog can never grow past the viewport. */
+.auth-terms-body {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding: 20px 24px 4px;
+}
+
+.auth-terms-foot {
+    display: flex;
+    justify-content: flex-end;
+    flex-shrink: 0;
+    padding: 16px 24px 20px;
+    border-top: 1px solid var(--color-line);
+}
+
+.auth-terms-done {
+    padding: 11px 22px;
+    border: none;
+    border-radius: 999px;
+    background: var(--color-primary);
+    color: #14110d;
+    font-family: var(--font-body);
+    font-weight: 700;
+    font-size: 0.92rem;
+    cursor: pointer;
+    transition: background 0.2s, transform 0.2s;
+}
+
+.auth-terms-done:hover {
+    background: var(--color-primary-dim);
+    transform: translateY(-1px);
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .auth-terms-close,
+    .auth-terms-done {
+        transition: none;
+    }
+
+    .auth-terms-done:hover {
+        transform: none;
+    }
+}
+
+/* --------------------------------------------------------------------------
+   Typography for the copy injected from Pages/terms.html.
+
+   That page styles .terms-* in its own inline <style> block, which nothing
+   outside it can reach, so the rules a wall of policy text needs are restated
+   here — scoped under .auth-terms-body so they can never leak into the
+   dashboards that also load this file. Sizes are a touch smaller than the
+   standalone page's because this is a 560px dialog, not a 720px article
+   column. The *copy* still has exactly one source of truth: terms.html.
+   -------------------------------------------------------------------------- */
+.auth-terms-body .terms-updated {
+    font-family: var(--font-mono);
+    font-size: 0.78rem;
+    color: var(--color-ink-faint);
+    margin-bottom: 24px;
+}
+
+.auth-terms-body .terms-section {
+    margin-bottom: 26px;
+}
+
+.auth-terms-body .terms-section h2 {
+    font-family: var(--font-display);
+    font-weight: 600;
+    font-size: 1.08rem;
+    line-height: 1.3;
+    color: var(--color-ink);
+    margin-bottom: 10px;
+}
+
+.auth-terms-body .terms-section p,
+.auth-terms-body .terms-section li {
+    font-size: 0.92rem;
+    line-height: 1.7;
+    color: var(--color-ink-dim);
+}
+
+.auth-terms-body .terms-section p {
+    margin-bottom: 12px;
+}
+
+.auth-terms-body .terms-section ul {
+    padding-left: 20px;
+    margin: 0 0 12px;
+}
+
+.auth-terms-body .terms-section li {
+    margin-bottom: 6px;
+}
+
+.auth-terms-body .terms-placeholder {
+    color: var(--color-accent-text);
+    font-weight: 600;
+}
+
+.auth-terms-body .terms-section a {
+    color: var(--color-accent-text);
+    font-weight: 600;
+    text-decoration: underline;
+}
+
 /* Responsive */
 @media (max-width: 480px) {
     .auth-modal {
         padding: 32px 22px 26px;
         border-radius: 16px;
+    }
+
+    .auth-brand {
+        margin-bottom: 22px;
+        padding-bottom: 16px;
+    }
+
+    .auth-brand-mark {
+        width: 40px;
+        height: 40px;
+        border-radius: 12px;
+    }
+
+    .auth-brand-mark img {
+        width: 26px;
+        height: 26px;
+    }
+
+    .auth-brand .logo-text {
+        font-size: 1.3rem;
+    }
+
+    .auth-brand .auth-tagline {
+        font-size: 0.76rem;
+    }
+
+    .auth-terms-overlay {
+        padding: 16px;
+    }
+
+    .auth-terms-dialog {
+        max-height: calc(100vh - 32px);
+        border-radius: 16px;
+    }
+
+    .auth-terms-head {
+        padding: 18px 18px 14px;
+    }
+
+    .auth-terms-title {
+        font-size: 1.1rem;
+    }
+
+    .auth-terms-body {
+        padding: 16px 18px 4px;
+    }
+
+    .auth-terms-foot {
+        padding: 14px 18px 16px;
     }
 
     .auth-google-button {
@@ -482,6 +894,27 @@ body.auth-lock {
 @media (max-width: 360px) {
     .auth-modal {
         padding: 24px 16px 20px;
+    }
+
+    /* .auth-close is absolutely positioned and reaches 52px in from the
+       modal's right edge. At and above 375px the strapline clears it
+       vertically (the button sits in the band beside the wordmark), but below
+       360px the modal's side padding drops to 16px, which lifts the whole
+       lockup into that band. Capping the centred lockup at
+       `content width - 80px` leaves a constant 4px gap to the button at any
+       width, and the strapline wraps to a second line instead of running
+       underneath it. */
+    .auth-brand-lockup {
+        gap: 10px;
+        max-width: calc(100% - 80px);
+    }
+
+    .auth-brand .logo-text {
+        font-size: 1.2rem;
+    }
+
+    .auth-brand .auth-tagline {
+        font-size: 0.72rem;
     }
 
     .auth-google-button {
