@@ -273,9 +273,14 @@ document.addEventListener('DOMContentLoaded', () => {
     // below (populateBookSelect). Every court's rate is NULL in the live DB
     // today (the owner hasn't confirmed prices yet — see
     // database/seed/002_seed_content.sql), so "unknown rate" has to be a
-    // first-class state here, not an assumed 300.
+    // first-class state here, not an assumed 300. `sport` is the selected
+    // court's REAL related sport (e.g. "Bowling" for the "Bowling —
+    // Duckpin" court, not a copy of the court name) — booking.sports is
+    // NOT NULL, so this must never still be empty by the time a booking is
+    // submitted; see the insert below.
     let bookingState = {
         court: '',
+        sport: '',
         rate: null,
         rateUnit: '/hr',
         date: bookDate ? bookDate.value : '',
@@ -316,6 +321,7 @@ document.addEventListener('DOMContentLoaded', () => {
         bookSelect.addEventListener('change', () => {
             const opt = bookSelect.selectedOptions[0];
             bookingState.court = bookSelect.value;
+            bookingState.sport = (opt && opt.dataset.sport) || bookingState.court;
             bookingState.rate = (opt && opt.dataset.rate) ? Number(opt.dataset.rate) : null;
             bookingState.rateUnit = (opt && opt.dataset.rateUnit) || '/hr';
             updateSummary();
@@ -380,25 +386,67 @@ document.addEventListener('DOMContentLoaded', () => {
             bookSubmit.disabled = true;
             bookSubmit.textContent = 'Submitting…';
 
-            // `courts` is what refreshMyBookings() below actually reads back
-            // (rate lookup via getCourtRate(booking.courts), and the table's
-            // main cell), so it gets the customer's selection. `sports` used
-            // to be a copy-paste duplicate of the same value — nothing in
-            // this dashboard reads it, and this simplified single-select
-            // booking flow doesn't collect a sport category separately from
-            // the court, so it's left unset here instead of writing a second
-            // copy of the same string under a misleading column.
+            // Column facts verified against the LIVE database — read this
+            // before touching the payload below, so this bug doesn't come
+            // back:
+            //  - booking.sports is NOT NULL (text). It must be the court's
+            //    REAL related sport, not always a copy of `courts` — e.g.
+            //    the "Bowling — Duckpin" court's sport is "Bowling".
+            //    bookingState.sport is resolved from
+            //    window.InigoCourtsData's court.sportName and carried
+            //    through here via data-sport / data-dash-book-sport
+            //    attributes (see populateBookSelect() and
+            //    wireBookNowButtons() above — same pattern already used to
+            //    carry rate/rateUnit), falling back to the court name if a
+            //    court ever has no linked sport row. It is never sent as
+            //    null.
+            //  - booking.status has a CHECK constraint: only 'pending',
+            //    'confirmed', 'cancelled', or 'completed' are accepted;
+            //    anything else (e.g. 'declined'/'no_show'/'expired') fails
+            //    with Postgres code 23514. A brand-new booking always
+            //    starts 'pending'.
+            //  - `courts` is what the rest of this dashboard actually
+            //    reads back (getCourtRate(booking.courts), and the My
+            //    Bookings table's main cell), so it still carries the
+            //    customer's exact court selection.
+            //  - customer_id attributes the booking to the signed-in
+            //    profile; time_date is the single required start
+            //    timestamp this simplified booking flow stores.
+            //  - payment_id, booking_id, and created_at are deliberately
+            //    OMITTED here rather than sent as null: no payment record
+            //    exists yet for a brand-new booking (see the Receipts
+            //    panel below), booking_id is an autoincrement PK the DB
+            //    assigns, and created_at has a DB default. Explicitly
+            //    sending null for any of these would override that
+            //    default/PK instead of letting the DB fill it in — the
+            //    same class of bug as the `sports: null` 400 this comment
+            //    replaces.
             const { error } = await window.sb.from('booking').insert({
                 customer_id: window.inigosyncProfile.id,
-                sports: null,
+                sports: bookingState.sport || bookingState.court,
                 courts: bookingState.court,
                 time_date: new Date(`${bookingState.date}T${time24}:00`).toISOString(),
                 status: 'pending',
-                payment_id: null,
             });
 
             if (error) {
-                window.InigoToast?.show(error.message || 'Could not submit your booking. Please try again.', true);
+                // Always log the full error (code/message/details) for
+                // diagnosis — that's how a NOT NULL (23502) or CHECK
+                // (23514) violation actually gets tracked down during a
+                // demo. The toast below stays friendly and never dumps the
+                // raw Postgres code/column names on the customer.
+                console.error('[dashboard] booking insert failed', error);
+
+                let friendlyMessage = 'Could not submit your booking. Please try again.';
+                if (error.code === '23502') {
+                    friendlyMessage = 'Your booking is missing required information. Please reselect the court and try again.';
+                } else if (error.code === '23514') {
+                    friendlyMessage = 'We couldn\'t process your booking. Please try again or contact staff for help.';
+                } else if (error.message) {
+                    friendlyMessage = error.message;
+                }
+
+                window.InigoToast?.show(friendlyMessage, true);
                 bookSubmit.disabled = false;
                 bookSubmit.textContent = originalLabel;
                 return;
@@ -432,6 +480,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 if (bookSelect) bookSelect.value = court;
                 bookingState.court = court;
+                // Setting bookSelect.value above does NOT fire its `change`
+                // listener, so sport (like rate/rateUnit already did) has
+                // to be carried by this button's own data attribute too —
+                // see renderCourtCard()'s data-dash-book-sport below.
+                bookingState.sport = btn.dataset.dashBookSport || court;
                 bookingState.rate = (rate !== null && !Number.isNaN(rate)) ? rate : null;
                 bookingState.rateUnit = btn.dataset.dashBookRateUnit || '/hr';
 
@@ -489,7 +542,7 @@ document.addEventListener('DOMContentLoaded', () => {
             : '';
         const tagsHtml = courtTags(court).map((t) => `<span>${window.escapeHtml(t)}</span>`).join('');
         const bookBtn = isAvailable
-            ? `<button type="button" class="dash-btn-primary" data-dash-book-court="${window.escapeHtml(court.name)}" data-dash-book-rate="${court.rate !== null ? window.escapeHtml(String(court.rate)) : ''}" data-dash-book-rate-unit="${window.escapeHtml(court.rateUnit)}">Book Now</button>`
+            ? `<button type="button" class="dash-btn-primary" data-dash-book-court="${window.escapeHtml(court.name)}" data-dash-book-rate="${court.rate !== null ? window.escapeHtml(String(court.rate)) : ''}" data-dash-book-rate-unit="${window.escapeHtml(court.rateUnit)}" data-dash-book-sport="${window.escapeHtml(court.sportName || court.name)}">Book Now</button>`
             : '<button type="button" class="dash-btn-primary" disabled>Book Now</button>';
 
         return `
@@ -529,11 +582,20 @@ document.addEventListener('DOMContentLoaded', () => {
             const label = court.rate !== null
                 ? `${court.name} — ₱${court.rate}${court.rateUnit}`
                 : `${court.name} — Rate TBA`;
-            return `<option value="${window.escapeHtml(court.name)}" data-rate="${rateAttr}" data-rate-unit="${window.escapeHtml(court.rateUnit)}">${window.escapeHtml(label)}</option>`;
+            // data-sport carries the court's REAL related sport (e.g.
+            // "Bowling" for the "Bowling — Duckpin" court, not a copy of
+            // the court name) through to bookingState/the insert in the
+            // bookSubmit handler below — same idea as data-rate /
+            // data-rate-unit. booking.sports is NOT NULL, so this falls
+            // back to the court's own name only if a court somehow has no
+            // linked sport row; it is never left empty.
+            const sportAttr = window.escapeHtml(court.sportName || court.name);
+            return `<option value="${window.escapeHtml(court.name)}" data-rate="${rateAttr}" data-rate-unit="${window.escapeHtml(court.rateUnit)}" data-sport="${sportAttr}">${window.escapeHtml(label)}</option>`;
         }).join('');
 
         const firstOpt = bookSelect.selectedOptions[0];
         bookingState.court = bookSelect.value;
+        bookingState.sport = (firstOpt && firstOpt.dataset.sport) || bookingState.court;
         bookingState.rate = (firstOpt && firstOpt.dataset.rate) ? Number(firstOpt.dataset.rate) : null;
         bookingState.rateUnit = (firstOpt && firstOpt.dataset.rateUnit) || '/hr';
         updateSummary();

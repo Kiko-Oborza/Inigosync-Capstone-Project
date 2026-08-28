@@ -353,7 +353,7 @@
 
             <!-- OTP VERIFICATION PANEL — shown automatically after Sign Up is submitted -->
             <form class="auth-form" data-auth-panel="verify" novalidate>
-                <h2 class="auth-heading">Verify your email</h2>
+                <h2 class="auth-heading" data-verify-heading>Verify your email</h2>
                 <p class="auth-tagline" style="margin-bottom: 18px;">
                     Enter the 6-digit code we sent to <strong data-verify-email>your email</strong>.
                 </p>
@@ -377,7 +377,7 @@
                     <span data-otp-timer></span>
                 </p>
 
-                <p class="auth-switch"><button type="button" class="auth-link" data-auth-tab="signup">← Back to sign up</button></p>
+                <p class="auth-switch"><button type="button" class="auth-link" data-auth-tab="signup" data-otp-back-link>← Back to sign up</button></p>
             </form>
 
             <!-- ADMIN LOGIN FORM — intentionally has no Sign Up / registration option -->

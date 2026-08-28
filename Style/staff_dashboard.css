@@ -479,10 +479,22 @@ body.staff-sidebar-open .staff-toggle-bar:nth-child(3) {
 .staff-status.paid { background: rgba(62, 122, 94, 0.2); color: var(--color-court-green); }
 .staff-status.walkin { background: rgba(255, 97, 21, 0.16); color: var(--color-primary); }
 
-/* Booking Overview — upcoming / in play / done (bookings arrive pre-paid via PayMongo) */
+/* Booking Overview — upcoming / in play / done (legacy demo-row classes,
+   kept only so nothing breaks if referenced elsewhere; real rows use
+   pending/confirmed/completed/cancelled above instead). */
 .staff-status.upcoming { background: rgba(62, 122, 94, 0.2); color: var(--color-court-green); }
 .staff-status.inplay { background: rgba(255, 97, 21, 0.16); color: var(--color-primary); }
 .staff-status.done { background: rgba(244, 239, 230, 0.12); color: var(--color-ink-dim); }
+
+/* Transaction Records — one badge per audit_log.action this phase writes
+   (see includes/staff_dashboard.js's writeAuditLog callers). Reuses the
+   same semantic colors as the booking-status badges above: green for a
+   forward/positive action, red for a decline, orange for in-progress,
+   neutral for a completed one. */
+.staff-status.booking_confirmed, .staff-status.walkin_recorded { background: rgba(62, 122, 94, 0.2); color: var(--color-court-green); }
+.staff-status.booking_declined { background: rgba(214, 72, 47, 0.16); color: var(--color-alert); }
+.staff-status.booking_timed_in { background: rgba(255, 97, 21, 0.16); color: var(--color-primary); }
+.staff-status.booking_timed_out { background: rgba(244, 239, 230, 0.12); color: var(--color-ink-dim); }
 
 .staff-notice {
     display: flex; gap: 10px; padding: 13px 14px; border-radius: 10px;
@@ -601,7 +613,13 @@ body.staff-sidebar-open .staff-toggle-bar:nth-child(3) {
 
 .staff-schedule-grid {
     display: grid;
-    grid-template-columns: 90px repeat(6, 1fr);
+    /* --staff-schedule-cols is set inline by includes/staff_dashboard.js to
+       the real active court count (window.InigoCourtsData) — a custom
+       property instead of a JS-written grid-template-columns string so the
+       responsive breakpoints below can still override the leading time-
+       column width per viewport; falls back to 6 (the old static column
+       count) if JS hasn't run yet. */
+    grid-template-columns: 90px repeat(var(--staff-schedule-cols, 6), 1fr);
     gap: 6px;
 }
 
@@ -713,7 +731,7 @@ body.staff-sidebar-open .staff-toggle-bar:nth-child(3) {
     .staff-stat-grid { grid-template-columns: repeat(2, 1fr); }
     .staff-grid-2 { grid-template-columns: 1fr; }
     .staff-summary { position: static; }
-    .staff-schedule-grid { grid-template-columns: 70px repeat(6, 1fr); }
+    .staff-schedule-grid { grid-template-columns: 70px repeat(var(--staff-schedule-cols, 6), 1fr); }
 }
 
 @media (max-width: 860px) {
@@ -743,7 +761,7 @@ body.staff-sidebar-open .staff-toggle-bar:nth-child(3) {
     .staff-profile-card { flex-direction: column; align-items: flex-start; }
     .staff-profile-meta { grid-template-columns: 1fr; }
     .staff-clock { display: none; }
-    .staff-schedule-grid { grid-template-columns: 60px repeat(6, 1fr); font-size: 0.6rem; }
+    .staff-schedule-grid { grid-template-columns: 60px repeat(var(--staff-schedule-cols, 6), 1fr); font-size: 0.6rem; }
 }
 
 @media (max-width: 480px) {

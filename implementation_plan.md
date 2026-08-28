@@ -117,6 +117,38 @@ phase on payment matching the login overlay.
 Idle session expiration. `active_session` table and single-session enforcement.
 Login OTP, if confirmed as wanted on every login.
 
+## Status
+
+| Phase | State | Commit |
+|---|---|---|
+| 1 — Security & truthfulness | **Done, verified** | `953d431` |
+| 2 — One source of truth for courts | **Done, verified** | `23f3d9c` |
+| 3 — Staff module operable | **Done, verified** | working tree |
+| 4 — Booking integrity & lifecycle | Blocked on `pg_cron` check | — |
+| 5 — Payment (PayMongo **test mode**) | Blocked on owner account | — |
+| 6 — Session security (OTP = **first-login-per-device**) | **Done, verified** | working tree |
+
+### Owner decisions recorded (2026-08-28)
+- **PayMongo:** demo/test mode only, no real money. Secret key lives in a
+  Supabase Edge Function, never the repo.
+- **Email:** no domain owned. Recommendation: **Resend** via its shared
+  `onboarding@resend.dev` sender (free, no domain). Brevo is the fallback if
+  Gmail deliverability matters. Build provider-agnostic.
+- **OTP:** scoped to **first login per device**, not every login.
+- **Live auth testing:** approved and performed — see the audit report's
+  "Authenticated per-role testing" section.
+
+### Live verification performed against the real backend
+- Privilege escalation (customer → admin) is **blocked by a DB trigger**
+  (`P0001: role cannot be changed directly`). Audit P2#5 closed.
+- RLS read scoping on `profiles` is correct per role.
+- An authenticated **admin can write to `court`** (PATCH 200), so the Phase 2
+  admin CRUD works at runtime.
+- The Phase 2 embedded query `court?select=*,sport(id,slug,name)` returns
+  **HTTP 200 with all 9 courts** — the join and ordering are valid.
+- Every `court` query uses `select('*')`, never an explicit `rating` column, so
+  the code runs correctly **both before and after** `003_court_rating.sql`.
+
 ## Constraints and non-goals
 
 - No build step, no framework, no npm. Node is not installed on this machine.

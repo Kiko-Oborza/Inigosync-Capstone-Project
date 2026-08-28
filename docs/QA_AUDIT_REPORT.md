@@ -62,6 +62,48 @@ This closes audit item **P2#5** (the potential customer→admin escalation): a
 Postgres trigger rejects any direct change to `profiles.role`. The client-side
 role gate is backed by real server-side enforcement. **Confirmed non-issue.**
 
+### End-to-end booking flow test (2026-08-28) — TWO NEW P0 BUGS FOUND
+
+Created a real booking as the customer, actioned it as staff, then deleted it.
+`booking` is back to 0 rows. This test found defects that **no amount of code
+reading would have caught**, because they live in DB constraints not tracked in
+this repo:
+
+| Test | Result |
+|---|---|
+| Customer INSERT with `sports: null` — *exactly what the app sends today* | **HTTP 400 `23502`: null value in column "sports" violates not-null constraint** |
+| Customer INSERT with `sports` populated | 201 — `booking_id` is an **integer** (4), and a `created_at` column exists |
+| Staff SELECT `booking` + embedded `profiles(full_name, contact_num)` | 200 — the Phase 3 query works |
+| **Staff UPDATE `booking` (confirm)** | **200 — staff DO have an UPDATE policy.** Phase 3's flagged unknown is resolved |
+| Staff DELETE | 204 |
+| `status` value probe | **A `CHECK` constraint exists.** Accepted: `pending`, `confirmed`, `cancelled`, `completed`. **Rejected (`23514`): `declined`, `no_show`** |
+
+**NEW P0 — customer booking is currently 100% broken.**
+`includes/Dashboard.js` inserts `sports: null`, but `booking.sports` is
+`NOT NULL`. **Every customer booking attempt fails with HTTP 400.** This was
+introduced when the earlier `sports`/`courts` duplicate-value bug was "fixed" by
+setting `sports` to null instead of removing the key. The user sees only the
+generic "Could not submit your booking" toast. Must be fixed before any demo.
+
+**FIXED AND RUNTIME-VERIFIED (2026-08-28).** `includes/Dashboard.js` now resolves
+`sports` from the selected court's real related sport (`court.sportName` via
+`window.InigoCourtsData`), carried through `data-sport` on each `<option>` and
+`data-dash-book-sport` on each Book Now button, with a court-name fallback so it
+can never be null. `payment_id` is no longer sent at all — explicitly sending
+`null` overrides a column default, which is the same bug class.
+
+Verified by inserting the **exact payload the fixed code produces** against the
+live database → **HTTP 201**. The test deliberately used `Bowling — Duckpin`,
+where the court name and the real sport (`Bowling`) genuinely differ, proving the
+sport is resolved rather than duplicated from the court name. `payment_id` came
+back `null` without being sent, confirming the column is nullable/defaulted. Test
+row deleted; `booking` is back to 0 rows.
+
+**NEW P1 — `booking.status` is CHECK-constrained.** Any future code writing
+`declined`, `no_show`, `expired`, or similar will fail with `23514`. Phase 3 was
+checked against this and is compatible (it writes only `confirmed` / `cancelled`
+/ `completed`). The Phase 4 auto-cancellation work **must** use `cancelled`.
+
 **Booking schema, read from the insert path (`includes/Dashboard.js:366`):**
 columns are `customer_id`, `sports`, `courts` (free-text court name), `time_date`
 (a **single timestamp**, no end-time or duration), `status`, `payment_id`.
