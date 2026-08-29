@@ -6,8 +6,12 @@
 //
 // Note: the Admin panel is login-only — the Log In / Sign Up tab bar is
 // automatically hidden whenever the Admin or Verify panel is active. The
-// Verify panel is a one-off step shown right after Sign Up is submitted;
-// it has no tab of its own and is only reached programmatically.
+// Verify panel has no tab of its own and is only reached programmatically.
+// ONE panel serves all three code flows, switched by `otpPurpose`: after
+// Sign Up ('signup'), on a first log-in from an untrusted device ('login'),
+// and after a password-reset request ('recovery'). Everything it owns — the
+// six boxes, the countdown, the Resend button — is shared; only the heading,
+// the back link, the verifyOtp() type and the follow-up action differ.
 //
 // Sign Up is a three-step flow (email → password → name/mobile/terms) that
 // lives inside a single <form>: the steps are containers this file shows and
@@ -50,11 +54,33 @@ document.addEventListener('DOMContentLoaded', () => {
     // OTP check (see gateOtpThenCompleteLogin below); null the rest of the
     // time, including throughout the post-signup verify flow.
     let pendingLoginOtp = null;
+    // The address a password reset was just requested for, held while the
+    // Verify panel collects the 6-digit recovery code (see the
+    // mode === 'forgot' branch below). Empty the rest of the time.
+    // Deliberately NOT cleared when the visitor backs out of the flow: every
+    // read of it is gated on otpPurpose === 'recovery', and otpPurpose is
+    // always set explicitly right before the Verify panel is shown, so a
+    // leftover value can never be verified against by accident.
+    let pendingRecoveryEmail = '';
     // Which verifyOtp() call — and which follow-up action — the Verify
     // panel's submit handler should perform: 'signup' (default, existing
-    // post-sign-up behavior) or 'login' (new-device gate). See
-    // setOtpPurpose() below, which also relabels the reused panel's copy.
+    // post-sign-up behavior), 'login' (new-device gate) or 'recovery'
+    // (password reset by emailed code). See setOtpPurpose() below, which
+    // also relabels the reused panel's copy.
     let otpPurpose = 'signup';
+
+    // Per-purpose copy for the ONE Verify panel all three flows share. A
+    // table rather than nested ternaries because there are three cases now
+    // and two strings each. `backTab` is written onto the back link's
+    // data-auth-tab attribute, which the tab click handler reads at click
+    // time — see setOtpPurpose().
+    const OTP_PURPOSE_COPY = {
+        signup: { heading: 'Verify your email', backTab: 'signup', backLabel: '← Back to sign up' },
+        login: { heading: "Confirm it's you", backTab: 'login', backLabel: '← Back to log in' },
+        // Back goes to Forgot, not Log In: the likeliest reason for backing
+        // out here is a mistyped address, and that is the panel that fixes it.
+        recovery: { heading: 'Reset your password', backTab: 'forgot', backLabel: '← Use a different email' }
+    };
 
     // Timers for the short-lived toast setAuthNotice() renders further down.
     //
@@ -264,15 +290,17 @@ document.addEventListener('DOMContentLoaded', () => {
     // Relabels the reused Verify panel for whichever purpose it's
     // currently serving, so "Verify your email" / "← Back to sign up"
     // (correct right after Sign Up) don't show while this same panel is
-    // instead gating a password login on a new device.
+    // instead gating a password login on a new device, or collecting the
+    // code from a password-reset email.
     function setOtpPurpose(purpose) {
         otpPurpose = purpose;
+        const copy = OTP_PURPOSE_COPY[purpose] || OTP_PURPOSE_COPY.signup;
         const heading = overlay.querySelector('[data-verify-heading]');
-        if (heading) heading.textContent = purpose === 'login' ? "Confirm it's you" : 'Verify your email';
+        if (heading) heading.textContent = copy.heading;
         const backLink = overlay.querySelector('[data-otp-back-link]');
         if (backLink) {
-            backLink.dataset.authTab = purpose === 'login' ? 'login' : 'signup';
-            backLink.textContent = purpose === 'login' ? '← Back to log in' : '← Back to sign up';
+            backLink.dataset.authTab = copy.backTab;
+            backLink.textContent = copy.backLabel;
         }
     }
 
@@ -384,19 +412,43 @@ document.addEventListener('DOMContentLoaded', () => {
     assertEarlySetupBindings();
 
     // ------------------------------------------------------------------
-    // Forgot / Reset password — Supabase redirects the visitor back here
-    // after they click the link in the reset email, with `type=recovery`
-    // in the URL and a short-lived (but real) session already established
-    // for that user. Checked directly against the URL — not only via the
+    // Forgot / Reset password
+    //
+    // TWO ENTRY POINTS, ONE `reset` PANEL:
+    //
+    //   1. BY CODE (the normal path). Forgot → resetPasswordForEmail →
+    //      the shared Verify panel with otpPurpose === 'recovery' →
+    //      verifyOtp({ type: 'recovery' }) → this same `reset` panel. See
+    //      the mode === 'forgot' and mode === 'verify' branches below.
+    //      docs/email_templates/reset_password.html is code-based, so this
+    //      is what a reset email sent today actually supports.
+    //
+    //   2. BY LINK (kept working, deliberately). Supabase redirects the
+    //      visitor back here after they click a recovery link, with
+    //      `type=recovery` in the URL and a short-lived (but real) session
+    //      already established. Reset emails already in flight, and any
+    //      future link-bearing template, still land here.
+    //
+    // The link path is checked directly against the URL — not only via the
     // PASSWORD_RECOVERY auth event below — because the Supabase client's
     // own URL parsing can finish before this script gets a chance to
     // subscribe to that event; missing it would silently drop the visitor
     // into the auto-redirect further down instead of letting them set a
     // new password. See the mode === 'reset' submit handler below for
-    // where the new password is actually set.
+    // where the new password is actually set, in both cases.
     // ------------------------------------------------------------------
     const isRecoveryRedirect = /type=recovery/.test(window.location.hash) || /type=recovery/.test(window.location.search);
     let recoveryHandled = false;
+
+    // Where a recovery link should return the visitor to. Passed on every
+    // resetPasswordForEmail call — the code path does not need it, but the
+    // link path above does, and both must keep landing on the same page and
+    // therefore the same `reset` panel. Requires the URL to be in Supabase's
+    // Authentication → URL Configuration → Redirect URLs (see
+    // docs/OWNER_ACTION_LIST.md item E).
+    function recoveryRedirectTo() {
+        return `${window.location.origin}${window.location.pathname}`;
+    }
 
     function enterRecoveryMode() {
         if (recoveryHandled) return;
@@ -1288,6 +1340,63 @@ document.addEventListener('DOMContentLoaded', () => {
                         return;
                     }
 
+                    // Password recovery by code — the other half of the
+                    // mode === 'forgot' branch below. Same panel, same boxes,
+                    // same Resend, but verified against Supabase's 'recovery'
+                    // OTP type: that is what establishes the short-lived
+                    // session updateUser() needs on the `reset` panel this
+                    // hands over to. Finishing here does NOT log anybody in —
+                    // mode === 'reset' signs that session back out once the
+                    // new password is set.
+                    if (otpPurpose === 'recovery') {
+                        if (code.length !== 6 || !pendingRecoveryEmail) {
+                            if (otpError) otpError.classList.add('is-visible');
+                            return;
+                        }
+
+                        // verifyOtp({ type: 'recovery' }) fires the same
+                        // PASSWORD_RECOVERY auth event an emailed link does,
+                        // and it fires from inside the await below — before
+                        // any line after it runs. Claim the flow here so
+                        // enterRecoveryMode() does not also call openModal()
+                        // on an already-open modal, which would overwrite
+                        // lastFocusedEl with an OTP box that is about to be
+                        // hidden (closing the modal would then drop focus to
+                        // <body>). This branch owns the transition instead.
+                        recoveryHandled = true;
+
+                        if (window.InigoLoading) window.InigoLoading.show('Verifying…');
+                        const { error } = await window.sb.auth.verifyOtp({
+                            email: pendingRecoveryEmail,
+                            token: code,
+                            type: 'recovery'
+                        });
+
+                        if (error) {
+                            // Stays on this panel deliberately: the boxes, the
+                            // Resend button and the countdown are all still
+                            // here, so a wrong or expired code is retryable in
+                            // place rather than dumping the visitor back to
+                            // the start of the flow. The throw is caught below
+                            // and hides the loading overlay.
+                            if (otpError) otpError.classList.add('is-visible');
+                            throw error;
+                        }
+
+                        if (otpError) otpError.classList.remove('is-visible');
+                        if (window.InigoLoading) window.InigoLoading.hide();
+                        setActivePanel('reset');
+                        // setActivePanel() has no focus policy of its own (see
+                        // the increment-5 notes), so focus is moved here to
+                        // match what the link path already does via
+                        // openModal('reset') — both entry points arrive on
+                        // this panel with the new-password field focused.
+                        const newPasswordField = overlay.querySelector('[data-auth-panel="reset"] input');
+                        if (newPasswordField) newPasswordField.focus();
+                        setAuthNotice('Code confirmed — choose your new password.', false);
+                        return;
+                    }
+
                     if (code.length !== 6 || !pendingSignupEmail) {
                         if (otpError) otpError.classList.add('is-visible');
                         return;
@@ -1328,10 +1437,35 @@ document.addEventListener('DOMContentLoaded', () => {
                     // whether the email is registered — resetPasswordForEmail
                     // itself doesn't error for an unknown email either, to
                     // avoid letting this form be used to enumerate accounts.
-                    const redirectTo = `${window.location.origin}${window.location.pathname}`;
-                    const { error } = await window.sb.auth.resetPasswordForEmail(data.email, { redirectTo });
+                    //
+                    // The hand-off below is UNCONDITIONAL for the same
+                    // reason: branching on whether an account exists is
+                    // exactly the tell this form must not give. An
+                    // unregistered address simply fails at the code step,
+                    // with the same "that code didn't match" everyone else
+                    // gets for a wrong code.
+                    if (window.InigoLoading) window.InigoLoading.show('Sending your reset code…');
+                    const { error } = await window.sb.auth.resetPasswordForEmail(data.email, {
+                        redirectTo: recoveryRedirectTo()
+                    });
                     if (error) throw error;
-                    setAuthNotice("If that email is registered, we've sent a password reset link. Check your inbox.", false);
+                    if (window.InigoLoading) window.InigoLoading.hide();
+
+                    // Hand off to the SAME Verify panel that Sign Up and the
+                    // new-device login gate use — same six boxes, same
+                    // countdown, same Resend button. The reset email carries a
+                    // 6-digit code (docs/email_templates/reset_password.html),
+                    // and this is the only place in the UI it can be typed;
+                    // without this the flow dead-ends here. The
+                    // mode === 'verify' branch above then swaps in the `reset`
+                    // panel once the code checks out.
+                    pendingRecoveryEmail = data.email;
+                    setOtpPurpose('recovery');
+                    const emailLabel = overlay.querySelector('[data-verify-email]');
+                    if (emailLabel) emailLabel.textContent = data.email || 'your email';
+                    setActivePanel('verify');
+                    startOtpFlow();
+                    setAuthNotice("If that email is registered, we've sent a 6-digit reset code. Check your inbox.", false);
                     form.reset();
                     return;
                 }
@@ -1341,8 +1475,8 @@ document.addEventListener('DOMContentLoaded', () => {
                     const confirmPassword = data['confirm-password'];
                     // Same creation-time policy as Sign Up step 2, read
                     // straight off the submitted value — the checklist above
-                    // the field is only a hint. Without this, the reset link
-                    // would be a way to set a password signup would reject.
+                    // the field is only a hint. Without this, password
+                    // recovery would be a way to set a password signup rejects.
                     if (!checkPasswordPolicy(newPassword).valid) {
                         setAuthNotice(`Your new password must be ${PASSWORD_MIN_LENGTH}–${PASSWORD_MAX_LENGTH} characters and include an uppercase letter, a lowercase letter, a number and a special character.`, true);
                         return;
@@ -1351,6 +1485,10 @@ document.addEventListener('DOMContentLoaded', () => {
                         setAuthNotice('Passwords do not match.', true);
                         return;
                     }
+                    // Shown only AFTER the two local checks above: both of
+                    // them `return` straight out of the try block, which the
+                    // catch that hides this overlay never sees.
+                    if (window.InigoLoading) window.InigoLoading.show('Updating your password…');
                     const { error } = await window.sb.auth.updateUser({ password: newPassword });
                     if (error) throw error;
                     // Sign out of the short-lived recovery session so the
@@ -1359,6 +1497,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     // recovery link belongs on (this modal serves customer,
                     // staff, and admin accounts alike).
                     await window.sb.auth.signOut();
+                    if (window.InigoLoading) window.InigoLoading.hide();
                     form.reset();
                     // form.reset() fires no input event, so the checklist
                     // would otherwise stay ticked over an emptied field.
@@ -1447,34 +1586,54 @@ document.addEventListener('DOMContentLoaded', () => {
         otpResendBtn.addEventListener('click', async () => {
             if (!window.sb) return;
 
+            // WHICH call re-sends a code depends on what this panel is
+            // currently being used for, and they are not interchangeable:
+            //   • login    → signInWithOtp, the same call the new-device gate
+            //                made, served by the Magic Link template.
+            //   • recovery → resetPasswordForEmail, NOT resend({ type:
+            //                'signup' }). That would mint a signup-
+            //                confirmation token, which verifyOtp({ type:
+            //                'recovery' }) can never accept, and it would send
+            //                the wrong email template as well.
+            //   • signup   → resend({ type: 'signup' }), the original path.
+            // Picked first, then performed by ONE show/disable/error block, so
+            // the loading overlay cannot be left up on a path that forgot to
+            // hide it.
+            let resendCode;
             if (otpPurpose === 'login') {
                 if (!pendingLoginOtp) return;
-                otpResendBtn.disabled = true;
-                const { error } = await window.sb.auth.signInWithOtp({
+                resendCode = () => window.sb.auth.signInWithOtp({
                     email: pendingLoginOtp.email,
                     options: { shouldCreateUser: false }
                 });
-                if (error) {
-                    setAuthNotice(friendlyAuthError(error), true);
-                    otpResendBtn.disabled = false;
-                    return;
-                }
-                startResendCountdown(30);
-                return;
+            } else if (otpPurpose === 'recovery') {
+                if (!pendingRecoveryEmail) return;
+                resendCode = () => window.sb.auth.resetPasswordForEmail(pendingRecoveryEmail, {
+                    redirectTo: recoveryRedirectTo()
+                });
+            } else {
+                if (!pendingSignupEmail) return;
+                resendCode = () => window.sb.auth.resend({
+                    type: 'signup',
+                    email: pendingSignupEmail
+                });
             }
 
-            if (!pendingSignupEmail) return;
             otpResendBtn.disabled = true;
-            const { error } = await window.sb.auth.resend({
-                type: 'signup',
-                email: pendingSignupEmail
-            });
-            if (error) {
-                setAuthNotice(friendlyAuthError(error), true);
+            if (window.InigoLoading) window.InigoLoading.show('Sending a new code…');
+
+            try {
+                const { error } = await resendCode();
+                if (error) throw error;
+                startResendCountdown(30);
+            } catch (err) {
+                // Re-enabled rather than left dead, so a rate-limited or
+                // failed resend can be retried once the wait is over.
+                setAuthNotice(friendlyAuthError(err), true);
                 otpResendBtn.disabled = false;
-                return;
+            } finally {
+                if (window.InigoLoading) window.InigoLoading.hide();
             }
-            startResendCountdown(30);
         });
     }
 

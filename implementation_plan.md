@@ -654,6 +654,191 @@ increment. The only console output on a clean load remains Chrome's own
 `/favicon.ico` 404 (this repo ships no favicon) and a verbose `[DOM]` password-
 form recommendation; neither is an error and both predate increment 5.
 
+## Increment 6 — OTP email templates (fixes "no code arrives")
+
+**Root cause.** Staff/admin login → `handleAdminSubmit` → `gateOtpThenCompleteLogin`
+(`includes/auth.js:289`) → `signInWithOtp({ email, shouldCreateUser: false })`,
+verified with `verifyOtp({ type: 'email' })`. `signInWithOtp` is served by
+Supabase's **Magic Link** template, whose default body contains only
+`{{ .ConfirmationURL }}` — a clickable link, **no code**. The UI renders six OTP
+boxes and expects a token, so the recipient gets a link and has nothing to type.
+Supabase only emits a 6-digit code when the template includes **`{{ .Token }}`**.
+
+The same applies to signup, which uses `verifyOtp({ type: 'signup' })` and
+`resend({ type: 'signup' })` — Supabase's **Confirm signup** template.
+Note this is not staff/admin-specific: customer login runs the identical path
+(`auth.js:1201`), so both templates fix all three roles at once.
+
+**E1 — `docs/email_templates/magic_link.html`** — login code. Covers customer,
+staff and admin login.
+**E2 — `docs/email_templates/confirm_signup.html`** — signup verification code.
+
+Both mirror `reset_password.html`'s design and construction exactly: table
+layout, inline styles, no JS, no external CSS, no local asset refs, ~600px,
+web-safe font stacks, dark-client handling, text wordmark with the same
+commented hosted-logo slot.
+
+**Code-only, deliberately.** Neither template includes `{{ .ConfirmationURL }}`.
+A clickable link would let the recipient authenticate *outside* the app's OTP
+gate — `gateOtpThenCompleteLogin` exists to enforce per-device trust, and a
+magic link sidesteps the code entry the flow is built around, landing the user
+in a half-initialised state. Code-only also matches what the UI actually asks
+for. The 6-digit `{{ .Token }}` is the visual hero of both emails: large,
+monospaced, letter-spaced, selectable as text.
+
+**No application code changes.** These are owner-applied assets, pasted into
+Supabase → Authentication → Email Templates. Log both in
+`docs/OWNER_ACTION_LIST.md`.
+
+**Caveat to flag, not fix: there are two possible failure modes.** If the email
+*arrives but shows a link*, these templates fix it. If **no email arrives at
+all**, the cause is Supabase's built-in SMTP — it is rate-limited to a handful
+of messages per hour and is not intended for production — and no template can
+fix that; it needs custom SMTP (Resend/SendGrid/Gmail SMTP) configured in the
+Supabase dashboard. The user must confirm which symptom they have.
+
+**Success criteria.** Both files are valid email HTML, visually consistent with
+`reset_password.html`, contain `{{ .Token }}`, contain no `{{ .ConfirmationURL }}`,
+no `<script>`, no external CSS and no local asset paths, and render correctly at
+600px and 375px in both light and dark clients.
+
+### Increment 6 — execution notes (2026-08-29)
+
+Implemented and verified. Two new files (`docs/email_templates/magic_link.html`,
+`docs/email_templates/confirm_signup.html`) plus `docs/OWNER_ACTION_LIST.md`.
+**No application code touched** — `git status` shows nothing under `includes/`,
+`Pages/`, `Style/`, `Config/`, `api/` or `database/`, and
+`git diff --exit-code docs/email_templates/reset_password.html` is clean.
+
+Verified by measurement (headless Chrome over CDP, same harness as increment 4):
+**179 assertions green**, covering both templates × {600px, 375px} × {light,
+dark}, plus a separate 9-check pixel pass on the code's optical centring and a
+tag-balance check that also re-parses `reset_password.html` for comparison.
+
+**Supabase variables were checked against the live docs, not assumed.** Fetched
+`/docs/guides/auth/auth-email-templates`, `/auth/auth-email-passwordless`,
+`/auth/auth-smtp` and `/auth/rate-limits`. Both files use exactly `.Token`,
+`.Email`, `.SiteURL` — the full documented set is `.ConfirmationURL .Token
+.TokenHash .SiteURL .RedirectTo .Data .Email`, and `.NewEmail / .OldEmail /
+.Phone / .OldPhone / .Provider / .FactorType` are documented as valid **only**
+in the change-notification templates, so they are excluded. The docs also
+confirm the mechanism outright: *"Email OTPs share an implementation with Magic
+Links. To send an OTP instead of a Magic Link, alter the Magic Link email
+template… include the `{{ .Token }}` variable"*, and list that same swap as
+their own mitigation for link-prefetching scanners.
+
+Deviations and things worth knowing:
+
+1. **The root-cause paragraph above names functions that do not exist.**
+   There is no `handleAdminSubmit` and no `handleLoginSubmit`. Both log-ins run
+   through one shared `panels.forEach` submit handler: the `mode === 'login'`
+   branch (`auth.js:1201`) and the `mode === 'admin'` branch (`auth.js:1322`),
+   each calling `gateOtpThenCompleteLogin()` (`auth.js:289`). The diagnosis is
+   otherwise exactly right; the templates' header comments cite the real sites.
+2. **No VML, and `xmlns:v` dropped from `<html>`.** `reset_password.html` needs
+   both for its bulletproof CTA; these two have no button, so the namespace
+   would be dead weight. `xmlns:o` stays — the mso `PixelsPerInch` block uses it.
+   Consequence: **nothing load-bearing lives in a comment here**, and no
+   template action appears inside any comment either, so both files render
+   identically whether Supabase uses `text/template` or `html/template`. That
+   was increment 4's one open question; it does not apply to these files, and it
+   is asserted rather than assumed.
+   *(Updated in increment 7: `reset_password.html` was rewritten code-based and
+   lost its VML CTA too, so this now holds for **all three** templates and
+   increment 4's open question is closed outright.)*
+3. **`OWNER_ACTION_LIST` item E2 was rewritten, not duplicated.** It already
+   covered the Magic Link fix with an inline snippet, and its closing line —
+   "Keeping `{{ .ConfirmationURL }}` as well is fine" — directly contradicted
+   the code-only decision. E2 now points at the file; Confirm signup is new as
+   **E4**; both are in the quick-reference table. Item numbering is unchanged,
+   so `reset_password.html`'s comment citing "item E2" still resolves.
+4. **The code is centred with `text-indent` equal to `letter-spacing`.** Chrome
+   adds a letter-space after the *last* digit too, so a centred run sits half a
+   space left of true centre. Whoever re-measures this: a Range's
+   `getBoundingClientRect()` includes that trailing space, so the naive reading
+   is off by +L/2 by construction. Measured on the rendered pixels instead — ink gaps are
+   150/152px at 600px and 57/58px at 375px (≤1px skew); with the compensation
+   removed as a control the ink slides 6px left, so it is doing real work.
+
+**The caveat in this section is not hypothetical and stays open — and there is
+in-repo evidence the SMTP mode is already in play.** Supabase's built-in mailer
+is capped at **2 messages per hour, project-wide**, and their docs call it "not
+meant for production use". `includes/auth.js:1100` already handles
+`over_email_send_rate_limit` specially, added in `288caf0` (2026-08-22) with the
+comment *"the ones that came up while diagnosing the OTP email issue —
+Supabase's built-in mailer caps out fast during repeated signups… ('429: email
+rate limit exceeded')"*. So this project has hit the cap before. That does not
+rule out the template defect — both can be true at once, and the template
+defect is certain from the default body — but it means **pasting these two
+templates in may not be sufficient on its own**; custom SMTP (item D → Resend)
+may also be needed. E2 now documents both symptoms side by side, including that
+signal, and asks the user which one they have.
+
+**Also spotted, not fixed (out of scope, pre-existing):** the Verify panel
+re-enables **Resend code** after 30s (`startResendCountdown(30)`), but Supabase
+only accepts a new OTP request for the same address after **60s** by default, so
+an immediate resend returns a rate-limit error. Noted in E2's testing steps
+rather than changed, since this increment has no licence to touch `auth.js`.
+
+**Not verified here:** rendering in a real inbox. Everything above is Chrome's
+engine, which is a good proxy for Apple Mail and modern webmail and no proxy at
+all for Outlook's Word engine — the construction is copied from the template
+increment 4 already shipped, but neither has been through a real test send.
+Likewise unverified: which of the two failure modes the user actually has.
+
+## Increment 7 — Password recovery by code + loading states
+
+**F1 — Recovery has no code-entry step.** `includes/auth.js:1326` (`mode ===
+'forgot'`) calls `resetPasswordForEmail`, shows a notice, calls `form.reset()`
+and returns. The flow then depends entirely on the user clicking a link in the
+email, which lands back on the page with `#type=recovery`. But the email now
+carries a **code**, and there is nowhere in the UI to type it — so recovery is a
+dead end. The rest of the app (signup, login, staff/admin) is code-based; this is
+the one path that isn't.
+
+Fix: after `resetPasswordForEmail` succeeds, route to the existing Verify panel
+with a new `otpPurpose = 'recovery'`, verify with
+`verifyOtp({ email, token, type: 'recovery' })` — which establishes the session
+Supabase requires — then show the existing `reset` panel to set the new password.
+Reuse the existing OTP panel, boxes, countdown and resend; do not build a second
+one. Resend under `recovery` must re-call `resetPasswordForEmail`, not
+`resend({ type: 'signup' })`.
+
+`docs/email_templates/reset_password.html` changes from link-based to
+**code-based** (`{{ .Token }}`, no `{{ .ConfirmationURL }}`) to match, making all
+three templates consistent.
+
+**Keep the `#type=recovery` link path working.** `isRecoveryRedirect` /
+`enterRecoveryMode()` must stay so reset emails already in flight, and any future
+link-bearing template, still function. Two entry points, one `reset` panel.
+
+**Preserve the anti-enumeration property.** The current handler is deliberately
+vague about whether an email is registered, and `resetPasswordForEmail` does not
+error on unknown addresses. Routing to the Verify panel must happen
+*unconditionally*, so the UI still reveals nothing; an unregistered address
+simply fails at code verification.
+
+**F2 — No loading phase on send.** Login and signup call
+`window.InigoLoading.show(...)` before their network call; `forgot` does not, so
+the user clicks Send and gets nothing until the notice appears. Add the loading
+overlay to `forgot`, and audit `reset`, the recovery `verifyOtp`, and the resend
+paths for the same omission — match the existing wording and the existing
+show/hide discipline, including hiding on the error path.
+
+**Constraints.** All prior constraints hold. Changes confined to
+`includes/auth.js`, `Pages/Index.html` (only if the Verify panel needs
+recovery-specific copy), `Style/Auth.css` (only if needed), and the one email
+template. No changes to Supabase config, the OAuth flow, the password policy, or
+the landing page. The focus trap, panel stack, card-height parity and step flow
+from increments 3–5 must all survive.
+
+**Success criteria.** Forgot → Send shows a loading state, then the Verify panel
+with six boxes. Entering the emailed code advances to Set-a-new-password, which
+enforces the increment-4 policy, and the new password works on next login. Resend
+works under recovery. A wrong or expired code errors clearly without leaving the
+flow. The `#type=recovery` link path still reaches the same reset panel. Unknown
+emails reveal nothing new. Zero console errors in both themes.
+
 ## Execution notes (2026-08-28) — deviations accepted
 
 Implemented and verified. Six deviations from the plan as written, all accepted:

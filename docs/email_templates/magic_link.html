@@ -1,41 +1,41 @@
 <!DOCTYPE html>
 <!--
   ============================================================================
-  IñigoSync — Supabase "Reset Password" email template  (PASSWORD RESET CODE)
+  IñigoSync — Supabase "Magic Link" email template  (LOG-IN CODE)
   ============================================================================
 
   WHERE THIS GOES
   Supabase Dashboard -> Authentication -> Emails -> Email Templates ->
-  "Reset Password". Paste the whole of this file into the Message body box and
+  "Magic Link". Paste the whole of this file into the Message body box and
   Save. Suggested subject line:
 
-      Reset your IñigoSync password
+      Your IñigoSync login code
 
   (Subjects accept the same variables as the body, so
-  "<double-curly> .Token <double-curly> is your IñigoSync password reset code"
-  also works and puts the digits in the inbox list. Supabase's own documented
+  "<double-curly> .Token <double-curly> is your IñigoSync login code" also
+  works and puts the digits in the inbox list. Supabase's own documented
   default for the Reauthentication subject is written exactly that way.)
 
   This is NOT a page in the site. It is never served from this repo, never
   loaded by a browser from localhost, and nothing here is linked from
   Pages/. It is owner-applied, exactly like the SQL migrations in
-  database/schema/ — see docs/OWNER_ACTION_LIST.md item E3.
+  database/schema/ — see docs/OWNER_ACTION_LIST.md item E2.
 
   WHAT SENDS THIS EMAIL
-  The "Forgot password?" panel of the auth modal, and only that:
-    * includes/auth.js, the mode === 'forgot' branch of the panel submit
-      handler, which calls
-      sb.auth.resetPasswordForEmail(email, { redirectTo })
-      and then hands straight over to the shared Verify panel with
-      otpPurpose === 'recovery';
-    * the "Resend code" button on that panel, which calls the SAME
-      resetPasswordForEmail — deliberately not resend({ type: 'signup' }),
-      which would mint a token of the wrong type.
-  The app then verifies the typed digits with
-      sb.auth.verifyOtp({ email, token, type: 'recovery' }),
-  which establishes the short-lived session that the "Set a new password"
-  panel's updateUser() call needs. The Verify panel in Pages/Index.html renders
-  six single-digit boxes, so what the recipient needs is a CODE, not a link.
+  Every email log-in in the app, for all three roles:
+    * customer log-in    includes/auth.js, the mode === 'login' branch of the
+                         panel submit handler (~line 1201)
+    * staff/admin log-in includes/auth.js, the mode === 'admin' branch of the
+                         same handler (~line 1322)
+  Both finish through gateOtpThenCompleteLogin(), which calls
+      sb.auth.signInWithOtp({ email, options: { shouldCreateUser: false } })
+  on the first log-in from an untrusted device. Supabase serves that call with
+  THIS template — "Email OTPs share an implementation with Magic Links"
+  (Supabase docs, Passwordless email logins) — and the app then verifies the
+  typed digits with
+      sb.auth.verifyOtp({ email, token, type: 'email' }).
+  The Verify panel in Pages/Index.html renders six single-digit boxes, so what
+  the recipient needs is a CODE, not a link.
 
   TEMPLATE VARIABLES USED (Supabase Go template syntax, double curly braces)
     .Token   the 6-digit one-time code  <- the whole point of this email
@@ -49,45 +49,37 @@
 
   WHY THERE IS NO LINK IN THIS EMAIL — do not "helpfully" add one back
   This template contains no .ConfirmationURL, on purpose. It is a security
-  decision, not an oversight, and it matches magic_link.html and
-  confirm_signup.html — all three of this project's auth emails are code-only:
+  decision, not an oversight:
 
-    1. A recovery link authenticates in the WRONG PLACE. The browser that
-       asked for the reset is sitting on the Verify panel waiting for six
-       digits; the link opens wherever the mailbox happens to be — a phone, a
-       shared PC, a webmail preview pane. That device then holds a live
-       recovery session, and the tab that started the flow is never told, so
-       it waits on a screen the visitor can no longer satisfy.
-    2. A code proves the same thing on the RIGHT device. Typing it back into
-       the browser that asked for the reset is what the rest of this app
-       already treats as the trust boundary (implementation_plan.md, Phase 6);
-       recovery is now held to that same bar rather than below it.
-    3. The UI has somewhere to put a code and nowhere to put a link. Six
-       numeric boxes; no URL field.
+    1. A magic link authenticates OUTSIDE the app's OTP gate. The whole
+       reason gateOtpThenCompleteLogin() exists is to prove that the person
+       holding the password also holds the mailbox, ON THIS DEVICE, before the
+       app hands over a dashboard (that is the "first login per device" trust
+       model recorded in implementation_plan.md, Phase 6). A link is clicked
+       in whatever browser the mailbox happens to be open in — a phone, a
+       shared PC, a webmail preview pane — which is precisely the device the
+       gate was never asked to trust.
+    2. It would leave the app half-initialised. The browser that started the
+       log-in is sitting on the Verify panel waiting for six digits. Nothing
+       tells it that a session was minted somewhere else, so completeLogin()
+       — which is what actually checks the account's role and routes it to the
+       right dashboard — never runs in that tab. The visitor is stuck on a
+       screen they can no longer satisfy.
+    3. The UI has nowhere to put a link. Six numeric boxes; no URL field.
     4. Link prefetchers eat one-time links. Corporate scanners (Microsoft
        Defender Safe Links and friends) open URLs in incoming mail, which
        consumes the token and yields "Token has expired or is invalid" before
        the human touches it. Supabase's own Email Templates guide lists
        "use an email OTP instead by including .Token" as the fix.
 
-  THE LINK PATH IS STILL SUPPORTED IN THE APP, JUST NOT USED HERE.
-  includes/auth.js keeps isRecoveryRedirect / enterRecoveryMode(), and still
-  passes `redirectTo` on every resetPasswordForEmail call, so a recovery link —
-  from an email sent before this template was pasted in, or from a
-  link-bearing template someone adds later — still lands on the same "Set a new
-  password" panel. Two entry points, one panel. That is why removing
-  .ConfirmationURL from this file breaks nothing.
-
-  Consequence for the owner: unlike the previous version of this template,
-  this one does NOT depend on the redirect allowlist (docs/OWNER_ACTION_LIST.md
-  item E), because it contains no link for the allowlist to govern. Item E is
-  still worth doing for the older in-flight emails and for any future
-  link-bearing template.
+  If a link is ever genuinely wanted here, it is an application-design change
+  (auth.js has to learn to detect a session appearing in another tab), not a
+  template edit. Adding one to this file alone breaks the gate quietly.
 
   WHY THIS IS WRITTEN THE WAY IT IS — do not "modernise" it
-  Same construction as magic_link.html and confirm_signup.html, for the same
-  reasons. Email HTML is not web HTML: Outlook renders with Microsoft Word's
-  engine and Gmail strips <style> blocks in several contexts, so:
+  Same construction as reset_password.html, for the same reasons. Email HTML
+  is not web HTML: Outlook renders with Microsoft Word's engine and Gmail
+  strips <style> blocks in several contexts, so:
     * layout is nested tables, never flexbox/grid/float;
     * every style that matters is INLINE — the <style> block below only adds
       dark-mode and small-screen polish, and the email is complete without it;
@@ -101,11 +93,7 @@
       the LOGO SLOT comment below for how to swap in a hosted mark later;
     * there is no bulletproof CTA button and no VML block, because there is no
       link to press — which is also why <html> declares xmlns:o (the Outlook
-      DPI block needs it) but not xmlns:v (no VML to namespace). Nothing
-      load-bearing lives in a comment in this file any more, so it renders
-      identically whether Supabase uses Go's text/template or html/template
-      (the latter strips comments). That was an open question for the
-      link-based version of this template; it no longer applies.
+      DPI block needs it) but not xmlns:v (no VML to namespace).
 
   THE CODE MUST STAY COPYABLE
   The six digits are ONE text node in ONE cell. They are not an image, and
@@ -125,7 +113,7 @@
     <meta name="x-apple-disable-message-reformatting">
     <meta name="color-scheme" content="light dark">
     <meta name="supported-color-schemes" content="light dark">
-    <title>Reset your I&ntilde;igoSync password</title>
+    <title>Your I&ntilde;igoSync login code</title>
 
     <!--[if mso]>
     <xml>
@@ -205,7 +193,7 @@
          subject. Kept off-screen, then padded with zero-width spaces so the
          client cannot pull the body copy in after it. -->
     <div style="display:none; font-size:1px; color:#F7F0E4; line-height:1px; max-height:0; max-width:0; opacity:0; overflow:hidden; mso-hide:all;">
-        Your one-time I&ntilde;igoSync password reset code is inside. It expires in about an hour.
+        Your one-time I&ntilde;igoSync log-in code is inside. It expires in about an hour.
         &#8203;&#8203;&#8203;&#8203;&#8203;&#8203;&#8203;&#8203;&#8203;&#8203;&#8203;&#8203;&#8203;&#8203;&#8203;&#8203;&#8203;&#8203;&#8203;&#8203;
     </div>
 
@@ -260,17 +248,18 @@
                         <td class="em-card em-pad" bgcolor="#FFFFFF" align="left" style="background-color:#FFFFFF; border-radius:0 0 16px 16px; padding:36px 40px 32px;">
 
                             <h1 class="em-h1" style="margin:0 0 16px; font-family:'Arial Narrow', Arial, Helvetica, sans-serif; font-size:28px; line-height:34px; font-weight:bold; letter-spacing:0.2px; color:#1F1B16;">
-                                Reset your password
+                                Confirm it's you
                             </h1>
 
                             <p class="em-text" style="margin:0 0 14px; font-family:'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-size:16px; line-height:26px; color:#4A423A;">
-                                We got a request to reset the password for the I&ntilde;igoSync account
-                                registered to <strong class="em-strong" style="color:#1F1B16;">{{ .Email }}</strong>.
+                                Someone just signed in to the I&ntilde;igoSync account for
+                                <strong class="em-strong" style="color:#1F1B16;">{{ .Email }}</strong>
+                                from a device we haven't seen before. One code and you're in.
                             </p>
 
                             <p class="em-text" style="margin:0 0 24px; font-family:'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-size:16px; line-height:26px; color:#4A423A;">
                                 Type these six digits into the boxes on the
-                                <strong class="em-strong" style="color:#1F1B16;">Reset your password</strong>
+                                <strong class="em-strong" style="color:#1F1B16;">Confirm it's you</strong>
                                 screen &mdash; the tab you started from is still waiting for them.
                             </p>
 
@@ -286,7 +275,7 @@
                                 <tr>
                                     <td class="em-codebox" bgcolor="#F7F0E4" align="center" style="background-color:#F7F0E4; border:1px solid #E6D8C2; border-radius:14px; padding:22px 16px 24px;">
                                         <div class="em-eyebrow" style="font-family:'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-size:12px; line-height:18px; font-weight:bold; letter-spacing:1.4px; text-transform:uppercase; color:#B93E08;">
-                                            Your password reset code
+                                            Your log-in code
                                         </div>
                                         <div class="em-code" style="padding-top:8px; font-family:'Courier New', Courier, monospace; font-size:38px; line-height:48px; font-weight:bold; letter-spacing:10px; text-indent:10px; color:#1F1B16;">{{ .Token }}</div>
                                     </td>
@@ -294,9 +283,9 @@
                             </table>
 
                             <p class="em-muted" style="margin:0 0 26px; font-family:'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-size:13px; line-height:21px; color:#6B6055;">
-                                Once the code checks out you'll be asked to choose the new password
-                                itself. That screen lists every requirement and ticks them off as you
-                                type, so you will know it is accepted before you submit it.
+                                We only ask for a code the first time you log in from a
+                                particular browser or device. Next time on this one, your
+                                password alone will do.
                             </p>
 
                             <!-- Hairline -->
@@ -315,12 +304,13 @@
                                 This code can only be used once and expires about an hour after
                                 it was sent. If it has already lapsed, choose
                                 <strong class="em-strong" style="color:#1F1B16;">Resend code</strong>
-                                on the reset screen and we'll send a fresh one.
+                                on the verify screen and we'll send a fresh one.
                             </p>
                             <p class="em-muted" style="margin:12px 0 0; font-family:'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-size:13px; line-height:21px; color:#6B6055;">
-                                <strong class="em-strong" style="color:#1F1B16;">Didn't ask for this?</strong>
-                                You can safely ignore this email &mdash; your password stays exactly as
-                                it is, and nobody can change it without the code above.
+                                <strong class="em-strong" style="color:#1F1B16;">Didn't try to log in?</strong>
+                                Then someone knows your password. Ignore this email &mdash; the code
+                                is useless on its own and nobody gets in without it &mdash; but please
+                                change your password the next time you sign in.
                             </p>
                             <p class="em-muted" style="margin:12px 0 0; font-family:'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-size:13px; line-height:21px; color:#6B6055;">
                                 Never share this code. I&ntilde;igos Sports Center staff will never
@@ -340,8 +330,8 @@
                                 Lucena City, Quezon Province, Philippines
                             </p>
                             <p class="em-muted" style="margin:0; font-family:'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-size:12px; line-height:20px; color:#6B6055;">
-                                You are getting this email because a password reset was requested for
-                                {{ .Email }} at <a class="em-link" href="{{ .SiteURL }}" style="color:#B93E08; text-decoration:underline;">{{ .SiteURL }}</a>.
+                                You are getting this email because a log-in to
+                                {{ .Email }} was requested at <a class="em-link" href="{{ .SiteURL }}" style="color:#B93E08; text-decoration:underline;">{{ .SiteURL }}</a>.
                                 This is an automated message &mdash; please don't reply to it.
                             </p>
                         </td>

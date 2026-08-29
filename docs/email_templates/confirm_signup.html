@@ -1,93 +1,91 @@
 <!DOCTYPE html>
 <!--
   ============================================================================
-  IñigoSync — Supabase "Reset Password" email template  (PASSWORD RESET CODE)
+  IñigoSync — Supabase "Confirm signup" email template  (SIGN-UP CODE)
   ============================================================================
 
   WHERE THIS GOES
   Supabase Dashboard -> Authentication -> Emails -> Email Templates ->
-  "Reset Password". Paste the whole of this file into the Message body box and
+  "Confirm signup". Paste the whole of this file into the Message body box and
   Save. Suggested subject line:
 
-      Reset your IñigoSync password
+      Confirm your IñigoSync account
 
   (Subjects accept the same variables as the body, so
-  "<double-curly> .Token <double-curly> is your IñigoSync password reset code"
-  also works and puts the digits in the inbox list. Supabase's own documented
+  "<double-curly> .Token <double-curly> is your IñigoSync sign-up code" also
+  works and puts the digits in the inbox list. Supabase's own documented
   default for the Reauthentication subject is written exactly that way.)
 
   This is NOT a page in the site. It is never served from this repo, never
   loaded by a browser from localhost, and nothing here is linked from
   Pages/. It is owner-applied, exactly like the SQL migrations in
-  database/schema/ — see docs/OWNER_ACTION_LIST.md item E3.
+  database/schema/ — see docs/OWNER_ACTION_LIST.md item E4.
 
   WHAT SENDS THIS EMAIL
-  The "Forgot password?" panel of the auth modal, and only that:
-    * includes/auth.js, the mode === 'forgot' branch of the panel submit
-      handler, which calls
-      sb.auth.resetPasswordForEmail(email, { redirectTo })
-      and then hands straight over to the shared Verify panel with
-      otpPurpose === 'recovery';
-    * the "Resend code" button on that panel, which calls the SAME
-      resetPasswordForEmail — deliberately not resend({ type: 'signup' }),
-      which would mint a token of the wrong type.
-  The app then verifies the typed digits with
-      sb.auth.verifyOtp({ email, token, type: 'recovery' }),
-  which establishes the short-lived session that the "Set a new password"
-  panel's updateUser() call needs. The Verify panel in Pages/Index.html renders
-  six single-digit boxes, so what the recipient needs is a CODE, not a link.
+  Customer registration, and only that:
+    * includes/auth.js, the mode === 'signup' branch of the panel submit
+      handler (~line 1216), which calls
+      sb.auth.signUp({ email, password, options: { data: {...} } })
+      and, when Supabase requires email confirmation, hands off to the Verify
+      panel;
+    * the "Resend code" button on that panel (~line 1468), which calls
+      sb.auth.resend({ type: 'signup', email }).
+  Both are served by THIS template. The app then verifies the typed digits
+  with
+      sb.auth.verifyOtp({ email, token, type: 'signup' })
+  and, on success, sends the new customer straight to user_dashboard.html.
+  The Verify panel in Pages/Index.html renders six single-digit boxes, so what
+  the recipient needs is a CODE, not a link.
+
+  Staff and admin accounts are not created through this path at all: admin ->
+  Add staff posts to the invite-staff Edge Function
+  (includes/owner_dashboard.js), which is a different Supabase email template.
+  Their FIRST LOG-IN is gated by the Magic Link one instead
+  (docs/email_templates/magic_link.html).
 
   TEMPLATE VARIABLES USED (Supabase Go template syntax, double curly braces)
     .Token   the 6-digit one-time code  <- the whole point of this email
-    .Email   the recipient's address
+    .Email   the address being confirmed
     .SiteURL the project's configured Site URL
   Also available from Supabase, and deliberately not used here:
     .ConfirmationURL  .TokenHash  .RedirectTo  .Data
-  (.NewEmail / .OldEmail / .Phone / .OldPhone / .Provider / .FactorType exist
-  too but are documented as valid only in the change-notification templates,
-  so they must not be used here.)
+  (.Data would reach the full_name collected on signup step 3, as
+  .Data.full_name. It is left out because Supabase writes user_metadata only
+  after the signUp call returns, and a personalised greeting is not worth a
+  template that renders "Hi ," if that ever changes.)
 
   WHY THERE IS NO LINK IN THIS EMAIL — do not "helpfully" add one back
   This template contains no .ConfirmationURL, on purpose. It is a security
-  decision, not an oversight, and it matches magic_link.html and
-  confirm_signup.html — all three of this project's auth emails are code-only:
+  decision, not an oversight:
 
-    1. A recovery link authenticates in the WRONG PLACE. The browser that
-       asked for the reset is sitting on the Verify panel waiting for six
-       digits; the link opens wherever the mailbox happens to be — a phone, a
-       shared PC, a webmail preview pane. That device then holds a live
-       recovery session, and the tab that started the flow is never told, so
-       it waits on a screen the visitor can no longer satisfy.
-    2. A code proves the same thing on the RIGHT device. Typing it back into
-       the browser that asked for the reset is what the rest of this app
-       already treats as the trust boundary (implementation_plan.md, Phase 6);
-       recovery is now held to that same bar rather than below it.
-    3. The UI has somewhere to put a code and nowhere to put a link. Six
-       numeric boxes; no URL field.
+    1. A clicked link confirms the account in the WRONG PLACE. The browser
+       that filled in the signup form is sitting on the Verify panel waiting
+       for six digits; the link opens wherever the mailbox is — a phone, a
+       shared PC, a webmail preview pane. The original tab is never told the
+       address was confirmed, so it waits forever on a screen the visitor can
+       no longer satisfy, and the redirect into user_dashboard.html that
+       verifyOtp() triggers never fires.
+    2. It would undercut the same gate the log-in flow relies on. The app
+       treats "proved they hold this mailbox, on this device" as the trust
+       boundary (implementation_plan.md, Phase 6); accepting a click from any
+       device instead of a code typed into this one weakens signup below the
+       bar log-in is held to.
+    3. The UI has nowhere to put a link. Six numeric boxes; no URL field.
     4. Link prefetchers eat one-time links. Corporate scanners (Microsoft
        Defender Safe Links and friends) open URLs in incoming mail, which
        consumes the token and yields "Token has expired or is invalid" before
-       the human touches it. Supabase's own Email Templates guide lists
-       "use an email OTP instead by including .Token" as the fix.
+       the human touches it — a brand-new user's very first impression of the
+       system. Supabase's own Email Templates guide lists "use an email OTP
+       instead by including .Token" as the fix.
 
-  THE LINK PATH IS STILL SUPPORTED IN THE APP, JUST NOT USED HERE.
-  includes/auth.js keeps isRecoveryRedirect / enterRecoveryMode(), and still
-  passes `redirectTo` on every resetPasswordForEmail call, so a recovery link —
-  from an email sent before this template was pasted in, or from a
-  link-bearing template someone adds later — still lands on the same "Set a new
-  password" panel. Two entry points, one panel. That is why removing
-  .ConfirmationURL from this file breaks nothing.
-
-  Consequence for the owner: unlike the previous version of this template,
-  this one does NOT depend on the redirect allowlist (docs/OWNER_ACTION_LIST.md
-  item E), because it contains no link for the allowlist to govern. Item E is
-  still worth doing for the older in-flight emails and for any future
-  link-bearing template.
+  If a link is ever genuinely wanted here, it is an application-design change
+  (auth.js has to learn to detect a confirmation that happened in another
+  tab), not a template edit. Adding one to this file alone strands people.
 
   WHY THIS IS WRITTEN THE WAY IT IS — do not "modernise" it
-  Same construction as magic_link.html and confirm_signup.html, for the same
-  reasons. Email HTML is not web HTML: Outlook renders with Microsoft Word's
-  engine and Gmail strips <style> blocks in several contexts, so:
+  Same construction as reset_password.html, for the same reasons. Email HTML
+  is not web HTML: Outlook renders with Microsoft Word's engine and Gmail
+  strips <style> blocks in several contexts, so:
     * layout is nested tables, never flexbox/grid/float;
     * every style that matters is INLINE — the <style> block below only adds
       dark-mode and small-screen polish, and the email is complete without it;
@@ -101,11 +99,7 @@
       the LOGO SLOT comment below for how to swap in a hosted mark later;
     * there is no bulletproof CTA button and no VML block, because there is no
       link to press — which is also why <html> declares xmlns:o (the Outlook
-      DPI block needs it) but not xmlns:v (no VML to namespace). Nothing
-      load-bearing lives in a comment in this file any more, so it renders
-      identically whether Supabase uses Go's text/template or html/template
-      (the latter strips comments). That was an open question for the
-      link-based version of this template; it no longer applies.
+      DPI block needs it) but not xmlns:v (no VML to namespace).
 
   THE CODE MUST STAY COPYABLE
   The six digits are ONE text node in ONE cell. They are not an image, and
@@ -125,7 +119,7 @@
     <meta name="x-apple-disable-message-reformatting">
     <meta name="color-scheme" content="light dark">
     <meta name="supported-color-schemes" content="light dark">
-    <title>Reset your I&ntilde;igoSync password</title>
+    <title>Confirm your I&ntilde;igoSync account</title>
 
     <!--[if mso]>
     <xml>
@@ -205,7 +199,7 @@
          subject. Kept off-screen, then padded with zero-width spaces so the
          client cannot pull the body copy in after it. -->
     <div style="display:none; font-size:1px; color:#F7F0E4; line-height:1px; max-height:0; max-width:0; opacity:0; overflow:hidden; mso-hide:all;">
-        Your one-time I&ntilde;igoSync password reset code is inside. It expires in about an hour.
+        One code finishes your I&ntilde;igoSync sign-up. It expires in about an hour.
         &#8203;&#8203;&#8203;&#8203;&#8203;&#8203;&#8203;&#8203;&#8203;&#8203;&#8203;&#8203;&#8203;&#8203;&#8203;&#8203;&#8203;&#8203;&#8203;&#8203;
     </div>
 
@@ -260,18 +254,19 @@
                         <td class="em-card em-pad" bgcolor="#FFFFFF" align="left" style="background-color:#FFFFFF; border-radius:0 0 16px 16px; padding:36px 40px 32px;">
 
                             <h1 class="em-h1" style="margin:0 0 16px; font-family:'Arial Narrow', Arial, Helvetica, sans-serif; font-size:28px; line-height:34px; font-weight:bold; letter-spacing:0.2px; color:#1F1B16;">
-                                Reset your password
+                                Welcome to I&ntilde;igoSync
                             </h1>
 
                             <p class="em-text" style="margin:0 0 14px; font-family:'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-size:16px; line-height:26px; color:#4A423A;">
-                                We got a request to reset the password for the I&ntilde;igoSync account
-                                registered to <strong class="em-strong" style="color:#1F1B16;">{{ .Email }}</strong>.
+                                Your account is nearly ready. We just need to be sure that
+                                <strong class="em-strong" style="color:#1F1B16;">{{ .Email }}</strong>
+                                really is your address before we hand over the booking calendar.
                             </p>
 
                             <p class="em-text" style="margin:0 0 24px; font-family:'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-size:16px; line-height:26px; color:#4A423A;">
                                 Type these six digits into the boxes on the
-                                <strong class="em-strong" style="color:#1F1B16;">Reset your password</strong>
-                                screen &mdash; the tab you started from is still waiting for them.
+                                <strong class="em-strong" style="color:#1F1B16;">Verify your email</strong>
+                                screen and your account is live.
                             </p>
 
                             <!-- ====================================================
@@ -286,7 +281,7 @@
                                 <tr>
                                     <td class="em-codebox" bgcolor="#F7F0E4" align="center" style="background-color:#F7F0E4; border:1px solid #E6D8C2; border-radius:14px; padding:22px 16px 24px;">
                                         <div class="em-eyebrow" style="font-family:'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-size:12px; line-height:18px; font-weight:bold; letter-spacing:1.4px; text-transform:uppercase; color:#B93E08;">
-                                            Your password reset code
+                                            Your sign-up code
                                         </div>
                                         <div class="em-code" style="padding-top:8px; font-family:'Courier New', Courier, monospace; font-size:38px; line-height:48px; font-weight:bold; letter-spacing:10px; text-indent:10px; color:#1F1B16;">{{ .Token }}</div>
                                     </td>
@@ -294,9 +289,10 @@
                             </table>
 
                             <p class="em-muted" style="margin:0 0 26px; font-family:'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-size:13px; line-height:21px; color:#6B6055;">
-                                Once the code checks out you'll be asked to choose the new password
-                                itself. That screen lists every requirement and ticks them off as you
-                                type, so you will know it is accepted before you submit it.
+                                Once you're in, you can book a court, check the schedule, and keep
+                                every booking you've made in one place. Courts, lanes and tables at
+                                I&ntilde;igos Sports Center &mdash; badminton, bowling, table tennis
+                                and more.
                             </p>
 
                             <!-- Hairline -->
@@ -315,12 +311,13 @@
                                 This code can only be used once and expires about an hour after
                                 it was sent. If it has already lapsed, choose
                                 <strong class="em-strong" style="color:#1F1B16;">Resend code</strong>
-                                on the reset screen and we'll send a fresh one.
+                                on the verify screen and we'll send a fresh one.
                             </p>
                             <p class="em-muted" style="margin:12px 0 0; font-family:'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-size:13px; line-height:21px; color:#6B6055;">
-                                <strong class="em-strong" style="color:#1F1B16;">Didn't ask for this?</strong>
-                                You can safely ignore this email &mdash; your password stays exactly as
-                                it is, and nobody can change it without the code above.
+                                <strong class="em-strong" style="color:#1F1B16;">Didn't sign up?</strong>
+                                Somebody probably mistyped their own address. You can safely ignore
+                                this email &mdash; without the code the account stays unverified, it
+                                cannot be used to book anything, and nothing was set up in your name.
                             </p>
                             <p class="em-muted" style="margin:12px 0 0; font-family:'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-size:13px; line-height:21px; color:#6B6055;">
                                 Never share this code. I&ntilde;igos Sports Center staff will never
@@ -340,7 +337,7 @@
                                 Lucena City, Quezon Province, Philippines
                             </p>
                             <p class="em-muted" style="margin:0; font-family:'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-size:12px; line-height:20px; color:#6B6055;">
-                                You are getting this email because a password reset was requested for
+                                You are getting this email because an account was created with
                                 {{ .Email }} at <a class="em-link" href="{{ .SiteURL }}" style="color:#B93E08; text-decoration:underline;">{{ .SiteURL }}</a>.
                                 This is an automated message &mdash; please don't reply to it.
                             </p>

@@ -613,11 +613,16 @@
                 <p class="auth-switch"><button type="button" class="auth-link" data-auth-tab="login">← Back to customer login</button></p>
             </form>
 
-            <!-- FORGOT PASSWORD PANEL — reached via "Forgot password?" on the Log In panel -->
+            <!-- FORGOT PASSWORD PANEL — reached via "Forgot password?" on the Log In panel.
+                 Sending hands off to the shared Verify panel above with
+                 otpPurpose === 'recovery' (see includes/auth.js), so the copy
+                 says CODE, not link: docs/email_templates/reset_password.html
+                 carries {{ .Token }} and no confirmation URL, and the six
+                 boxes on that panel are the only place it can be typed. -->
             <form class="auth-form" data-auth-panel="forgot" novalidate>
                 <h2 class="auth-heading">Reset your password</h2>
                 <p class="auth-tagline" style="margin-bottom: 18px;">
-                    Enter your account email and we'll send you a link to reset your password.
+                    Enter your account email and we'll send you a 6-digit code to reset your password.
                 </p>
 
                 <label class="auth-field">
@@ -625,18 +630,23 @@
                     <input type="email" name="email" placeholder="you@email.com" autocomplete="email" required>
                 </label>
 
-                <button type="submit" class="auth-submit">Send Reset Link</button>
+                <button type="submit" class="auth-submit">Send Reset Code</button>
 
                 <p class="auth-switch"><button type="button" class="auth-link" data-auth-tab="login">← Back to log in</button></p>
             </form>
 
-            <!-- RESET PASSWORD PANEL — reached only via the link in the reset email;
-                 opened automatically by includes/auth.js when it detects that redirect.
+            <!-- RESET PASSWORD PANEL — reached two ways, never by a tab:
+                 (1) by code — the Verify panel above, once a 6-digit reset
+                     code checks out; and
+                 (2) by link — a recovery redirect back to this page, which
+                     includes/auth.js detects and opens this panel for.
+                 Both are handled in includes/auth.js; see the "TWO ENTRY
+                 POINTS, ONE `reset` PANEL" comment there.
 
                  This is the second (and only other) place a password is
                  CREATED, so it carries the same live checklist and the same
-                 policy as Sign Up step 2 — otherwise the reset link would be a
-                 way to set a password weaker than signup accepts. Log In is
+                 policy as Sign Up step 2 — otherwise password recovery would
+                 be a way to set a password weaker than signup accepts. Log In is
                  deliberately left alone: existing accounts predate the policy
                  and must keep working. -->
             <form class="auth-form" data-auth-panel="reset" novalidate>
