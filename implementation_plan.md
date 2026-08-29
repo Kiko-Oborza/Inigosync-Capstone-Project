@@ -839,6 +839,190 @@ works under recovery. A wrong or expired code errors clearly without leaving the
 flow. The `#type=recovery` link path still reaches the same reset panel. Unknown
 emails reveal nothing new. Zero console errors in both themes.
 
+## Increment 8 — Merge signup steps 1 and 2 (email + password together)
+
+**Change requested by the user.** Increment 4 (B2) deliberately split signup
+into Email-alone → Password-alone → Name/Mobile/Terms, to keep every step
+shorter than Log In. The user now wants **Email and Password shown together on
+the first screen**, with name/mobile/terms still revealed only after — i.e.
+signup becomes a **2-step** flow: **Step 1 (Email + Password)** → **Step 2
+(Full name + Mobile + Terms)**.
+
+**This is a markup + validation change, not a rebuild.** The step machinery
+built in increment 4 is already generic — `signupStepEls =
+querySelectorAll('[data-signup-step]')`, and every function
+(`setSignupStep`, `validateSignupStep`, the step-dot renderer, the "Step N of
+{{signupStepEls.length}}" indicator) derives the step count from the DOM rather
+than a hardcoded `3`. Merging is done by combining the two step containers in
+`Pages/Index.html` into one `[data-signup-step="1"]` holding both the email
+field and the password field + live checklist, renumbering the former step 3 to
+step 2, and updating `validateSignupStep` to check both fields' gates
+(email format **and** the increment-4 password policy) before advancing out of
+the merged step. Reduce the step dots from 3 to 2 to match.
+
+**Card-height consequence — re-verify, don't assume.** The merged step is taller
+than either of its two source steps (email + password fields + a 5-line
+checklist in one screen). This may now be the tallest content in the modal,
+which would flip increment 4's B1 outcome (card sizes to Log In) back the other
+way. If the merged step exceeds Log In's natural height, Log In's card grows to
+match it — restoring the *original* problem B1 fixed, just with the taller
+panel reversed. Measure first; if it's a real risk, flag it before or instead of
+silently accepting a larger modal.
+
+**Everything else about the stepped flow is unchanged:** one `<form>`, `FormData`
+untouched, Google button and "Already have an account?" stay on step 1 (now
+carrying both fields), Back/Continue navigation, reset-to-step-1 on reopen or
+tab switch, the live password checklist, and the focus trap's live focusable
+recomputation (now over a step with two inputs instead of one).
+
+**Constraints.** All increment 1–7 constraints hold. No Supabase logic changes.
+No change to the password policy rules themselves, the terms dialog, the Google
+SVG, the brand lockup, or the recovery/loading work from increment 7.
+
+**Success criteria.** Signup shows Email + Password together on the first
+screen; Continue is blocked until both are valid; the second screen has Full
+name, Mobile, Terms, Create Account. Step indicator reads "Step 1 of 2" / "Step
+2 of 2" with two dots. Card height is measured (not assumed) at all four
+widths in both themes and the result — whether it still equals Log In's height
+or now sizes to the merged step — is reported explicitly. Focus trap, reopen
+reset, Back navigation, and the OTP hand-off all still work.
+
+### Increment 8 — execution notes (2026-08-30)
+
+Implemented and verified by measurement (headless Chrome over CDP). Three files
+touched: `Pages/Index.html`, `includes/auth.js`, `Style/Auth.css`.
+
+**B1 IS BROKEN, DELIBERATELY, AND THE CARD GREW BY 135px.** This section quoted
+it as a risk to re-verify; it is not a risk, it is the outcome. Measured with
+`.auth-modal.offsetHeight` at a 900px-tall viewport, identical in both themes:
+
+| | before (3 steps) | after (merged) |
+|---|---|---|
+| card @ 1440 / 1024 / 768 | 715 | **850** |
+| card @ 390 | 693 | **828** |
+| Log In panel, on its own | 477 | 477 (unchanged) |
+| Sign Up panel, on its own | 383 | **612** |
+| tallest step | 303 (step 1) | **531 (merged step 1)** |
+| step 2 (name/mobile/terms) | 297 | 298 |
+
+The merged step is 531px against Log In's 477px, so the shared grid row now
+resolves to **Sign Up**, exactly reversing increment 4's arrangement. Log In sits
+under **136px** of dead space again (measured: 167.8px from the panel's bottom
+edge to the card's, minus the card's own 32px bottom padding), and step 2 under
+~250px. Nothing was tightened to hide this: the checklist keeps its own
+line-height and gap. For the record, the mitigations that were measured and
+**not** applied — a tighter checklist (gap 5→2px, line-height 1.35→1.15) buys
+18px, and a two-column checklist buys 28px. Neither closes a 135px gap; only
+dropping a field or the checklist would, and that is not the Coder's call.
+
+Consequences worth weighing:
+
+- **The modal starts scrolling internally at a much taller viewport.** It has
+  always been clamped by `max-height: calc(100vh - 48px)`; the threshold moves
+  from "shorter than 763px" to "shorter than 898px", which includes a lot of
+  ordinary laptops. It degrades the same way it always did — `overflow-y: auto`,
+  no clipping, verified at 700px and 640px tall.
+- **The card no longer changes between panels or steps** (asserted at
+  1440/1024/768/390/360/320 in both themes), so the resize-on-tab-switch defect
+  increment 3 fixed has *not* come back. Only the height it settles at moved.
+
+Deviations and things worth knowing:
+
+1. **Step 1 has TWO inline error lines, not one** — `data-signup-error="1"` plus
+   a new `data-signup-error-for="email"` / `="password"`. One shared line at the
+   bottom of the step would have put "Enter a valid email address." ~200px below
+   the email box. `setSignupStepError(step, message, field)` gained a third
+   argument that picks the field's own line, falling back to the step's first
+   line for any control without one — which is how step 2's single shared line
+   keeps working unchanged for fullname/mobile/terms. Cost: 27px of the 135px.
+2. **`validateSignupStep()` returns an array of issues instead of one object.**
+   Step 1 reports email and password independently so both messages land at
+   once; step 2 still returns at the first failure, because its three controls
+   share one line and a second message would only overwrite the first.
+3. **Bug found and fixed while wiring this: focus must move BEFORE the messages
+   are written.** `focus()` blurs the previously focused control, and an
+   `<input>` whose value changed while focused fires `change` on the way out —
+   which the per-field clear handler answers by blanking a line. Written the
+   natural way round (write, then focus), pressing Create Account with a
+   filled-in mobile and an unticked Terms box set the message and instantly
+   erased it. The old code was accidentally immune because it focused first.
+4. **`.auth-step-error`'s `min-height` went 1.05rem → 1.06rem.** The reserved
+   line was 16.80px while its own line box is 16.85px, so filling it in made the
+   step ~0.05px taller. Invisible until now; with the signup step setting the
+   card height, the two rounded-up lines on step 1 tipped `offsetHeight` from 849
+   to 850 the moment any message appeared. The card is now constant at 850
+   whatever the error state.
+5. **One residual resize, at ≤400px wide only.** "Your password does not meet
+   every requirement yet." is 312.6px of text against a 306px line at a 400px
+   viewport, so it wraps to two lines and the card goes 828 → 845 (390px) /
+   827 → 844 (360px). This wrap is pre-existing — it did the same to step 2
+   before — it is only *visible* now because the signup step drives the card.
+   Left alone on purpose: shortening it to "Password doesn't meet every
+   requirement yet." (275px) would fit down to 360px, but that is user-facing
+   copy and a product decision, not a fix to make silently.
+6. **`signupForm` was added to `assertEarlySetupBindings()`.** `resetSignupFlow`
+   → `clearSignupStepErrors` reads it directly now; it was already reached
+   indirectly before the merge and was simply missing from the list.
+
+Verification: 72 behavioural assertions × 2 themes on the merged flow (real
+typing over CDP, `sb.auth.signUp` stubbed *and* `*supabase.co/auth/*` blocked, so
+no account is created), plus the increment 4–7 suites re-run — password-policy
+truth table 24/24, double-submit guard 6/6, focus trap 77/77 × 2 themes, live
+ring recomputation 27/27, terms-over-auth nesting 25/25, increment 1–5 behaviour
+38/38, recovery-by-code 69/69, recovery edge cases 35/35, landing + dashboards
+17/17, reduced-motion + short-viewport 8/8, contrast (both themes) all AA. Focus
+ring on step 1 grew 7 → 9 (email, password, the eye toggle) and the checklist is
+correctly **not** in it. `FormData` and the `signUp` payload are byte-identical.
+
+**Pre-existing, confirmed not caused by this increment:** one timing assertion in
+the increment-7 loading suite ("stayed up for the whole call") fails
+intermittently on a different case each run — it fails identically on the
+unmodified code (checked by stashing the change), and it samples a polling loop
+rather than the overlay's behaviour, which passes. Also unchanged: the light-mode
+step dot measures 2.66:1, which is fine for an `aria-hidden` decoration that
+duplicates the "Step N of 2" text beside it.
+
+**Not updated (out of scope):** `docs/email_templates/confirm_signup.html` has a
+comment mentioning "signup step 3". Email templates are do-not-touch this
+increment; the comment is stale but carries no behaviour.
+
+## Increment 9 — Two-column password checklist (partial height mitigation)
+
+**Context.** Increment 8 merged signup steps 1–2 (email + password together),
+which made that step taller than Log In (531px vs 477px) and grew the shared
+card by 135px, leaving Log In with a visible dead-space stripe at the bottom.
+The user was offered three options and **chose option 3**: lay the 5-rule
+password checklist out in two columns instead of one, which increment 8's own
+measurement showed recovers **~28px** of the 135px gap. This is an explicitly
+partial mitigation, not a full fix — the user was told the number before
+choosing it.
+
+**Scope.** CSS-only. `.auth-password-rules` (or equivalent selector in
+`Style/Auth.css`) changes from a single-column list to a two-column layout —
+`display: grid; grid-template-columns: 1fr 1fr` (or `flex` + `flex-wrap`) — for
+the 5 checklist items. Reasonable split: e.g. 3 items in column 1, 2 in column
+2, or whatever grouping reads cleanly; the exact pairing is an implementation
+call, not a product one.
+
+**Constraints.** No JS changes — `syncPasswordRules()` and the pass/fail
+tick-toggle logic already just toggle a class per `<li>`/rule element; the
+columns are pure layout. No change to the rules themselves, their order of
+evaluation, or their text. Preserve the live-updating tick behavior exactly.
+Keep it legible at 390px — two columns must not force wrapping that looks worse
+than the one-column version did; fall back to single-column below whatever
+width stops working cleanly (this modal already has a 480px breakpoint from
+increment 3, and a narrower one from increment 3/4 — reuse the existing
+breakpoints rather than inventing a new one). WCAG AA unaffected (no color
+changes). Guard any new transition, if one is added, with
+`prefers-reduced-motion`.
+
+**Success criteria.** Password checklist renders in two columns at ≥ the chosen
+breakpoint, single-column below it if needed for legibility. Card height at
+1440/1024/768 in both themes drops by approximately the ~28px increment 8
+measured (report the actual number — the estimate was from one trial, not
+guaranteed exact). Live pass/fail ticking still works per rule. No regression to
+the increment 8 flow (advancing past step 1 still requires all 5 rules).
+
 ## Execution notes (2026-08-28) — deviations accepted
 
 Implemented and verified. Six deviations from the plan as written, all accepted:

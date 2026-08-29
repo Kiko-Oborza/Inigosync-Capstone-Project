@@ -423,12 +423,12 @@
                 <p class="auth-switch">Are you a staff member or the owner? <button type="button" class="auth-link" data-auth-tab="admin">Log in as Admin</button></p>
             </form>
 
-            <!-- SIGN UP FORM — a three-step flow inside exactly ONE <form>.
-                 Step order is Email → Password → Full name + Mobile + Terms:
-                 the two credentials the account is actually keyed on come
-                 first, the profile details after.
+            <!-- SIGN UP FORM — a two-step flow inside exactly ONE <form>.
+                 Step order is Email + Password → Full name + Mobile + Terms:
+                 the two credentials the account is actually keyed on are asked
+                 for together on the first screen, the profile details after.
 
-                 Why one form and not three: the submit handler in
+                 Why one form and not two: the submit handler in
                  includes/auth.js reads every field by name off a single
                  FormData, so all of them must stay inside this element.
                  Nothing here is `disabled` either — a disabled control is
@@ -440,61 +440,63 @@
                  this panel's height would track whichever step is showing and
                  the card would resize on every Continue — the exact bug the
                  .auth-panel-stack above exists to prevent. Stacked in one grid
-                 cell, this panel is always as tall as its TALLEST step, every
-                 step is deliberately kept shorter than the Log In panel, and
-                 the card therefore settles at Log In's height and never moves.
+                 cell, this panel is always as tall as its TALLEST step.
 
-                 The inactive steps are visibility:hidden, so they keep their
-                 box but leave the tab order and the accessibility tree. The
-                 rule that makes the active one visible is scoped to
-                 `.auth-form.is-active` on purpose: visibility is inherited,
-                 so an unscoped `visibility: visible` here would punch the
-                 active step straight back through the hidden Sign Up panel
-                 and render it on top of the Log In form. -->
+                 HEIGHT NOTE (increment 8). Step 1 now carries the email field,
+                 the password field AND the five-line requirement checklist, so
+                 it measures 531px against the Log In panel's 477px. Sign Up is
+                 the taller panel again and the shared card sizes to IT — the
+                 opposite of what increment 4 arranged. See the
+                 .auth-panel-stack comment above; do not re-assert "the card is
+                 Log In's height" anywhere without re-measuring first.
+
+                 The inactive step is visibility:hidden, so it keeps its box but
+                 leaves the tab order and the accessibility tree. The rule that
+                 makes the active one visible is scoped to `.auth-form.is-active`
+                 on purpose: visibility is inherited, so an unscoped
+                 `visibility: visible` here would punch the active step straight
+                 back through the hidden Sign Up panel and render it on top of
+                 the Log In form. -->
             <form class="auth-form" data-auth-panel="signup" novalidate>
                 <h2 class="auth-heading">Create your account</h2>
 
                 <div class="auth-steps-head">
-                    <p class="auth-step-indicator" data-signup-indicator aria-live="polite">Step 1 of 3</p>
+                    <p class="auth-step-indicator" data-signup-indicator aria-live="polite">Step 1 of 2</p>
                     <span class="auth-step-dots" aria-hidden="true">
                         <span class="auth-step-dot is-current" data-signup-dot="1"></span>
                         <span class="auth-step-dot" data-signup-dot="2"></span>
-                        <span class="auth-step-dot" data-signup-dot="3"></span>
                     </span>
                 </div>
 
                 <div class="auth-step-stack">
 
-                    <!-- STEP 1 — email. The divider, the Google button and the
-                         "Already have an account?" line live here because
-                         signing up with Google short-circuits steps 2 and 3
-                         entirely: it never reaches a password or a form
-                         submit. -->
+                    <!-- STEP 1 — the two credentials the account is keyed on,
+                         asked for together, with the live requirement checklist
+                         under the password. The divider, the Google button and
+                         the "Already have an account?" line live here because
+                         signing up with Google short-circuits step 2 entirely:
+                         it never reaches a password or a form submit.
+
+                         TWO error lines, not one: each sits directly under the
+                         field it is about, so a password message never renders
+                         ~200px below the email input that caused it. Both are
+                         permanently in flow (see .auth-step-error) rather than
+                         toggled — a line that only exists while it has
+                         something to say would change this step's height, and
+                         this step is what now sets the card's height.
+
+                         maxlength/minlength mirror the policy in
+                         includes/auth.js; that policy is re-checked on submit,
+                         so nothing depends on these attributes or on the
+                         checklist's rendered state. -->
                     <div class="auth-step is-active" data-signup-step="1">
                         <label class="auth-field">
                             <span class="auth-label">Email address</span>
                             <input type="email" name="email" placeholder="you@email.com" autocomplete="email" required>
                         </label>
 
-                        <p class="auth-step-error" data-signup-error="1" role="alert"></p>
+                        <p class="auth-step-error" data-signup-error="1" data-signup-error-for="email" role="alert"></p>
 
-                        <div class="auth-step-nav">
-                            <button type="button" class="auth-submit" data-signup-next>Continue</button>
-                        </div>
-
-                        <div class="auth-divider"><span>or</span></div>
-
-                        <div class="auth-google-btn" id="google-signin-signup" data-google-btn></div>
-
-                        <p class="auth-switch">Already have an account? <button type="button" class="auth-link" data-auth-tab="login">Log in</button></p>
-                    </div>
-
-                    <!-- STEP 2 — password, with the live requirement checklist.
-                         maxlength/minlength mirror the policy in
-                         includes/auth.js; that policy is re-checked on submit
-                         so nothing depends on these attributes or on the
-                         checklist's rendered state. -->
-                    <div class="auth-step" data-signup-step="2">
                         <div class="auth-password-group" data-password-policy>
                             <label class="auth-field">
                                 <span class="auth-label">Password</span>
@@ -515,19 +517,30 @@
                             </ul>
                         </div>
 
-                        <p class="auth-step-error" data-signup-error="2" role="alert"></p>
+                        <p class="auth-step-error" data-signup-error="1" data-signup-error-for="password" role="alert"></p>
 
                         <div class="auth-step-nav">
-                            <button type="button" class="auth-back" data-signup-back>Back</button>
                             <button type="button" class="auth-submit" data-signup-next>Continue</button>
                         </div>
+
+                        <div class="auth-divider"><span>or</span></div>
+
+                        <div class="auth-google-btn" id="google-signin-signup" data-google-btn></div>
+
+                        <p class="auth-switch">Already have an account? <button type="button" class="auth-link" data-auth-tab="login">Log in</button></p>
                     </div>
 
-                    <!-- STEP 3 — profile details and the Terms checkbox. The
+                    <!-- STEP 2 — profile details and the Terms checkbox. The
                          only type="submit" button in this form lives here, so
-                         pressing Enter on an earlier step reaches the submit
-                         handler, which turns it into "Continue" instead. -->
-                    <div class="auth-step" data-signup-step="3">
+                         pressing Enter on step 1 reaches the submit handler,
+                         which turns it into "Continue" instead.
+
+                         ONE error line here, deliberately: three controls share
+                         it and includes/auth.js reports the first that fails,
+                         exactly as it did before the merge. It carries no
+                         data-signup-error-for, which is what makes
+                         setSignupStepError() fall back to it for any field. -->
+                    <div class="auth-step" data-signup-step="2">
                         <label class="auth-field">
                             <span class="auth-label">Full name</span>
                             <input type="text" name="fullname" placeholder="Juan Dela Cruz" autocomplete="name" required>
@@ -546,7 +559,7 @@
                             <span>I agree to the <a href="terms.html" class="auth-link" data-terms-open target="_blank" rel="noopener noreferrer">Terms &amp; Conditions</a></span>
                         </label>
 
-                        <p class="auth-step-error" data-signup-error="3" role="alert"></p>
+                        <p class="auth-step-error" data-signup-error="2" role="alert"></p>
 
                         <div class="auth-step-nav">
                             <button type="button" class="auth-back" data-signup-back>Back</button>
@@ -645,7 +658,7 @@
 
                  This is the second (and only other) place a password is
                  CREATED, so it carries the same live checklist and the same
-                 policy as Sign Up step 2 — otherwise password recovery would
+                 policy as Sign Up step 1 — otherwise password recovery would
                  be a way to set a password weaker than signup accepts. Log In is
                  deliberately left alone: existing accounts predate the policy
                  and must keep working. -->

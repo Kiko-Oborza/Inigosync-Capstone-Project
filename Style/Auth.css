@@ -235,11 +235,17 @@ body.auth-lock {
    A min-height would do the same thing today and silently break the next time
    a field is added; this cannot.
 
-   The taller of the two is Log In, by design. Sign Up used to win at 834px,
-   which left Log In sitting under ~160px of dead space; it is now a three-step
-   flow (see "Sign Up — stepped flow" below) whose steps are each kept shorter
-   than this panel, so the row resolves to Log In's own natural height (715px
-   at 1440×900) and Sign Up fits inside it.
+   Which of the two wins has now flipped twice, so read this before quoting a
+   number at anyone. Increment 3 let Sign Up win at 834px, which left Log In
+   under ~160px of dead space. Increment 4 turned Sign Up into a stepped flow
+   (see "Sign Up — stepped flow" below) with every step shorter than this
+   panel, so the row resolved to Log In's own natural height, 715px at
+   1440×900. Increment 8 then merged the email and password steps onto one
+   screen at the user's request, and that step measures 531px against Log In's
+   477px — so SIGN UP IS THE TALLER PANEL AGAIN and the row resolves to it:
+   850px at 1440/1024/768 and 828px at 390. Log In carries the leftover space.
+   That is a measured, deliberate trade for the merged first screen, not a
+   regression that crept back in.
 
    The inactive panel keeps its box but is visibility:hidden, which — unlike
    opacity — also removes it from the tab order and from the accessibility
@@ -279,15 +285,19 @@ body.auth-lock {
    Sign Up — stepped flow
    --------------------------------------------------------------------------
    The same grid-stack technique as .auth-panel-stack above, one level down:
-   all three steps occupy ONE grid cell, so this panel is always as tall as its
+   both steps occupy ONE grid cell, so this panel is always as tall as its
    tallest step and the card does not resize between Continue and Back. With
    display:none the panel would shrink-wrap the current step instead and the
    card would jump on every step change — reintroducing exactly the bug the
    panel stack exists to fix.
 
-   Height contract: every step must stay shorter than the Log In panel. That is
-   what makes the shared card height Log In's rather than Sign Up's, and it is
-   asserted per step during verification, not eyeballed.
+   Height contract: the card is max(Log In panel, this panel), and this panel
+   is its own heading + step indicator + tallest step. Since increment 8 merged
+   email and password onto one screen, the maximum is the SIGN UP side (step 1
+   = 531px against Log In's 477px), so anything added to a step now grows the
+   card on BOTH panels. Measure it rather than assuming — and measure
+   .auth-modal.offsetHeight, never getBoundingClientRect(), which returns the
+   transformed box while the modal is still scaling in.
 
    VISIBILITY IS INHERITED — which is why the "make the active step visible"
    rule is scoped to `.auth-form.is-active`. Written unscoped, a
@@ -360,7 +370,13 @@ body.auth-lock {
    say. */
 .auth-step-error {
     margin-top: -8px;
-    min-height: 1.05rem;
+    /* Must be >= the line box this reserves (0.78rem x 1.35 = 16.85px, i.e.
+       1.053rem), or filling the line in makes the step ~0.05px taller than
+       the empty reservation. That used to be invisible; since increment 8
+       the tallest signup step is what sets the card height, and the two
+       rounded-up lines on step 1 were enough to tip .auth-modal.offsetHeight
+       from 849 to 850 the moment a message appeared. */
+    min-height: 1.06rem;
     font-size: 0.78rem;
     line-height: 1.35;
     /* Not --color-alert: that measures 4.20:1 on the dark modal surface.
@@ -408,7 +424,7 @@ body.auth-lock {
 }
 
 /* --------------------------------------------------------------------------
-   Password requirement checklist (creation time only — Sign Up step 2 and the
+   Password requirement checklist (creation time only — Sign Up step 1 and the
    Reset Password panel; never Log In).
 
    The tick is coloured text on a filled pill rather than a colour swap on the

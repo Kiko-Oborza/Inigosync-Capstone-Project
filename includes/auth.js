@@ -13,7 +13,7 @@
 // six boxes, the countdown, the Resend button — is shared; only the heading,
 // the back link, the verifyOtp() type and the follow-up action differ.
 //
-// Sign Up is a three-step flow (email → password → name/mobile/terms) that
+// Sign Up is a two-step flow (email + password → name/mobile/terms) that
 // lives inside a single <form>: the steps are containers this file shows and
 // hides, never separate forms, so FormData still collects every field in one
 // go and the submit path below is the same one it always was. See the
@@ -33,7 +33,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const panels = overlay.querySelectorAll('[data-auth-panel]');
     const panelStack = overlay.querySelector('[data-auth-panel-stack]');
 
-    // Sign Up is a three-step flow inside that one <form> (see Pages/Index.html).
+    // Sign Up is a two-step flow inside that one <form> (see Pages/Index.html).
     // Queried here, at the top, rather than beside the step wiring further
     // down: setActivePanel() resets the flow, and setActivePanel already runs
     // during this setup function (recovery redirect / forced-sign-out notice),
@@ -43,7 +43,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const signupStepEls = signupForm ? Array.from(signupForm.querySelectorAll('[data-signup-step]')) : [];
     const signupIndicator = signupForm ? signupForm.querySelector('[data-signup-indicator]') : null;
     const signupDots = signupForm ? Array.from(signupForm.querySelectorAll('[data-signup-dot]')) : [];
-    // Every [data-password-policy] block on the page (Sign Up step 2 and the
+    // Every [data-password-policy] block on the page (Sign Up step 1 and the
     // Reset Password panel), filled in by the wiring block further down.
     const passwordPolicyGroups = [];
     let signupStep = 1;
@@ -137,7 +137,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // ------------------------------------------------------------------
     // Password policy — CREATION TIME ONLY.
     //
-    // Enforced in the two places a password is chosen: Sign Up step 2 and
+    // Enforced in the two places a password is chosen: Sign Up step 1 and
     // the Reset Password panel. Deliberately NOT enforced on Log In or
     // Admin login: accounts created before this rule existed have weaker
     // passwords and must keep signing in. Reset carries the same rule as
@@ -380,6 +380,10 @@ document.addEventListener('DOMContentLoaded', () => {
             ['pendingLoginOtp', () => pendingLoginOtp],
             ['otpPurpose', () => otpPurpose],
             ['signupStep', () => signupStep],
+            // resetSignupFlow() -> clearSignupStepErrors() reads this one
+            // directly; it was already reached indirectly before the
+            // increment-8 merge and was simply missing from the list.
+            ['signupForm', () => signupForm],
             ['signupStepEls', () => signupStepEls],
             ['signupDots', () => signupDots],
             ['signupIndicator', () => signupIndicator],
@@ -967,7 +971,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // Live password checklist
     //
     // Renders checkPasswordPolicy() into every [data-password-policy] block
-    // (Sign Up step 2, Reset Password). Presentation only — the enforcement
+    // (Sign Up step 1, Reset Password). Presentation only — the enforcement
     // is the checkPasswordPolicy() call in the submit handler, which reads
     // the input's value and never looks at these classes.
     // ------------------------------------------------------------------
@@ -1001,26 +1005,49 @@ document.addEventListener('DOMContentLoaded', () => {
     // ------------------------------------------------------------------
     // Sign Up — stepped flow
     //
-    // One <form>, three step containers stacked in a single grid cell (see
+    // One <form>, two step containers stacked in a single grid cell (see
     // Pages/Index.html and .auth-step-stack in Style/Auth.css). Nothing here
     // touches the fields' name attributes, adds/removes controls, or
     // disables anything — a disabled control is dropped from FormData —
     // so the submit handler still sees exactly the same payload it always
     // did, and the OTP hand-off after it is untouched.
+    //
+    // Step count is read from the DOM (signupStepEls) everywhere, never
+    // written as a literal, which is why merging the old email-only and
+    // password-only steps into one was a markup change rather than a rewrite.
     // ------------------------------------------------------------------
     // Deliberately stricter than <input type="email">, which accepts
     // "a@b". Not a full RFC 5322 grammar (nothing short of the server is),
-    // just enough to stop an obviously unusable address reaching step 2.
+    // just enough to stop an obviously unusable address being submitted.
     const SIGNUP_EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 
-    function setSignupStepError(step, message) {
-        if (!signupForm) return;
-        const el = signupForm.querySelector(`[data-signup-error="${step}"]`);
-        if (el) el.textContent = message || '';
+    // A step reserves one inline error line per field that can fail on it:
+    // step 1 has two (email, password), step 2 has a single shared line. The
+    // per-field lines carry data-signup-error-for; the shared one does not,
+    // and is the fallback for any field without a line of its own.
+    function signupStepErrorEls(step) {
+        if (!signupForm) return [];
+        return Array.from(signupForm.querySelectorAll(`[data-signup-error="${step}"]`));
     }
 
-    function clearSignupStepErrors() {
-        signupStepEls.forEach((el) => setSignupStepError(el.dataset.signupStep, ''));
+    // Writes into the line that belongs to `field`, leaving the step's other
+    // lines alone — so an email complaint and a password complaint can be on
+    // screen at the same time, each under the field it is about.
+    function setSignupStepError(step, message, field) {
+        const els = signupStepErrorEls(step);
+        if (!els.length) return;
+        const target = (field && els.find((el) => el.dataset.signupErrorFor === field)) || els[0];
+        target.textContent = message || '';
+    }
+
+    // Blanks every error line on `step`, or on every step when called with
+    // no argument (the reset path).
+    function clearSignupStepErrors(step) {
+        if (!signupForm) return;
+        const els = step === undefined
+            ? signupForm.querySelectorAll('[data-signup-error]')
+            : signupStepErrorEls(step);
+        els.forEach((el) => { el.textContent = ''; });
     }
 
     function setSignupStep(step, options) {
@@ -1054,31 +1081,39 @@ document.addEventListener('DOMContentLoaded', () => {
         syncPasswordRules();
     }
 
-    // Returns null when the step's rules are satisfied, otherwise
-    // { step, message } for the inline error on that step.
+    // Returns [] when the step's rules are satisfied, otherwise one
+    // { step, field, message } per problem to render inline.
+    //
+    // Step 1 reports the email and the password INDEPENDENTLY — it owns two
+    // fields and two error lines, and answering "your email is wrong" first
+    // and "your password is wrong" only on the next Continue would make the
+    // visitor pay for the merge twice. Step 2 still stops at the first
+    // failure: its three controls share one line, so a second message there
+    // would only overwrite the first.
     function validateSignupStep(step) {
-        if (!signupForm) return null;
+        if (!signupForm) return [];
         const fields = signupForm.elements;
+        const issues = [];
 
         if (step === 1) {
             const value = (fields.email.value || '').trim();
-            if (!value) return { step: 1, message: 'Enter your email address.' };
-            if (!fields.email.checkValidity() || !SIGNUP_EMAIL_PATTERN.test(value)) {
-                return { step: 1, message: 'Enter a valid email address.' };
+            if (!value) {
+                issues.push({ step: 1, field: 'email', message: 'Enter your email address.' });
+            } else if (!fields.email.checkValidity() || !SIGNUP_EMAIL_PATTERN.test(value)) {
+                issues.push({ step: 1, field: 'email', message: 'Enter a valid email address.' });
             }
-            return null;
+            // The same creation-time policy the checklist renders and the
+            // submit handler re-runs — this only decides whether Continue is
+            // allowed to leave the step.
+            if (!checkPasswordPolicy(fields.password.value).valid) {
+                issues.push({ step: 1, field: 'password', message: 'Your password does not meet every requirement yet.' });
+            }
+            return issues;
         }
 
         if (step === 2) {
-            if (!checkPasswordPolicy(fields.password.value).valid) {
-                return { step: 2, message: 'Your password does not meet every requirement yet.' };
-            }
-            return null;
-        }
-
-        if (step === 3) {
             if (!(fields.fullname.value || '').trim()) {
-                return { step: 3, message: 'Enter your full name.' };
+                return [{ step: 2, field: 'fullname', message: 'Enter your full name.' }];
             }
             // Same shared validator the submit handler runs before signUp —
             // called here only so the message lands inline on this step
@@ -1091,37 +1126,61 @@ document.addEventListener('DOMContentLoaded', () => {
             // as an error toast. Degrade to "let submit handle it".
             if (typeof window.validatePhMobile === 'function') {
                 const mobileCheck = window.validatePhMobile(fields.mobile.value);
-                if (!mobileCheck.valid) return { step: 3, message: mobileCheck.message };
+                if (!mobileCheck.valid) return [{ step: 2, field: 'mobile', message: mobileCheck.message }];
             }
             if (!fields.terms.checked) {
-                return { step: 3, message: 'Please accept the Terms & Conditions to continue.' };
+                return [{ step: 2, field: 'terms', message: 'Please accept the Terms & Conditions to continue.' }];
             }
-            return null;
+            return issues;
         }
 
-        return null;
+        return issues;
     }
 
     // Submit-time gate: re-checks every step from the top, so a value that
     // was edited after its step was passed (or set straight on the DOM)
-    // still cannot get through.
+    // still cannot get through. Returns the offending step's issues (a
+    // non-empty array), or null when every step passes.
     function firstInvalidSignupStep() {
         for (let step = 1; step <= signupStepEls.length; step += 1) {
-            const invalid = validateSignupStep(step);
-            if (invalid) return invalid;
+            const issues = validateSignupStep(step);
+            if (issues.length) return issues;
         }
         return null;
     }
 
+    // Renders one step's issues into their own fields' error lines and puts
+    // the cursor on the first field that actually failed — not on the step's
+    // first input, which since the merge is the email box even when it was
+    // the password that was rejected.
+    function showSignupStepIssues(issues) {
+        if (!issues || !issues.length) return;
+        const step = issues[0].step;
+        const stepEl = signupStepEls[step - 1];
+
+        // Move focus BEFORE writing anything. focus() blurs whatever was
+        // focused, and an <input> whose value changed while it held focus
+        // fires `change` on the way out — which the per-field clear handler
+        // below answers by blanking a line. Written the other way round, a
+        // Create Account press with a filled-in mobile and an unticked Terms
+        // box set the message and then immediately erased it.
+        if (stepEl) {
+            const named = issues[0].field ? stepEl.querySelector(`[name="${issues[0].field}"]`) : null;
+            const target = named || stepEl.querySelector('input');
+            if (target) target.focus();
+        }
+
+        clearSignupStepErrors(step);
+        issues.forEach((issue) => setSignupStepError(issue.step, issue.message, issue.field));
+    }
+
     function advanceSignupStep() {
-        const invalid = validateSignupStep(signupStep);
-        if (invalid) {
-            setSignupStepError(invalid.step, invalid.message);
-            const field = signupStepEls[invalid.step - 1].querySelector('input');
-            if (field) field.focus();
+        const issues = validateSignupStep(signupStep);
+        if (issues.length) {
+            showSignupStepIssues(issues);
             return false;
         }
-        setSignupStepError(signupStep, '');
+        clearSignupStepErrors(signupStep);
         setSignupStep(signupStep + 1, { focus: true });
         return true;
     }
@@ -1133,17 +1192,21 @@ document.addEventListener('DOMContentLoaded', () => {
 
         signupForm.querySelectorAll('[data-signup-back]').forEach((btn) => {
             btn.addEventListener('click', () => {
-                setSignupStepError(signupStep, '');
+                clearSignupStepErrors(signupStep);
                 setSignupStep(signupStep - 1, { focus: true });
             });
         });
 
-        // Editing anything on a step clears that step's error, so a message
-        // never outlives the value that caused it.
+        // Editing a field clears that FIELD's error, so a message never
+        // outlives the value that caused it — and, on the merged step 1,
+        // fixing the email does not also wipe a password complaint that is
+        // still true. A control with no line of its own (the Terms checkbox)
+        // falls back to its step's shared line, which is the old behaviour.
         signupStepEls.forEach((stepEl) => {
             const step = stepEl.dataset.signupStep;
-            stepEl.addEventListener('input', () => setSignupStepError(step, ''));
-            stepEl.addEventListener('change', () => setSignupStepError(step, ''));
+            const clearOwn = (e) => setSignupStepError(step, '', e.target && e.target.name);
+            stepEl.addEventListener('input', clearOwn);
+            stepEl.addEventListener('change', clearOwn);
         });
 
         setSignupStep(1);
@@ -1204,11 +1267,14 @@ document.addEventListener('DOMContentLoaded', () => {
                 // the password checklist happens to be rendering. Anything
                 // that fails sends the visitor back to the step that owns it
                 // with the message inline, rather than posting a signup the
-                // policy would have refused.
-                const invalidStep = firstInvalidSignupStep();
-                if (invalidStep) {
-                    setSignupStep(invalidStep.step, { focus: true });
-                    setSignupStepError(invalidStep.step, invalidStep.message);
+                // policy would have refused. showSignupStepIssues() does the
+                // focusing, so setSignupStep() is called without it — it would
+                // otherwise land on the step's first input rather than on the
+                // field that was actually rejected.
+                const invalidIssues = firstInvalidSignupStep();
+                if (invalidIssues) {
+                    setSignupStep(invalidIssues[0].step);
+                    showSignupStepIssues(invalidIssues);
                     return;
                 }
             }
@@ -1225,7 +1291,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
             const mode = form.dataset.authPanel;
             const data = Object.fromEntries(new FormData(form));
-            // Sign Up carries three .auth-submit buttons now — two Continues
+            // Sign Up carries two .auth-submit buttons — step 1's Continue
             // (type="button") and Create Account — and only the last is the
             // form's real submit control. Matching on type keeps setBusy()
             // disabling the button that was actually pressed, which is what
@@ -1473,7 +1539,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (mode === 'reset') {
                     const newPassword = data['new-password'];
                     const confirmPassword = data['confirm-password'];
-                    // Same creation-time policy as Sign Up step 2, read
+                    // Same creation-time policy as Sign Up step 1, read
                     // straight off the submitted value — the checklist above
                     // the field is only a hint. Without this, password
                     // recovery would be a way to set a password signup rejects.
