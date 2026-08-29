@@ -231,9 +231,15 @@ body.auth-lock {
    Log In / Sign Up share one card height
    --------------------------------------------------------------------------
    Both panels are placed in the SAME grid cell, so the row is sized by the
-   taller of the two (Sign Up) and the card no longer resizes when the tabs are
-   switched. A min-height would do the same thing today and silently break the
-   next time a field is added; this cannot.
+   taller of the two and the card no longer resizes when the tabs are switched.
+   A min-height would do the same thing today and silently break the next time
+   a field is added; this cannot.
+
+   The taller of the two is Log In, by design. Sign Up used to win at 834px,
+   which left Log In sitting under ~160px of dead space; it is now a three-step
+   flow (see "Sign Up — stepped flow" below) whose steps are each kept shorter
+   than this panel, so the row resolves to Log In's own natural height (715px
+   at 1440×900) and Sign Up fits inside it.
 
    The inactive panel keeps its box but is visibility:hidden, which — unlike
    opacity — also removes it from the tab order and from the accessibility
@@ -267,6 +273,222 @@ body.auth-lock {
 
 .auth-panel-stack > .auth-form.is-active {
     visibility: visible;
+}
+
+/* --------------------------------------------------------------------------
+   Sign Up — stepped flow
+   --------------------------------------------------------------------------
+   The same grid-stack technique as .auth-panel-stack above, one level down:
+   all three steps occupy ONE grid cell, so this panel is always as tall as its
+   tallest step and the card does not resize between Continue and Back. With
+   display:none the panel would shrink-wrap the current step instead and the
+   card would jump on every step change — reintroducing exactly the bug the
+   panel stack exists to fix.
+
+   Height contract: every step must stay shorter than the Log In panel. That is
+   what makes the shared card height Log In's rather than Sign Up's, and it is
+   asserted per step during verification, not eyeballed.
+
+   VISIBILITY IS INHERITED — which is why the "make the active step visible"
+   rule is scoped to `.auth-form.is-active`. Written unscoped, a
+   `visibility: visible` here would override the visibility:hidden that the
+   panel stack puts on the whole Sign Up panel while Log In is showing, and the
+   active step would render straight through the Log In form on top of it.
+   -------------------------------------------------------------------------- */
+.auth-steps-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-top: -6px;
+}
+
+.auth-step-indicator {
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--color-ink-faint);
+}
+
+/* Decorative duplicate of the "Step N of 3" text beside it — aria-hidden in
+   the markup, so it carries no information of its own. */
+.auth-step-dots {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+}
+
+.auth-step-dot {
+    width: 20px;
+    height: 4px;
+    border-radius: 999px;
+    background: var(--color-line);
+    transition: background 0.2s ease;
+}
+
+.auth-step-dot.is-done {
+    background: var(--color-primary-dim);
+}
+
+.auth-step-dot.is-current {
+    background: var(--color-primary);
+}
+
+.auth-step-stack {
+    display: grid;
+    align-items: start;
+}
+
+.auth-step {
+    grid-area: 1 / 1;
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+    visibility: hidden;
+}
+
+.auth-form.is-active .auth-step.is-active {
+    visibility: visible;
+}
+
+/* Inline, per-step validation message. Deliberately NOT toggled with
+   visibility (that would leak through the hidden panel exactly as described
+   above) and NOT with [hidden] (which would make the step shorter while the
+   message is absent and taller once it appears). It is always in flow with a
+   reserved line's worth of height, and empty text when there is nothing to
+   say. */
+.auth-step-error {
+    margin-top: -8px;
+    min-height: 1.05rem;
+    font-size: 0.78rem;
+    line-height: 1.35;
+    /* Not --color-alert: that measures 4.20:1 on the dark modal surface.
+       See the token's comment in LandingPage.css. */
+    color: var(--color-alert-text);
+}
+
+.auth-step-nav {
+    display: flex;
+    align-items: stretch;
+    gap: 10px;
+    margin-top: 4px;
+}
+
+/* .auth-submit is width:100% + margin-top:4px on its own; inside the nav row
+   the row owns the spacing and the button just takes the leftover width. */
+.auth-step-nav .auth-submit {
+    flex: 1 1 auto;
+    width: auto;
+    margin-top: 0;
+}
+
+.auth-back {
+    flex: 0 0 auto;
+    padding: 14px 20px;
+    border: 1px solid var(--color-line);
+    border-radius: 999px;
+    background: var(--color-bg-card);
+    color: var(--color-ink-dim);
+    font-family: var(--font-body);
+    font-weight: 600;
+    font-size: 0.95rem;
+    cursor: pointer;
+    transition: background 0.2s, color 0.2s, border-color 0.2s;
+}
+
+.auth-back:hover {
+    color: var(--color-ink);
+    border-color: var(--color-primary);
+}
+
+.auth-back:focus-visible {
+    outline: 2px solid var(--color-primary);
+    outline-offset: 2px;
+}
+
+/* --------------------------------------------------------------------------
+   Password requirement checklist (creation time only — Sign Up step 2 and the
+   Reset Password panel; never Log In).
+
+   The tick is coloured text on a filled pill rather than a colour swap on the
+   label, so "met" is signalled by shape AND fill as well as by hue, and the
+   label text keeps a token that clears AA in both themes. Each row also
+   carries a visually hidden "met" / "not met" for screen readers, kept in sync
+   by includes/auth.js.
+   -------------------------------------------------------------------------- */
+.auth-password-group {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.auth-password-rules {
+    display: grid;
+    gap: 5px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.auth-password-rule {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.78rem;
+    line-height: 1.3;
+    color: var(--color-ink-faint);
+}
+
+.auth-password-rule.is-met {
+    color: var(--color-ink-dim);
+}
+
+.auth-password-rule-mark {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    width: 15px;
+    height: 15px;
+    /* currentColor (inherited from the row's label ink), not --color-line:
+       the hairline token is ~1.5:1 on the dark modal surface, which left the
+       unmet marker all but invisible. This keeps the outline at the label's
+       own contrast (5.7:1 dark / 4.6:1 light) without making it shout. */
+    border: 1px solid currentColor;
+    border-radius: 50%;
+    font-size: 0.6rem;
+    font-weight: 700;
+    line-height: 1;
+    transition: background 0.2s ease, border-color 0.2s ease;
+}
+
+/* The tick is always in the box so the row never changes size; only its
+   colour turns on. Colouring the glyph rather than showing/hiding it keeps
+   every visibility/display toggle out of the step containers, where an
+   inherited `visibility: visible` would punch through the hidden panel. */
+.auth-password-rule-mark::before {
+    content: '\2713';
+    color: transparent;
+    transition: color 0.2s ease;
+}
+
+.auth-password-rule.is-met .auth-password-rule-mark {
+    background: var(--color-court-green);
+    border-color: var(--color-court-green);
+}
+
+.auth-password-rule.is-met .auth-password-rule-mark::before {
+    color: #ffffff;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .auth-step-dot,
+    .auth-back,
+    .auth-password-rule-mark,
+    .auth-password-rule-mark::before {
+        transition: none;
+    }
 }
 
 .auth-heading {
@@ -512,9 +734,13 @@ body.auth-lock {
     transform: translate(-50%, 0);
 }
 
+/* The border stays --color-alert (a 1px rule, not text); only the copy moves
+   to --color-alert-text, which is the lighter red dark mode needs to clear AA
+   on this surface. Same split as .auth-step-error above — see the token's
+   comment in LandingPage.css. */
 .auth-status.is-error {
     border-color: var(--color-alert);
-    color: var(--color-alert);
+    color: var(--color-alert-text);
 }
 
 /* Field-level validation state */
@@ -524,7 +750,8 @@ body.auth-lock {
 
 .auth-field-error {
     font-size: 0.78rem;
-    color: var(--color-alert);
+    /* Text, so --color-alert-text rather than --color-alert. */
+    color: var(--color-alert-text);
     display: none;
 }
 
@@ -567,7 +794,8 @@ body.auth-lock {
 .auth-otp-error {
     display: none;
     font-size: 0.82rem;
-    color: var(--color-alert);
+    /* Text, so --color-alert-text rather than --color-alert. */
+    color: var(--color-alert-text);
     margin-top: -8px;
 }
 

@@ -373,6 +373,287 @@ checkbox state intact, and never opens a tab unless the fetch failed. The Google
 "G" matches the official mark. Signup still succeeds end to end, including PH
 mobile validation and the OTP step.
 
+## Increment 4 — Stepped signup, password policy, forgot-password page
+
+Corrects Increment 3's A1 and adds three things.
+
+**B1 — The shared card height must be Log In's, not Sign Up's.** Increment 3 made
+both panels equal by letting the taller one (Sign Up, 834px) win, which left Log
+In with ~160px of dead space. The user wants the opposite: the card sizes to Log
+In (~711px natural at 1440) and Sign Up fits inside it.
+
+**B2 — Sign Up becomes a stepped flow.** Never show every field at once, so the
+card height cannot be driven by field count. Steps:
+
+1. **Email** → Continue. Keeps the divider + Google button + "Already have an
+   account?" line, since Google sign-up short-circuits the whole flow.
+2. **Password** + live requirement checklist → Continue / Back.
+3. **Full name + Mobile + Terms** → Create Account / Back.
+
+Structural requirements: keep **one** `<form data-auth-panel="signup">` and show
+or hide step containers inside it, so `FormData` still collects every field and
+the existing submit handler, `name` attributes and OTP hand-off are untouched.
+Apply the same grid-stack technique used for the panels to the *steps* (all in
+one grid cell, inactive ones `visibility: hidden`) — otherwise the panel height
+tracks the current step and the card resizes between steps, reintroducing the
+bug. Net effect: card height = max(Log In, tallest step); keep every step shorter
+than Log In and the card is Log In's height. Verify with an assertion, not by eye.
+
+Per-step validation gates advancement (bad email cannot reach step 2). Reopening
+the modal, or switching to Log In and back, resets to step 1.
+
+**B3 — Password policy on creation.** 8–15 characters, ≥1 uppercase, ≥1
+lowercase, ≥1 number, ≥1 special character. Rendered as a live checklist that
+ticks as the user types, and enforced on submit. Applies to **both** places a
+password is created — signup step 2 and the Reset Password panel — so the reset
+path cannot be used to set a weaker password than signup allows.
+**Critical: Log In must not enforce it.** Existing accounts have older passwords
+and must keep working; this is a creation-time rule only.
+
+**B4 — Reset-password *email template* for Supabase.** Clarified by the user: the
+HTML file is the one **pasted into Supabase → Authentication → Email Templates →
+Reset Password**, not a page in the site. Ships as
+`docs/email_templates/reset_password.html`, owner-applied like the SQL
+migrations, and logged in `docs/OWNER_ACTION_LIST.md`.
+
+No page is added and **no auth logic changes**: the modal's `forgot` and `reset`
+panels both stay exactly as they are. `includes/auth.js:878` already computes
+`redirectTo` as `${origin}${pathname}`, so `{{ .ConfirmationURL }}` returns the
+user to the page they requested from and the existing `reset` panel handles it.
+
+Email HTML is a different medium from web HTML and must be written as such:
+table-based layout (no flex/grid), inline styles, no JavaScript, no external
+CSS, ~600px max width, web-safe font stacks (Oswald/Inter will not load — the
+brand look is approximated with fallbacks), a bulletproof CTA button with an
+Outlook VML fallback, a plaintext copy of the link for clients that strip
+buttons, and sensible rendering on both light and dark email clients. Must use
+Supabase's Go template variables — `{{ .ConfirmationURL }}` at minimum.
+
+*Asset constraint:* email images need a publicly reachable absolute URL, and this
+project runs on localhost with no hosting. Default to a **CSS/text wordmark** so
+the template works with no hosting at all, with a clearly commented slot for a
+hosted logo URL (e.g. a Supabase Storage public bucket) to be dropped in later.
+
+**Constraints.** All prior constraints hold. No changes to Supabase calls,
+session handling, the OAuth flow, `name` attributes, or the OTP flow beyond what
+B2's step containers strictly require. The page reuses the existing shell
+(theme guard, nav, footer, tokens) exactly as `Pages/terms.html` does.
+
+**Success criteria.** Card height equals Log In's natural height at every
+breakpoint in both themes, and does not change across tab switch or any signup
+step. Every signup step ≤ Log In height. Password checklist ticks live and blocks
+submit until satisfied, on both signup and reset; login accepts a weak legacy
+password unchanged. Signup still completes end to end into the OTP step.
+`forgot-password.html` sends a reset link and handles the recovery redirect, in
+both themes, at every breakpoint.
+
+### Increment 4 — execution notes (2026-08-29)
+
+Implemented and verified by measurement (headless Chrome over CDP): 91 behavioural
+assertions plus a height matrix, all green. Card height is now **715px at
+1440/1024/768 and 693px at 390, identical in both themes, and identical on Log In
+and on all three signup steps** — equal to the login panel's height measured in
+isolation (which matches the ~711px this plan quoted as Log In's pre-increment-3
+natural height). Tallest step is 303px against a 477px login-panel budget; with the
+longest inline error rendered it reaches 314px, still 163px of headroom. Also holds
+at 360px and 320px wide, and at 700px/640px tall (where the card's pre-existing
+`max-height: calc(100vh - 48px)` clamps it — equally on both panels).
+
+Measurement note for whoever re-checks this: measure `.auth-modal.offsetHeight`,
+not `getBoundingClientRect().height`. The modal animates in with
+`transform: scale(.98)` and a rect is the transformed box, so a reading taken
+mid-transition comes back 2% short (817 instead of 834, 701 instead of 715).
+
+Deviations and things worth knowing:
+
+1. **The last success criterion is void.** No `forgot-password.html` was created —
+   the user clarified mid-increment that B4 is the Supabase email template, not a
+   page. The modal's `forgot` and `reset` panels are untouched except for B3's
+   password rules on `reset`. Ships as `docs/email_templates/reset_password.html`
+   plus item **E3** in `docs/OWNER_ACTION_LIST.md`.
+2. **Added `--color-alert-text`** (dark `#ee6f66`, light `#C2281F` = unchanged).
+   Same split, and same reason, as `--color-accent-text` in the notes below:
+   `--color-alert` measures only **4.20:1** on the dark modal surface, so the new
+   inline step errors would have failed AA. `--color-alert` itself is untouched, so
+   nothing else moves. The pre-existing `.auth-otp-error` / `.auth-field-error` /
+   `.auth-status.is-error` still use `--color-alert` and still sit at 4.20:1 in dark
+   mode — a pre-existing AA gap, deliberately left alone as out of scope.
+3. **`setBusy()` had to learn which button it owns.** Sign Up now has three
+   `.auth-submit` buttons (two Continues + Create Account) and
+   `form.querySelector('.auth-submit')` was picking step 1's Continue, leaving
+   Create Account enabled during the network call. Now matched with
+   `button[type="submit"].auth-submit`. Verified: a double click fires `signUp`
+   exactly once.
+4. **The signup validation gate runs BEFORE `form.checkValidity()`,** not inside the
+   `mode === 'signup'` branch. Two reasons: an Enter on step 1 would otherwise reach
+   `reportValidity()` with a non-rendered required field (Chrome logs "not focusable"
+   and shows the visitor nothing), and on step 3 the native bubble would preempt the
+   step's own inline message for an empty name or an unticked Terms box.
+5. **The "make the active step visible" rule is scoped to `.auth-form.is-active`.**
+   Visibility is inherited, so an unscoped `visibility: visible` on the active step
+   punches straight back through the `visibility: hidden` the panel stack puts on the
+   whole Sign Up panel, and renders the step on top of the Log In form. The same trap
+   is why the inline error reserves a line with `min-height` instead of toggling
+   `visibility`, and why the checklist tick is `color: transparent` rather than
+   hidden.
+6. **Step 1 gained an "Already have an account? Log in" line** — the plan says
+   "keeps" it, but the panel never had one. It balances the panel against Log In's
+   own switch line and costs 20px of a 170px budget.
+
+Two consequences the user may want to weigh in on:
+
+- **The dead space moved.** That is the point of B1 — but it means each signup step
+  now ends 87–109px above the card's bottom edge (step 1 the tightest, step 2 the
+  airiest, measured at 1440), where Log In ends flush. Steps are top-aligned rather
+  than vertically centred so the heading, the step indicator and the first field
+  never move between steps.
+- **A space counts as a special character** (the rule set is the printable-ASCII
+  non-alphanumerics, spaces included, per OWASP). `Abcd1efg ` is accepted. An
+  accented letter does *not* count, because the set is explicit rather than
+  `[^A-Za-z0-9]`.
+
+**Not verified here:** that Supabase renders email templates with `text/template`
+rather than `html/template`. `html/template` strips HTML comments, which would drop
+the Outlook VML branch. The template is written to degrade correctly either way (the
+`<a>` deliberately carries no `mso-hide:all`), and the file says what to look for on
+the first test send — but which of the two paths actually runs needs one real email.
+
+## Increment 5 — Auth robustness fixes (user-approved, 2026-08-29)
+
+Two pre-existing defects surfaced during increments 3–4, plus one contrast
+carry-over. None were introduced by the redesign.
+
+**C1 — Temporal-dead-zone crash kills the entire auth modal.** `includes/auth.js`
+line 285 calls `consumePendingAuthNotice()` → `setAuthNotice()` (line ~1346),
+which reads `let authNoticeDismissTimer` / `let authNoticeHideTimer` declared at
+lines **1322–1323**. Reading a `let` before its declaration executes throws
+`ReferenceError`, which aborts the rest of the `DOMContentLoaded` setup — no
+close handler, no tab switching, no submit handlers, no Google button. **The
+modal is completely dead.** It triggers whenever
+`sessionStorage['inigosync-auth-notice']` is set, i.e. the `authGuard.js`
+idle-timeout and superseded-session paths: a user who is idle-logged-out and
+returns cannot log in at all.
+Fix: hoist both declarations to the top-level `let` block (lines 45–57) beside
+`signupStep` / `lastFocusedEl`. Declaration-site move only — no behaviour change.
+Add a regression guard so the ordering cannot silently regress.
+
+**C2 — The auth modal has no focus trap.** Tab from the last control walks out
+into the page behind the overlay. The terms dialog (increment 3) already has a
+correct trap — model C2 on it and make the two cooperate rather than compete:
+while terms is open it owns the trap, and the auth modal reclaims it on close.
+Must handle the panel/step stacks correctly: `visibility: hidden` panels and
+steps are already out of the tab order, so the trap must compute its focusable
+set **live** on each Tab rather than caching it at open time.
+
+**C3 — `--color-alert` measures 4.20:1 on the dark modal surface**, failing AA
+for `.auth-otp-error`, `.auth-field-error` and `.auth-status.is-error`.
+Increment 4 already added `--color-alert-text` (dark `#ee6f66`, light `#C2281F`)
+for exactly this reason and used it for the new inline errors. Point the three
+pre-existing error styles at it too. `--color-alert` itself stays unchanged —
+it is used for non-text purposes elsewhere.
+
+**Non-goals.** No change to signup step layout (top alignment stays), the
+password policy's space-as-special-character rule, Supabase calls, or anything
+outside these three defects.
+
+**Success criteria.** With `sessionStorage['inigosync-auth-notice']` set, the
+page loads, the notice renders, and the modal is fully functional — close, tabs,
+submit, Google button all working. Tab and Shift+Tab cycle within the auth modal
+and never reach the page behind. Terms-over-auth nesting still behaves. All three
+error styles meet AA in both themes. Everything from increments 1–4 still passes.
+
+### Increment 5 — execution notes (2026-08-29)
+
+Implemented and verified by measurement (headless Chrome over CDP): 396 new
+behavioural assertions across both themes, plus the increment 1–4 suites re-run
+unchanged. Three files touched: `includes/auth.js`, `Style/Auth.css`, and this
+file. No markup change — `Pages/Index.html` is untouched by this increment.
+
+**C1 — reproduced before, gone after.** With
+`sessionStorage['inigosync-auth-notice'] = 'idle'`, the pre-fix page threw
+`ReferenceError: Cannot access 'authNoticeDismissTimer' before initialization`
+and the modal came up with **0 Google buttons**, no password-toggle icons, a
+close button that did nothing and tabs that did not switch. After hoisting both
+declarations into the top-level block: no exception, the notice renders, 2
+Google buttons, close/tabs/submit/step-validation/trap all live. Both notice
+reasons (`idle` and `superseded`) verified.
+
+**The regression guard is `assertEarlySetupBindings()`** — a list of
+`[name, () => binding]` thunks read immediately before the first synchronous
+early-setup call, each in its own `try`, logging a `console.error` that names
+the binding that moved. Chosen over a comment or a wrapping `try/catch` because
+it converts a *silent, path-dependent* dead modal into an error on **every**
+load, which every automated run and every visitor sees. Proved by deliberately
+moving the declaration back down: the guard fired on an ordinary load (no
+sessionStorage key needed) while the underlying crash was still only reachable
+via the idle path. It does not swallow or rethrow — detection only.
+
+**No other TDZ-class bug exists in `auth.js`.** Checked both by hand and with a
+call-graph scanner over the whole `DOMContentLoaded` scope (47 top-level
+bindings, 32 top-level functions). Four statement groups reference a
+later-declared binding; three of them (`line 622` terms-link click, `line 966`
+`panels.forEach` submit handler, `line 1285` OTP resend click) are all inside
+`addEventListener` callbacks that cannot run before setup finishes. `line 346`
+`consumePendingAuthNotice()` was the only genuinely synchronous one — i.e. C1
+was the whole population. Post-fix the scan is clean apart from that same
+deferred submit-handler group. `authGuard.js` and `home-showcase.js` scan clean
+too.
+
+**C2 — one `trapTab()` shared by both dialogs, not two.** The terms dialog's
+inline trap body was replaced by a call to it, so the two cannot drift apart;
+the keydown handler routes Tab to whichever dialog is on top, which is what
+makes them cooperate instead of compete. Two things that had to be right:
+
+- **The focusable set is recomputed on every Tab.** `FOCUSABLE` matches on
+  markup alone, and this modal keeps its inactive panels and steps in the DOM.
+  `isRenderedFocusable()` therefore applies *two* filters, neither of which
+  subsumes the other: `getClientRects().length === 0` catches `display: none`
+  (the one-off panels, the hidden tab bar, the hidden panel stack), and
+  `getComputedStyle().visibility === 'hidden'` catches the panel/step stacks —
+  a `visibility: hidden` element still generates boxes, and computed
+  `visibility` on a `display: none` element still reads `visible`. Proved live:
+  switching panels, advancing/reversing steps, and simply *enabling* the OTP
+  resend button all change the ring within one open modal session.
+- **The trap is gated on a new `authIsOpen` flag, not `overlay[hidden]`**,
+  which lags the close by the 250ms fade-out. Same shape and reason as the
+  terms dialog's existing `termsIsOpen`. Asserted: a Tab inside that window is
+  *not* dragged back into a closing modal.
+
+Ring sizes measured, both themes: login 11, signup step 1 = 7, step 2 = 7,
+step 3 = 9, verify 9, admin 6, forgot 4, reset 6. 26 Tabs and 26 Shift+Tabs on
+each stay inside `.auth-modal`, visit exactly the set Chrome's own
+`Element.checkVisibility()` reports, in DOM order, and cycle with the right
+period. Control run with the trap disabled: focus escapes after 8 Tabs into the
+nav links, the theme toggle and the Book Now button behind the overlay.
+
+**C3.** Dark mode goes **4.20:1 → 6.18:1** for all three styles on the real
+composited modal surface (`#191410`); light is 5.13:1 either way, since the two
+tokens are the same value there. `--color-alert` is untouched, and
+`.auth-status.is-error` / `.auth-field.has-error input` keep it for their
+*borders* — only the copy moved.
+
+Two things worth knowing:
+
+1. **Some panel switches drop focus to `<body>`, and that is pre-existing.**
+   "Log in as Admin" and "Forgot password?" both live *inside* the Log In panel,
+   and `setActivePanel()` `display: none`s the whole panel stack, so Chrome
+   blurs the button that was just clicked. `setActivePanel()` has never moved
+   focus and was not changed here. The trap makes the consequence strictly
+   better rather than worse: before, the next Tab walked into the page behind;
+   now it is pulled back to the modal's first control. Fixing it properly means
+   giving `setActivePanel()` a focus policy, which is a behaviour change this
+   increment did not have licence for.
+2. **`.auth-field-error` has no markup anywhere on the site.** The style is
+   real but currently unused (nothing sets `.auth-field.has-error`). It was
+   measured by building the exact DOM state its CSS describes, inside the live
+   modal.
+
+**Not verified here:** the same thing increment 2 flagged — Escape while a
+native `<select>` popup is open, which headless cannot drive. Unchanged by this
+increment. The only console output on a clean load remains Chrome's own
+`/favicon.ico` 404 (this repo ships no favicon) and a verbose `[DOM]` password-
+form recommendation; neither is an error and both predate increment 5.
+
 ## Execution notes (2026-08-28) — deviations accepted
 
 Implemented and verified. Six deviations from the plan as written, all accepted:

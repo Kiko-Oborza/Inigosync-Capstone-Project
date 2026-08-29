@@ -372,6 +372,13 @@
                  switching tabs never resizes the modal. The inactive panel keeps
                  its box but is visibility:hidden, which also takes it out of the
                  tab order and the accessibility tree.
+
+                 The taller of the two is Log In, and that is deliberate: Sign Up
+                 is a stepped flow (below) whose every step is kept shorter than
+                 this panel, so the card settles at Log In's own natural height
+                 instead of being padded out to a stack of sign-up fields. Adding
+                 a field to a signup step is fine; adding enough of them to make a
+                 step taller than Log In would start growing the card again.
                  Only these two panels are stacked — Verify, Admin, Forgot and
                  Reset are one-off steps and still shrink-wrap their own content,
                  so includes/auth.js hides this whole wrapper while one of them is
@@ -416,53 +423,138 @@
                 <p class="auth-switch">Are you a staff member or the owner? <button type="button" class="auth-link" data-auth-tab="admin">Log in as Admin</button></p>
             </form>
 
-            <!-- SIGN UP FORM — field order is Email → Password → Full name →
-                 Mobile on purpose: the two credentials the account is actually
-                 keyed on come first, the profile details after. Reorder only;
-                 every name/autocomplete/validation attribute is unchanged, and
-                 includes/auth.js reads the fields by name via FormData. -->
+            <!-- SIGN UP FORM — a three-step flow inside exactly ONE <form>.
+                 Step order is Email → Password → Full name + Mobile + Terms:
+                 the two credentials the account is actually keyed on come
+                 first, the profile details after.
+
+                 Why one form and not three: the submit handler in
+                 includes/auth.js reads every field by name off a single
+                 FormData, so all of them must stay inside this element.
+                 Nothing here is `disabled` either — a disabled control is
+                 dropped from FormData, which would silently post an
+                 incomplete signup.
+
+                 Why the steps are stacked in a grid (see .auth-step-stack in
+                 Style/Auth.css) rather than display:none'd: with display:none
+                 this panel's height would track whichever step is showing and
+                 the card would resize on every Continue — the exact bug the
+                 .auth-panel-stack above exists to prevent. Stacked in one grid
+                 cell, this panel is always as tall as its TALLEST step, every
+                 step is deliberately kept shorter than the Log In panel, and
+                 the card therefore settles at Log In's height and never moves.
+
+                 The inactive steps are visibility:hidden, so they keep their
+                 box but leave the tab order and the accessibility tree. The
+                 rule that makes the active one visible is scoped to
+                 `.auth-form.is-active` on purpose: visibility is inherited,
+                 so an unscoped `visibility: visible` here would punch the
+                 active step straight back through the hidden Sign Up panel
+                 and render it on top of the Log In form. -->
             <form class="auth-form" data-auth-panel="signup" novalidate>
                 <h2 class="auth-heading">Create your account</h2>
 
-                <label class="auth-field">
-                    <span class="auth-label">Email address</span>
-                    <input type="email" name="email" placeholder="you@email.com" autocomplete="email" required>
-                </label>
+                <div class="auth-steps-head">
+                    <p class="auth-step-indicator" data-signup-indicator aria-live="polite">Step 1 of 3</p>
+                    <span class="auth-step-dots" aria-hidden="true">
+                        <span class="auth-step-dot is-current" data-signup-dot="1"></span>
+                        <span class="auth-step-dot" data-signup-dot="2"></span>
+                        <span class="auth-step-dot" data-signup-dot="3"></span>
+                    </span>
+                </div>
 
-                <label class="auth-field">
-                    <span class="auth-label">Password</span>
-                    <div class="auth-input-wrap">
-                        <input type="password" name="password" placeholder="Create a password" autocomplete="new-password" minlength="8" required>
-                        <button type="button" class="auth-toggle-visibility" data-toggle-password aria-label="Show password">
-                            <svg viewBox="0 0 24 24" width="18" height="18"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7z" fill="none" stroke="currentColor" stroke-width="1.6"/><circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="1.6"/></svg>
-                        </button>
+                <div class="auth-step-stack">
+
+                    <!-- STEP 1 — email. The divider, the Google button and the
+                         "Already have an account?" line live here because
+                         signing up with Google short-circuits steps 2 and 3
+                         entirely: it never reaches a password or a form
+                         submit. -->
+                    <div class="auth-step is-active" data-signup-step="1">
+                        <label class="auth-field">
+                            <span class="auth-label">Email address</span>
+                            <input type="email" name="email" placeholder="you@email.com" autocomplete="email" required>
+                        </label>
+
+                        <p class="auth-step-error" data-signup-error="1" role="alert"></p>
+
+                        <div class="auth-step-nav">
+                            <button type="button" class="auth-submit" data-signup-next>Continue</button>
+                        </div>
+
+                        <div class="auth-divider"><span>or</span></div>
+
+                        <div class="auth-google-btn" id="google-signin-signup" data-google-btn></div>
+
+                        <p class="auth-switch">Already have an account? <button type="button" class="auth-link" data-auth-tab="login">Log in</button></p>
                     </div>
-                </label>
 
-                <label class="auth-field">
-                    <span class="auth-label">Full name</span>
-                    <input type="text" name="fullname" placeholder="Juan Dela Cruz" autocomplete="name" required>
-                </label>
+                    <!-- STEP 2 — password, with the live requirement checklist.
+                         maxlength/minlength mirror the policy in
+                         includes/auth.js; that policy is re-checked on submit
+                         so nothing depends on these attributes or on the
+                         checklist's rendered state. -->
+                    <div class="auth-step" data-signup-step="2">
+                        <div class="auth-password-group" data-password-policy>
+                            <label class="auth-field">
+                                <span class="auth-label">Password</span>
+                                <div class="auth-input-wrap">
+                                    <input type="password" name="password" placeholder="Create a password" autocomplete="new-password" minlength="8" maxlength="15" required data-password-input aria-describedby="signupPasswordRules">
+                                    <button type="button" class="auth-toggle-visibility" data-toggle-password aria-label="Show password">
+                                        <svg viewBox="0 0 24 24" width="18" height="18"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7z" fill="none" stroke="currentColor" stroke-width="1.6"/><circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="1.6"/></svg>
+                                    </button>
+                                </div>
+                            </label>
 
-                <label class="auth-field">
-                    <span class="auth-label">Mobile number</span>
-                    <input type="tel" name="mobile" placeholder="09XX XXX XXXX" autocomplete="tel" required>
-                </label>
+                            <ul class="auth-password-rules" id="signupPasswordRules" data-password-rules role="list" aria-label="Password requirements">
+                                <li class="auth-password-rule" data-password-rule="length"><span class="auth-password-rule-mark" aria-hidden="true"></span><span>8–15 characters</span><span class="sr-only" data-password-rule-state>not met</span></li>
+                                <li class="auth-password-rule" data-password-rule="upper"><span class="auth-password-rule-mark" aria-hidden="true"></span><span>1 uppercase letter</span><span class="sr-only" data-password-rule-state>not met</span></li>
+                                <li class="auth-password-rule" data-password-rule="lower"><span class="auth-password-rule-mark" aria-hidden="true"></span><span>1 lowercase letter</span><span class="sr-only" data-password-rule-state>not met</span></li>
+                                <li class="auth-password-rule" data-password-rule="number"><span class="auth-password-rule-mark" aria-hidden="true"></span><span>1 number</span><span class="sr-only" data-password-rule-state>not met</span></li>
+                                <li class="auth-password-rule" data-password-rule="special"><span class="auth-password-rule-mark" aria-hidden="true"></span><span>1 special character (!&nbsp;?&nbsp;@&nbsp;#&nbsp;…)</span><span class="sr-only" data-password-rule-state>not met</span></li>
+                            </ul>
+                        </div>
 
-                <!-- The Terms link opens the in-page dialog below; includes/auth.js
-                     intercepts the click. The href/target/rel stay on it so it
-                     still works as a plain link if the fetch ever fails. -->
-                <label class="auth-checkbox auth-terms">
-                    <input type="checkbox" name="terms" required>
-                    <span>I agree to the <a href="terms.html" class="auth-link" data-terms-open target="_blank" rel="noopener noreferrer">Terms &amp; Conditions</a></span>
-                </label>
+                        <p class="auth-step-error" data-signup-error="2" role="alert"></p>
 
-                <button type="submit" class="auth-submit">Create Account</button>
+                        <div class="auth-step-nav">
+                            <button type="button" class="auth-back" data-signup-back>Back</button>
+                            <button type="button" class="auth-submit" data-signup-next>Continue</button>
+                        </div>
+                    </div>
 
-                <div class="auth-divider"><span>or</span></div>
+                    <!-- STEP 3 — profile details and the Terms checkbox. The
+                         only type="submit" button in this form lives here, so
+                         pressing Enter on an earlier step reaches the submit
+                         handler, which turns it into "Continue" instead. -->
+                    <div class="auth-step" data-signup-step="3">
+                        <label class="auth-field">
+                            <span class="auth-label">Full name</span>
+                            <input type="text" name="fullname" placeholder="Juan Dela Cruz" autocomplete="name" required>
+                        </label>
 
-                <div class="auth-google-btn" id="google-signin-signup" data-google-btn></div>
+                        <label class="auth-field">
+                            <span class="auth-label">Mobile number</span>
+                            <input type="tel" name="mobile" placeholder="09XX XXX XXXX" autocomplete="tel" required>
+                        </label>
 
+                        <!-- The Terms link opens the in-page dialog below; includes/auth.js
+                             intercepts the click. The href/target/rel stay on it so it
+                             still works as a plain link if the fetch ever fails. -->
+                        <label class="auth-checkbox auth-terms">
+                            <input type="checkbox" name="terms" required>
+                            <span>I agree to the <a href="terms.html" class="auth-link" data-terms-open target="_blank" rel="noopener noreferrer">Terms &amp; Conditions</a></span>
+                        </label>
+
+                        <p class="auth-step-error" data-signup-error="3" role="alert"></p>
+
+                        <div class="auth-step-nav">
+                            <button type="button" class="auth-back" data-signup-back>Back</button>
+                            <button type="submit" class="auth-submit">Create Account</button>
+                        </div>
+                    </div>
+
+                </div><!-- /.auth-step-stack -->
             </form>
 
             </div><!-- /.auth-panel-stack -->
@@ -539,25 +631,42 @@
             </form>
 
             <!-- RESET PASSWORD PANEL — reached only via the link in the reset email;
-                 opened automatically by includes/auth.js when it detects that redirect. -->
+                 opened automatically by includes/auth.js when it detects that redirect.
+
+                 This is the second (and only other) place a password is
+                 CREATED, so it carries the same live checklist and the same
+                 policy as Sign Up step 2 — otherwise the reset link would be a
+                 way to set a password weaker than signup accepts. Log In is
+                 deliberately left alone: existing accounts predate the policy
+                 and must keep working. -->
             <form class="auth-form" data-auth-panel="reset" novalidate>
                 <h2 class="auth-heading">Set a new password</h2>
                 <p class="auth-tagline" style="margin-bottom: 18px;">Choose a new password for your account.</p>
 
-                <label class="auth-field">
-                    <span class="auth-label">New password</span>
-                    <div class="auth-input-wrap">
-                        <input type="password" name="new-password" placeholder="Create a new password" autocomplete="new-password" minlength="8" required>
-                        <button type="button" class="auth-toggle-visibility" data-toggle-password aria-label="Show password">
-                            <svg viewBox="0 0 24 24" width="18" height="18"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7z" fill="none" stroke="currentColor" stroke-width="1.6"/><circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="1.6"/></svg>
-                        </button>
-                    </div>
-                </label>
+                <div class="auth-password-group" data-password-policy>
+                    <label class="auth-field">
+                        <span class="auth-label">New password</span>
+                        <div class="auth-input-wrap">
+                            <input type="password" name="new-password" placeholder="Create a new password" autocomplete="new-password" minlength="8" maxlength="15" required data-password-input aria-describedby="resetPasswordRules">
+                            <button type="button" class="auth-toggle-visibility" data-toggle-password aria-label="Show password">
+                                <svg viewBox="0 0 24 24" width="18" height="18"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7z" fill="none" stroke="currentColor" stroke-width="1.6"/><circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="1.6"/></svg>
+                            </button>
+                        </div>
+                    </label>
+
+                    <ul class="auth-password-rules" id="resetPasswordRules" data-password-rules role="list" aria-label="Password requirements">
+                        <li class="auth-password-rule" data-password-rule="length"><span class="auth-password-rule-mark" aria-hidden="true"></span><span>8–15 characters</span><span class="sr-only" data-password-rule-state>not met</span></li>
+                        <li class="auth-password-rule" data-password-rule="upper"><span class="auth-password-rule-mark" aria-hidden="true"></span><span>1 uppercase letter</span><span class="sr-only" data-password-rule-state>not met</span></li>
+                        <li class="auth-password-rule" data-password-rule="lower"><span class="auth-password-rule-mark" aria-hidden="true"></span><span>1 lowercase letter</span><span class="sr-only" data-password-rule-state>not met</span></li>
+                        <li class="auth-password-rule" data-password-rule="number"><span class="auth-password-rule-mark" aria-hidden="true"></span><span>1 number</span><span class="sr-only" data-password-rule-state>not met</span></li>
+                        <li class="auth-password-rule" data-password-rule="special"><span class="auth-password-rule-mark" aria-hidden="true"></span><span>1 special character (!&nbsp;?&nbsp;@&nbsp;#&nbsp;…)</span><span class="sr-only" data-password-rule-state>not met</span></li>
+                    </ul>
+                </div>
 
                 <label class="auth-field">
                     <span class="auth-label">Confirm new password</span>
                     <div class="auth-input-wrap">
-                        <input type="password" name="confirm-password" placeholder="Re-enter new password" autocomplete="new-password" minlength="8" required>
+                        <input type="password" name="confirm-password" placeholder="Re-enter new password" autocomplete="new-password" minlength="8" maxlength="15" required>
                         <button type="button" class="auth-toggle-visibility" data-toggle-password aria-label="Show password">
                             <svg viewBox="0 0 24 24" width="18" height="18"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7z" fill="none" stroke="currentColor" stroke-width="1.6"/><circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="1.6"/></svg>
                         </button>

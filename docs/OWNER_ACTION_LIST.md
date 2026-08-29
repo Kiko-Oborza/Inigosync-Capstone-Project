@@ -166,6 +166,45 @@ for, the link is just a convenience.
 
 ---
 
+## E3. Paste in the branded Reset Password email template *(5 minutes, optional but recommended)*
+
+**Why it's blocked:** it's an email template in the Supabase dashboard — the
+same place as E2. I can write the file; only you can paste it in.
+
+**What to do:** open `docs/email_templates/reset_password.html`, copy the whole
+file, then go to Supabase Dashboard → **Authentication → Email Templates →
+Reset Password**, paste it into the message body, and Save. Suggested subject:
+
+```
+Reset your IñigoSync password
+```
+
+**What it replaces.** Supabase's default is three lines of unstyled HTML with a
+bare "Reset Password" link. The new one is a proper branded email: IñigoSync
+wordmark, the `#FF6115` accent, Iñigos Sports Center / Lucena City in the
+footer, a real call-to-action button, the link repeated as plain text for
+clients that strip buttons, the "this expires in about an hour" note and the
+"if you didn't ask for this, ignore it" security line.
+
+**Notes worth knowing:**
+- **It needs E (redirect allowlist) to actually work.** The template is only
+  the wrapper around `{{ .ConfirmationURL }}`; that link still lands nowhere
+  useful until `http://localhost:8532/Pages/Index.html` is in
+  Authentication → URL Configuration → Redirect URLs.
+- **No image is required.** The logo is live text, because an emailed image
+  needs a public https URL and this project has no hosting yet. If you want the
+  real mark later, upload `assets/Logo/WebLogo.png` to a **public** Supabase
+  Storage bucket and follow the `LOGO SLOT` comment inside the file — it is one
+  paste, no other change.
+- **Do not "tidy" the file.** The tables, inline styles and the
+  `<!--[if mso]>` block are deliberate; email clients (Outlook especially) do
+  not support the CSS the website uses. There is a note near the top of the
+  file explaining what to look for on your first test send.
+- Skipping this changes nothing functionally — reset still works, it just
+  arrives looking like a default Supabase email.
+
+---
+
 ## F. Set real court rates *(no longer needs me — you can do this yourself now)*
 
 Every `court.rate` is currently `NULL`, so the UI honestly shows **"Rate TBA"**
@@ -202,6 +241,7 @@ Get the real answers and I'll drop them in, or edit the file directly.
 | **D** (Resend) | Gmail booking reminders |
 | **E** (redirect URLs) | Makes the already-built password reset actually work |
 | **E2** (Magic Link `{{ .Token }}`) | **Required** — first-login OTP is unusable without it |
+| **E3** (Reset Password template) | Turns the default reset email into a branded IñigoSync one |
 | **F** (court rates) | Replaces every "Rate TBA" with real pricing |
 | **G** (T&C values) | Completes the Terms & Conditions page |
 

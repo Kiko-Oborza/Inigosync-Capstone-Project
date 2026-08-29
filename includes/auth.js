@@ -8,6 +8,13 @@
 // automatically hidden whenever the Admin or Verify panel is active. The
 // Verify panel is a one-off step shown right after Sign Up is submitted;
 // it has no tab of its own and is only reached programmatically.
+//
+// Sign Up is a three-step flow (email → password → name/mobile/terms) that
+// lives inside a single <form>: the steps are containers this file shows and
+// hides, never separate forms, so FormData still collects every field in one
+// go and the submit path below is the same one it always was. See the
+// "Sign Up — stepped flow" section, and the password policy above it, which
+// applies to Sign Up and Reset Password only — never to Log In.
 
 document.addEventListener('DOMContentLoaded', () => {
     const overlay = document.querySelector('[data-auth-overlay]');
@@ -21,6 +28,22 @@ document.addEventListener('DOMContentLoaded', () => {
     // all six panels are still found, in document order.
     const panels = overlay.querySelectorAll('[data-auth-panel]');
     const panelStack = overlay.querySelector('[data-auth-panel-stack]');
+
+    // Sign Up is a three-step flow inside that one <form> (see Pages/Index.html).
+    // Queried here, at the top, rather than beside the step wiring further
+    // down: setActivePanel() resets the flow, and setActivePanel already runs
+    // during this setup function (recovery redirect / forced-sign-out notice),
+    // so anything it touches has to be initialised before that point or it is
+    // a temporal-dead-zone ReferenceError waiting for the right entry path.
+    const signupForm = overlay.querySelector('[data-auth-panel="signup"]');
+    const signupStepEls = signupForm ? Array.from(signupForm.querySelectorAll('[data-signup-step]')) : [];
+    const signupIndicator = signupForm ? signupForm.querySelector('[data-signup-indicator]') : null;
+    const signupDots = signupForm ? Array.from(signupForm.querySelectorAll('[data-signup-dot]')) : [];
+    // Every [data-password-policy] block on the page (Sign Up step 2 and the
+    // Reset Password panel), filled in by the wiring block further down.
+    const passwordPolicyGroups = [];
+    let signupStep = 1;
+
     let lastFocusedEl = null;
     let pendingSignupEmail = '';
     // Set while a password login is gated behind a first-login-per-device
@@ -32,6 +55,31 @@ document.addEventListener('DOMContentLoaded', () => {
     // post-sign-up behavior) or 'login' (new-device gate). See
     // setOtpPurpose() below, which also relabels the reused panel's copy.
     let otpPurpose = 'signup';
+
+    // Timers for the short-lived toast setAuthNotice() renders further down.
+    //
+    // Declared HERE rather than beside setAuthNotice, and that is the whole
+    // point of them being here: consumePendingAuthNotice() runs during this
+    // same setup pass and calls setAuthNotice(), so while these two lived
+    // ~1000 lines below that call they were read inside their temporal dead
+    // zone and threw `ReferenceError: Cannot access 'authNoticeDismissTimer'
+    // before initialization`. That threw out of the DOMContentLoaded handler
+    // itself, so everything after it never ran — no close handler, no tab
+    // switching, no submit handlers, no Google button. The modal was dead,
+    // and only on the paths that reach that call (the authGuard.js
+    // idle-timeout / superseded-session notice), which is why it went
+    // unnoticed. See assertEarlySetupBindings() below, which is the guard
+    // that keeps this from silently coming back.
+    let authNoticeDismissTimer = null;
+    let authNoticeHideTimer = null;
+
+    // Whether the auth modal is currently open, for the focus trap in the
+    // keydown handler below. Tracked as a flag rather than derived from
+    // overlay[hidden], which is only cleared once the 250ms fade-out finishes:
+    // closeModal() hands focus back to the trigger immediately, so a Tab
+    // during that window must not be dragged back into a closing dialog. Same
+    // shape, and same reasoning, as the Terms dialog's `termsIsOpen`.
+    let authIsOpen = false;
 
     const DASHBOARD_BY_ROLE = {
         customer: 'user_dashboard.html',
@@ -59,6 +107,44 @@ document.addEventListener('DOMContentLoaded', () => {
     // forces a sign-out (idle timeout / superseded by another device) and
     // redirects here. MUST match the identically named literal there.
     const AUTH_NOTICE_STORAGE_KEY = 'inigosync-auth-notice';
+
+    // ------------------------------------------------------------------
+    // Password policy — CREATION TIME ONLY.
+    //
+    // Enforced in the two places a password is chosen: Sign Up step 2 and
+    // the Reset Password panel. Deliberately NOT enforced on Log In or
+    // Admin login: accounts created before this rule existed have weaker
+    // passwords and must keep signing in. Reset carries the same rule as
+    // signup on purpose — otherwise "forgot password" would be a way to
+    // set a password that signup itself would have refused.
+    //
+    // The minlength/maxlength attributes in Pages/Index.html mirror these
+    // numbers, and the checklist in the modal renders these same rules,
+    // but neither is trusted: checkPasswordPolicy() is re-run on submit
+    // against the raw value, so nothing depends on the state of the UI.
+    // ------------------------------------------------------------------
+    const PASSWORD_MIN_LENGTH = 8;
+    const PASSWORD_MAX_LENGTH = 15;
+    // Printable ASCII that is neither a letter nor a digit. Spelled out as
+    // an explicit set rather than /[^A-Za-z0-9]/ so the rule is
+    // predictable: with the negated class, an accented letter typed on a
+    // non-US keyboard would silently satisfy "1 special character".
+    const PASSWORD_SPECIAL_PATTERN = /[ !"#$%&'()*+,\-./:;<=>?@[\\\]^_`{|}~]/;
+    const PASSWORD_RULES = [
+        { id: 'length', test: (value) => value.length >= PASSWORD_MIN_LENGTH && value.length <= PASSWORD_MAX_LENGTH },
+        { id: 'upper', test: (value) => /[A-Z]/.test(value) },
+        { id: 'lower', test: (value) => /[a-z]/.test(value) },
+        { id: 'number', test: (value) => /[0-9]/.test(value) },
+        { id: 'special', test: (value) => PASSWORD_SPECIAL_PATTERN.test(value) }
+    ];
+
+    // Returns { valid, failed: [ruleId] }. Never throws, and treats a
+    // missing/non-string value as an empty password rather than as valid.
+    function checkPasswordPolicy(value) {
+        const password = typeof value === 'string' ? value : '';
+        const failed = PASSWORD_RULES.filter((rule) => !rule.test(password)).map((rule) => rule.id);
+        return { valid: failed.length === 0, failed };
+    }
 
     // After a successful signInWithPassword, confirm the account's role is one
     // of `allowedRoles` for the panel that was used (customer login vs Admin
@@ -228,6 +314,76 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // ------------------------------------------------------------------
+    // Early-setup binding guard  (regression guard for the TDZ defect)
+    //
+    // Everything below this line runs while the page is still being set up:
+    // enterRecoveryMode() on a ?type=recovery return, and
+    // consumePendingAuthNotice() on the authGuard.js forced-sign-out return.
+    // Both reach openModal() / setActivePanel() / setAuthNotice(), and those
+    // read module-scope `let`/`const` bindings. Reading one of those before
+    // its declaration line has executed throws ReferenceError, and because
+    // these calls sit directly in the DOMContentLoaded handler, that
+    // ReferenceError aborts the entire rest of setup — the modal loses its
+    // close handler, its tabs, its submit handlers and its Google button. It
+    // only fires on those two entry paths, so ordinary loads look fine and
+    // the breakage hides.
+    //
+    // This probe reads each of those bindings on EVERY load, so a declaration
+    // that drifts back below this point stops being a silent, path-dependent
+    // dead modal and becomes a console error on every single page load, in
+    // every browser and every automated run. Each is read through its own
+    // thunk so the message can name the binding that moved; a bare
+    // `void [a, b]` would stop at the first one.
+    //
+    // `typeof` is deliberately not used to probe: on a `let` still in its
+    // temporal dead zone `typeof` throws too, which is exactly the signal
+    // wanted here — but it would make the intent read as a feature check.
+    //
+    // Keep this list in sync with what the early-setup calls actually touch.
+    // Anything added to openModal / setActivePanel / setAuthNotice /
+    // resetSignupFlow belongs here too.
+    // ------------------------------------------------------------------
+    function assertEarlySetupBindings() {
+        const probes = [
+            ['authNoticeDismissTimer', () => authNoticeDismissTimer],
+            ['authNoticeHideTimer', () => authNoticeHideTimer],
+            ['authIsOpen', () => authIsOpen],
+            ['lastFocusedEl', () => lastFocusedEl],
+            ['pendingLoginOtp', () => pendingLoginOtp],
+            ['otpPurpose', () => otpPurpose],
+            ['signupStep', () => signupStep],
+            ['signupStepEls', () => signupStepEls],
+            ['signupDots', () => signupDots],
+            ['signupIndicator', () => signupIndicator],
+            ['passwordPolicyGroups', () => passwordPolicyGroups],
+            ['authTabsEl', () => authTabsEl],
+            ['panelStack', () => panelStack],
+            ['tabs', () => tabs],
+            ['panels', () => panels],
+            ['modal', () => modal]
+        ];
+
+        probes.forEach(([name, read]) => {
+            try {
+                read();
+            } catch (err) {
+                // Not rethrown: this guard exists to make the ordering break
+                // visible, not to add a second way for setup to die.
+                console.error(
+                    `[auth.js] "${name}" is declared BELOW the early-setup calls that read it. ` +
+                    'Move its declaration up into the top-level block beside `signupStep` / ' +
+                    '`lastFocusedEl`. Until then the auth modal is dead (no close button, no ' +
+                    'tabs, no submit, no Google button) on the password-recovery and ' +
+                    'idle-logout entry paths.',
+                    err
+                );
+            }
+        });
+    }
+
+    assertEarlySetupBindings();
+
+    // ------------------------------------------------------------------
     // Forgot / Reset password — Supabase redirects the visitor back here
     // after they click the link in the reset email, with `type=recovery`
     // in the URL and a short-lived (but real) session already established
@@ -339,6 +495,12 @@ document.addEventListener('DOMContentLoaded', () => {
             panel.classList.toggle('is-active', panel.dataset.authPanel === name);
         });
 
+        // The stepped Sign Up flow always opens on step 1. Covers every way
+        // back into it — reopening the modal, the Log In tab and back, or the
+        // Verify panel's "← Back to sign up" — so nobody lands mid-flow on a
+        // step with a stale error still showing under a field they cannot see.
+        if (name === 'signup') resetSignupFlow();
+
         // Customers can switch between Log In / Sign Up, but Admin, Verify,
         // Forgot, and Reset are all one-off steps reached from elsewhere —
         // hide the tab bar while any of them is active.
@@ -365,6 +527,7 @@ document.addEventListener('DOMContentLoaded', () => {
             overlay.setAttribute('data-open', '');
         });
         document.body.classList.add('auth-lock');
+        authIsOpen = true;
         if (panelName) setActivePanel(panelName);
 
         const activePanel = overlay.querySelector('.auth-form.is-active');
@@ -383,6 +546,7 @@ document.addEventListener('DOMContentLoaded', () => {
             window.sb.auth.signOut().catch(() => {});
             pendingLoginOtp = null;
         }
+        authIsOpen = false;
         overlay.removeAttribute('data-open');
         document.body.classList.remove('auth-lock');
         window.setTimeout(() => {
@@ -407,6 +571,74 @@ document.addEventListener('DOMContentLoaded', () => {
     overlay.addEventListener('click', (e) => {
         if (e.target === overlay) closeModal();
     });
+
+    // ------------------------------------------------------------------
+    // Focus trap — shared by the auth modal and the Terms dialog
+    //
+    // One implementation for both so the two dialogs behave identically and,
+    // more importantly, cooperate: the keydown handler below routes Tab to
+    // whichever dialog is on top, so the trap never has to know about
+    // stacking. (includes/landingPage.js's court viewer is the same shape
+    // again, gated on its own `isOpen`; only one of the three is ever open.)
+    //
+    // The focusable set is recomputed on EVERY Tab, never cached at open
+    // time. That is not defensiveness — in this modal it is required. The Log
+    // In / Sign Up panels share one grid cell and the sign-up steps share
+    // another, and in both cases the inactive member stays laid out and is
+    // merely `visibility: hidden`; the one-off panels (Verify / Admin /
+    // Forgot / Reset), the tab bar and the whole panel stack go
+    // `display: none`. So which controls are tabbable changes on every tab
+    // switch and every Continue / Back, and a set captured at open time would
+    // already be wrong by the first click.
+    // ------------------------------------------------------------------
+    const FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
+    // FOCUSABLE matches on markup alone, which is not enough here: the
+    // inactive panels and steps are still in the DOM and still match it. Both
+    // checks are needed and neither subsumes the other —
+    //   • `visibility: hidden` still generates boxes, so it has to be read off
+    //     the computed style. visibility is inherited, so this correctly
+    //     reports 'hidden' for a control inside a hidden panel or step.
+    //   • `display: none` generates no boxes at all, and computed visibility
+    //     on such an element still reads 'visible', so it is caught by the
+    //     absence of client rects instead.
+    // `[disabled]` is already excluded by the selector, which is what keeps the
+    // OTP resend button out of the rotation while its countdown is running.
+    function isRenderedFocusable(el) {
+        if (el.getClientRects().length === 0) return false;
+        return window.getComputedStyle(el).visibility !== 'hidden';
+    }
+
+    function focusablesWithin(container) {
+        return Array.from(container.querySelectorAll(FOCUSABLE)).filter(isRenderedFocusable);
+    }
+
+    // Wraps Tab / Shift+Tab around `container`. `fallback` takes focus when
+    // there is nothing focusable inside (the Terms dialog carries
+    // tabindex="-1" for exactly that); pass null to just swallow the Tab.
+    // An active element outside the container is pulled back in, which is what
+    // recovers focus after the browser drops it to <body> — switching tabs
+    // blurs whatever was focused in the panel that just became hidden.
+    function trapTab(e, container, fallback) {
+        const focusables = focusablesWithin(container);
+        if (focusables.length === 0) {
+            e.preventDefault();
+            if (fallback) fallback.focus();
+            return;
+        }
+
+        const first = focusables[0];
+        const last = focusables[focusables.length - 1];
+        const active = document.activeElement;
+
+        if (e.shiftKey && (active === first || active === container || !container.contains(active))) {
+            e.preventDefault();
+            last.focus();
+        } else if (!e.shiftKey && (active === last || !container.contains(active))) {
+            e.preventDefault();
+            first.focus();
+        }
+    }
 
     // ------------------------------------------------------------------
     // Terms & Conditions dialog
@@ -435,7 +667,6 @@ document.addEventListener('DOMContentLoaded', () => {
     //     focus has already moved into the dialog, so assistive tech sees one
     //     dialog at a time.
     // ------------------------------------------------------------------
-    const FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
     const TERMS_CLOSE_DELAY_MS = 250;
 
     const termsOverlay = document.querySelector('[data-terms-overlay]');
@@ -619,31 +850,28 @@ document.addEventListener('DOMContentLoaded', () => {
 
             if (e.key !== 'Tab') return;
 
-            // Focus trap. The auth modal underneath has no trap of its own, so
-            // without this Tab would walk out of the dialog and straight into
-            // the sign-up form behind the backdrop.
-            const focusables = Array.from(termsDialog.querySelectorAll(FOCUSABLE));
-            if (focusables.length === 0) {
-                e.preventDefault();
-                termsDialog.focus();
-                return;
-            }
-
-            const first = focusables[0];
-            const last = focusables[focusables.length - 1];
-            const active = document.activeElement;
-
-            if (e.shiftKey && (active === first || active === termsDialog || !termsDialog.contains(active))) {
-                e.preventDefault();
-                last.focus();
-            } else if (!e.shiftKey && (active === last || !termsDialog.contains(active))) {
-                e.preventDefault();
-                first.focus();
-            }
+            // Terms owns the rotation while it is on top; the auth modal's own
+            // trap below is skipped by this `return`, so the two never fight
+            // over the same Tab. Handing it back is just this branch stopping
+            // to apply once termsIsOpen flips.
+            trapTab(e, termsDialog, termsDialog);
             return;
         }
 
-        if (e.key === 'Escape' && !overlay.hidden) closeModal();
+        if (e.key === 'Escape' && !overlay.hidden) {
+            closeModal();
+            return;
+        }
+
+        // Focus trap for the auth modal itself. Scoped to .auth-modal — the
+        // role="dialog" element — rather than the overlay, whose only other
+        // child is the pointer-events:none toast. Gated on `authIsOpen`, not
+        // on overlay[hidden], which lags the close by the 250ms fade-out;
+        // during that window focus is already back on the trigger and must
+        // stay there.
+        if (e.key === 'Tab' && authIsOpen) {
+            trapTab(e, modal || overlay, null);
+        }
     });
 
     // Tab / inline switch links (Log In ↔ Sign Up ↔ Admin ↔ back to Log In)
@@ -683,6 +911,192 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     });
 
+    // ------------------------------------------------------------------
+    // Live password checklist
+    //
+    // Renders checkPasswordPolicy() into every [data-password-policy] block
+    // (Sign Up step 2, Reset Password). Presentation only — the enforcement
+    // is the checkPasswordPolicy() call in the submit handler, which reads
+    // the input's value and never looks at these classes.
+    // ------------------------------------------------------------------
+    function renderPasswordRules(group) {
+        const { failed } = checkPasswordPolicy(group.input.value);
+        group.items.forEach((item) => {
+            const isMet = !failed.includes(item.dataset.passwordRule);
+            item.classList.toggle('is-met', isMet);
+            const state = item.querySelector('[data-password-rule-state]');
+            // Visually hidden, so the tick is not the only thing carrying
+            // "met" — a screen reader reads the state with the rule.
+            if (state) state.textContent = isMet ? 'met' : 'not met';
+        });
+    }
+
+    function syncPasswordRules() {
+        passwordPolicyGroups.forEach(renderPasswordRules);
+    }
+
+    overlay.querySelectorAll('[data-password-policy]').forEach((groupEl) => {
+        const input = groupEl.querySelector('[data-password-input]');
+        const list = groupEl.querySelector('[data-password-rules]');
+        if (!input || !list) return;
+
+        const group = { input, items: Array.from(list.querySelectorAll('[data-password-rule]')) };
+        passwordPolicyGroups.push(group);
+        input.addEventListener('input', () => renderPasswordRules(group));
+        renderPasswordRules(group);
+    });
+
+    // ------------------------------------------------------------------
+    // Sign Up — stepped flow
+    //
+    // One <form>, three step containers stacked in a single grid cell (see
+    // Pages/Index.html and .auth-step-stack in Style/Auth.css). Nothing here
+    // touches the fields' name attributes, adds/removes controls, or
+    // disables anything — a disabled control is dropped from FormData —
+    // so the submit handler still sees exactly the same payload it always
+    // did, and the OTP hand-off after it is untouched.
+    // ------------------------------------------------------------------
+    // Deliberately stricter than <input type="email">, which accepts
+    // "a@b". Not a full RFC 5322 grammar (nothing short of the server is),
+    // just enough to stop an obviously unusable address reaching step 2.
+    const SIGNUP_EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+
+    function setSignupStepError(step, message) {
+        if (!signupForm) return;
+        const el = signupForm.querySelector(`[data-signup-error="${step}"]`);
+        if (el) el.textContent = message || '';
+    }
+
+    function clearSignupStepErrors() {
+        signupStepEls.forEach((el) => setSignupStepError(el.dataset.signupStep, ''));
+    }
+
+    function setSignupStep(step, options) {
+        const total = signupStepEls.length;
+        if (!total) return;
+
+        signupStep = Math.min(Math.max(step, 1), total);
+
+        signupStepEls.forEach((el) => {
+            el.classList.toggle('is-active', Number(el.dataset.signupStep) === signupStep);
+        });
+        signupDots.forEach((dot) => {
+            const index = Number(dot.dataset.signupDot);
+            dot.classList.toggle('is-current', index === signupStep);
+            dot.classList.toggle('is-done', index < signupStep);
+        });
+        if (signupIndicator) signupIndicator.textContent = `Step ${signupStep} of ${total}`;
+
+        if (options && options.focus) {
+            const field = signupStepEls[signupStep - 1].querySelector('input');
+            if (field) field.focus();
+        }
+    }
+
+    function resetSignupFlow() {
+        clearSignupStepErrors();
+        setSignupStep(1);
+        // Values are intentionally left alone (nothing here resets the
+        // form), so the checklist has to be re-rendered against whatever is
+        // still in the password field rather than assuming it is empty.
+        syncPasswordRules();
+    }
+
+    // Returns null when the step's rules are satisfied, otherwise
+    // { step, message } for the inline error on that step.
+    function validateSignupStep(step) {
+        if (!signupForm) return null;
+        const fields = signupForm.elements;
+
+        if (step === 1) {
+            const value = (fields.email.value || '').trim();
+            if (!value) return { step: 1, message: 'Enter your email address.' };
+            if (!fields.email.checkValidity() || !SIGNUP_EMAIL_PATTERN.test(value)) {
+                return { step: 1, message: 'Enter a valid email address.' };
+            }
+            return null;
+        }
+
+        if (step === 2) {
+            if (!checkPasswordPolicy(fields.password.value).valid) {
+                return { step: 2, message: 'Your password does not meet every requirement yet.' };
+            }
+            return null;
+        }
+
+        if (step === 3) {
+            if (!(fields.fullname.value || '').trim()) {
+                return { step: 3, message: 'Enter your full name.' };
+            }
+            // Same shared validator the submit handler runs before signUp —
+            // called here only so the message lands inline on this step
+            // instead of as a toast. The submit-side call stays exactly as
+            // it was, since it is what normalises the number.
+            // Guarded because this one runs OUTSIDE the submit handler's
+            // try/catch: if includes/phoneValidation.js ever failed to load,
+            // an unguarded call here would throw into a click handler and
+            // dead-end the flow, where the submit-side call still surfaces it
+            // as an error toast. Degrade to "let submit handle it".
+            if (typeof window.validatePhMobile === 'function') {
+                const mobileCheck = window.validatePhMobile(fields.mobile.value);
+                if (!mobileCheck.valid) return { step: 3, message: mobileCheck.message };
+            }
+            if (!fields.terms.checked) {
+                return { step: 3, message: 'Please accept the Terms & Conditions to continue.' };
+            }
+            return null;
+        }
+
+        return null;
+    }
+
+    // Submit-time gate: re-checks every step from the top, so a value that
+    // was edited after its step was passed (or set straight on the DOM)
+    // still cannot get through.
+    function firstInvalidSignupStep() {
+        for (let step = 1; step <= signupStepEls.length; step += 1) {
+            const invalid = validateSignupStep(step);
+            if (invalid) return invalid;
+        }
+        return null;
+    }
+
+    function advanceSignupStep() {
+        const invalid = validateSignupStep(signupStep);
+        if (invalid) {
+            setSignupStepError(invalid.step, invalid.message);
+            const field = signupStepEls[invalid.step - 1].querySelector('input');
+            if (field) field.focus();
+            return false;
+        }
+        setSignupStepError(signupStep, '');
+        setSignupStep(signupStep + 1, { focus: true });
+        return true;
+    }
+
+    if (signupForm) {
+        signupForm.querySelectorAll('[data-signup-next]').forEach((btn) => {
+            btn.addEventListener('click', () => advanceSignupStep());
+        });
+
+        signupForm.querySelectorAll('[data-signup-back]').forEach((btn) => {
+            btn.addEventListener('click', () => {
+                setSignupStepError(signupStep, '');
+                setSignupStep(signupStep - 1, { focus: true });
+            });
+        });
+
+        // Editing anything on a step clears that step's error, so a message
+        // never outlives the value that caused it.
+        signupStepEls.forEach((stepEl) => {
+            const step = stepEl.dataset.signupStep;
+            stepEl.addEventListener('input', () => setSignupStepError(step, ''));
+            stepEl.addEventListener('change', () => setSignupStepError(step, ''));
+        });
+
+        setSignupStep(1);
+    }
+
     // Rewrites raw Supabase Auth error text into copy a user can act on.
     // The rate-limit and email-not-confirmed cases are the ones that came up
     // while diagnosing the OTP email issue — Supabase's built-in mailer caps
@@ -714,6 +1128,39 @@ document.addEventListener('DOMContentLoaded', () => {
         form.addEventListener('submit', async (e) => {
             e.preventDefault();
 
+            // Sign Up's stepped flow owns its own validation, and has to run
+            // before checkValidity() below rather than inside the mode ===
+            // 'signup' branch further down. Two reasons:
+            //   • Sign Up's only submit button is the one on its last step, so
+            //     the browser routes Enter-from-any-field there and this
+            //     handler is where an earlier step's Enter arrives. On step 1
+            //     the later steps' required fields are still empty, and
+            //     reportValidity() cannot show a bubble on a control that is
+            //     not being rendered — it just logs "not focusable" and leaves
+            //     the visitor with nothing.
+            //   • On the last step, letting reportValidity() go first would
+            //     answer an empty name or an unticked Terms box with a native
+            //     bubble instead of the step's own inline message.
+            if (form.dataset.authPanel === 'signup') {
+                if (signupStep < signupStepEls.length) {
+                    advanceSignupStep();
+                    return;
+                }
+
+                // Last step: re-run every step's rules against the live field
+                // values, independently of which step is showing and of what
+                // the password checklist happens to be rendering. Anything
+                // that fails sends the visitor back to the step that owns it
+                // with the message inline, rather than posting a signup the
+                // policy would have refused.
+                const invalidStep = firstInvalidSignupStep();
+                if (invalidStep) {
+                    setSignupStep(invalidStep.step, { focus: true });
+                    setSignupStepError(invalidStep.step, invalidStep.message);
+                    return;
+                }
+            }
+
             if (!form.checkValidity()) {
                 form.reportValidity();
                 return;
@@ -726,7 +1173,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
             const mode = form.dataset.authPanel;
             const data = Object.fromEntries(new FormData(form));
-            const submitBtn = form.querySelector('.auth-submit');
+            // Sign Up carries three .auth-submit buttons now — two Continues
+            // (type="button") and Create Account — and only the last is the
+            // form's real submit control. Matching on type keeps setBusy()
+            // disabling the button that was actually pressed, which is what
+            // stops a double submit.
+            const submitBtn = form.querySelector('button[type="submit"].auth-submit')
+                || form.querySelector('.auth-submit');
 
             function setBusy(isBusy) {
                 if (!submitBtn) return;
@@ -886,6 +1339,14 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (mode === 'reset') {
                     const newPassword = data['new-password'];
                     const confirmPassword = data['confirm-password'];
+                    // Same creation-time policy as Sign Up step 2, read
+                    // straight off the submitted value — the checklist above
+                    // the field is only a hint. Without this, the reset link
+                    // would be a way to set a password signup would reject.
+                    if (!checkPasswordPolicy(newPassword).valid) {
+                        setAuthNotice(`Your new password must be ${PASSWORD_MIN_LENGTH}–${PASSWORD_MAX_LENGTH} characters and include an uppercase letter, a lowercase letter, a number and a special character.`, true);
+                        return;
+                    }
                     if (newPassword !== confirmPassword) {
                         setAuthNotice('Passwords do not match.', true);
                         return;
@@ -899,6 +1360,9 @@ document.addEventListener('DOMContentLoaded', () => {
                     // staff, and admin accounts alike).
                     await window.sb.auth.signOut();
                     form.reset();
+                    // form.reset() fires no input event, so the checklist
+                    // would otherwise stay ticked over an emptied field.
+                    syncPasswordRules();
                     setActivePanel('login');
                     setAuthNotice('Password updated — please log in with your new password.', false);
                     return;
@@ -1016,8 +1480,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Short-lived toast: floats above the modal instead of sitting inline in
     // the form flow, and auto-dismisses on its own — no close button needed.
-    let authNoticeDismissTimer = null;
-    let authNoticeHideTimer = null;
+    //
+    // `authNoticeDismissTimer` and `authNoticeHideTimer` used to be declared
+    // here. They are now in the top-level declaration block at the head of
+    // this function, because consumePendingAuthNotice() calls setAuthNotice()
+    // during setup — i.e. long before this line runs. Do not move them back;
+    // see assertEarlySetupBindings() for what breaks and how it is caught.
 
     function getAuthNoticeEl() {
         let notice = overlay.querySelector('[data-auth-notice]');

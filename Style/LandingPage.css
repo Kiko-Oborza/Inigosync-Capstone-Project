@@ -60,6 +60,13 @@
 
     --color-court-green: #3e7a5e;
     --color-alert: #d6482f;
+    /* The alert colour used as *text*, same split as --color-accent-text
+       above: #d6482f measures only 4.20:1 on the dark modal/card surfaces, so
+       dark mode lifts it to a lighter red for copy. Borders, dots and filled
+       badges keep --color-alert; only text switches. Light mode's
+       --color-alert already clears AA (5.12:1 on --surface-band), so the two
+       are the same value there. */
+    --color-alert-text: #ee6f66;
 
     /* Floating pill navbar (overlaid on the hero photo, so it needs its own
        translucent surface + shadow rather than a flat section surface) */
@@ -97,6 +104,7 @@
     /* Semantic */
     --color-court-green: #1E8E4A;
     --color-alert: #C2281F;
+    --color-alert-text: #C2281F;
 
     /* Floating pill navbar */
     --color-nav-bg: rgba(255, 252, 244, 0.9);
