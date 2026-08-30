@@ -553,6 +553,17 @@ body.admin-sidebar-open .admin-toggle-bar:nth-child(3) {
 }
 .admin-select:focus, .admin-input:focus { outline: none; border-color: var(--color-primary); }
 
+/* Account Settings' Username field and the Media Manager's slide title/
+   caption fields are disabled (no backing column / no upload backend yet —
+   see includes/owner_dashboard.js) — same "make that visibly obvious"
+   treatment Style/Dashboard.css already uses for its own disabled email
+   field. */
+.admin-input:disabled {
+    color: var(--color-ink-faint);
+    background: var(--color-bg);
+    cursor: not-allowed;
+}
+
 .admin-input-wrap { position: relative; display: flex; align-items: center; }
 .admin-input-wrap input { padding-right: 44px; }
 .admin-toggle-visibility {
@@ -677,14 +688,31 @@ body.admin-sidebar-open .admin-toggle-bar:nth-child(3) {
 }
 .admin-btn-chip-danger:hover { border-color: var(--color-alert); background: color-mix(in srgb, var(--color-alert) 10%, transparent); }
 
+/* Media Manager upload controls are disabled (no Supabase Storage bucket
+   yet — implementation_plan.md E4). Same faded, not-just-inert treatment
+   Style/Dashboard.css uses for .dash-slot.is-unavailable, so a disabled
+   control never still looks clickable. */
+.admin-btn-chip-primary:disabled,
+.admin-btn-chip-danger:disabled,
+.admin-mediacourt-body button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
 .admin-slide-dropzone {
     border: 1.5px dashed color-mix(in srgb, var(--color-primary) 50%, transparent); border-radius: 14px;
     min-height: 290px; display: flex; flex-direction: column; align-items: center; justify-content: center;
     gap: 10px; background: color-mix(in srgb, var(--color-primary) 5%, transparent);
     text-align: center; padding: 20px; cursor: pointer; transition: background 0.2s, border-color 0.2s;
 }
-.admin-slide-dropzone:hover,
+.admin-slide-dropzone:hover:not(.is-disabled),
 .admin-slide-dropzone.is-dragover { background: color-mix(in srgb, var(--color-primary) 10%, transparent); border-color: var(--color-primary); }
+
+.admin-slide-dropzone.is-disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    pointer-events: none;
+}
 .admin-slide-dropzone strong { font-size: 0.92rem; color: var(--color-ink); font-family: var(--font-body); }
 .admin-slide-dropzone span { font-size: 0.8rem; color: var(--color-ink-faint); }
 .admin-dropzone-browse { color: var(--color-primary); font-weight: 600; }

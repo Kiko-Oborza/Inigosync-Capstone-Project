@@ -12,6 +12,7 @@ document.addEventListener('DOMContentLoaded', () => {
         schedule: { title: 'Court Schedule', subtitle: 'Calendar view of every court to spot open slots at a glance.' },
         transactions: { title: 'Transaction Records', subtitle: 'Searchable audit trail of every payment processed.' },
         profile: { title: 'Staff Profile', subtitle: 'Your basic account information as recorded by the sports center.' },
+        settings: { title: 'Account Settings', subtitle: 'Manage your staff account password.' },
     };
 
     function setActivePanel(name) {
@@ -575,16 +576,56 @@ document.addEventListener('DOMContentLoaded', () => {
 
     walkinPaymentOptions.forEach((option) => {
         option.addEventListener('click', () => {
+            const radio = option.querySelector('input[type="radio"]');
+            // A method the admin has turned off in Payment Configuration
+            // (see applyWalkinPaymentSettings below) is disabled on the
+            // <input>, but a <label>'s own click listener doesn't respect a
+            // child input's `disabled` attribute the way real form controls
+            // do — this guard is what actually blocks selecting it.
+            if (!radio || radio.disabled) return;
             walkinPaymentOptions.forEach((o) => o.classList.remove('is-selected'));
             option.classList.add('is-selected');
-            const radio = option.querySelector('input[type="radio"]');
-            if (radio) {
-                radio.checked = true;
-                walkinState.payment = radio.dataset.staffPayment;
-            }
+            radio.checked = true;
+            walkinState.payment = radio.dataset.staffPayment;
             updateWalkinSummary();
         });
     });
+
+    // Payment method options (Cash/GCash) reflect the admin's Payment
+    // Configuration (app_settings.gcash_enabled/cash_enabled), with the
+    // same fallback (both enabled) as includes/Dashboard.js's booking flow
+    // — implementation_plan.md E2. A method the admin has turned off is
+    // disabled (not removed), so a mid-shift toggle by the admin can't
+    // leave an already-selected radio pointing at a now-unavailable method.
+    function applyWalkinPaymentSettings(settings) {
+        walkinPaymentOptions.forEach((option) => {
+            const radio = option.querySelector('input[type="radio"]');
+            if (!radio) return;
+            const enabled = radio.dataset.staffPayment === 'gcash' ? settings.gcashEnabled : settings.cashEnabled;
+            radio.disabled = !enabled;
+            option.classList.toggle('is-disabled', !enabled);
+        });
+
+        const selectedRadio = document.querySelector('input[name="staff-payment"]:checked');
+        if (selectedRadio && selectedRadio.disabled) {
+            const fallbackOption = Array.from(walkinPaymentOptions).find((option) => {
+                const radio = option.querySelector('input[type="radio"]');
+                return radio && !radio.disabled;
+            });
+            if (fallbackOption) {
+                const fallbackRadio = fallbackOption.querySelector('input[type="radio"]');
+                walkinPaymentOptions.forEach((o) => o.classList.remove('is-selected'));
+                fallbackOption.classList.add('is-selected');
+                fallbackRadio.checked = true;
+                walkinState.payment = fallbackRadio.dataset.staffPayment;
+            }
+        }
+        updateWalkinSummary();
+    }
+
+    if (window.InigoAppSettings) {
+        window.InigoAppSettings.getSettings().then(applyWalkinPaymentSettings);
+    }
 
     // One real walk-in row — used both for "just submitted" and for
     // rendering today's real history from walk_in_booking. w.customer_name
@@ -1046,6 +1087,98 @@ document.addEventListener('DOMContentLoaded', () => {
             window.inigosyncProfile.contact_num = contact_num;
             renderStaffProfile(window.inigosyncProfile);
             window.InigoToast?.show('Profile updated.');
+        });
+    }
+
+    // ------------------------------------------------------------------
+    // Account Settings — password visibility toggles + real password
+    // change. Staff previously had no password-change UI at all (zero
+    // matches for a settings/password panel — implementation_plan.md).
+    // Modeled directly on the same re-authenticate-then-updateUser pattern
+    // already correct in includes/Dashboard.js and
+    // includes/owner_dashboard.js (Phase 1, D1): current password is
+    // verified via signInWithPassword() before updateUser() is ever
+    // called, so a hijacked/left-open staff session can't silently take
+    // over the account.
+    // ------------------------------------------------------------------
+    document.querySelectorAll('[data-staff-toggle-password]').forEach((btn) => {
+        btn.addEventListener('click', () => {
+            const input = btn.previousElementSibling;
+            if (!input) return;
+            const isHidden = input.type === 'password';
+            input.type = isHidden ? 'text' : 'password';
+            btn.setAttribute('aria-label', isHidden ? 'Hide password' : 'Show password');
+        });
+    });
+
+    function staffSettingsPasswordInputs() {
+        return [
+            document.querySelector('[data-staff-settings-current-password]'),
+            document.querySelector('[data-staff-settings-new-password]'),
+            document.querySelector('[data-staff-settings-confirm-password]'),
+        ];
+    }
+
+    const staffPasswordSaveBtn = document.querySelector('[data-staff-settings-save="password"]');
+    if (staffPasswordSaveBtn) {
+        staffPasswordSaveBtn.addEventListener('click', async () => {
+            if (!window.sb || !window.inigosyncProfile) return;
+            const [currentInput, newInput, confirmInput] = staffSettingsPasswordInputs();
+            const currentPassword = currentInput?.value;
+            const newPassword = newInput?.value;
+            const confirmPassword = confirmInput?.value;
+
+            if (!currentPassword) {
+                window.InigoToast?.show('Enter your current password.', true);
+                return;
+            }
+            if (!newPassword) {
+                window.InigoToast?.show('Enter a new password.', true);
+                return;
+            }
+            if (newPassword !== confirmPassword) {
+                window.InigoToast?.show('Passwords do not match.', true);
+                return;
+            }
+
+            staffPasswordSaveBtn.disabled = true;
+
+            // Supabase has no separate "verify password" call — signing in
+            // again with the current password is how the person at the
+            // keyboard proves they actually know it before it's changed.
+            const { error: verifyError } = await window.sb.auth.signInWithPassword({
+                email: window.inigosyncProfile.email,
+                password: currentPassword,
+            });
+
+            if (verifyError) {
+                staffPasswordSaveBtn.disabled = false;
+                window.InigoToast?.show('Current password is incorrect.', true);
+                return;
+            }
+
+            const { error } = await window.sb.auth.updateUser({ password: newPassword });
+            staffPasswordSaveBtn.disabled = false;
+
+            if (error) {
+                window.InigoToast?.show(error.message || 'Could not update your password.', true);
+                return;
+            }
+
+            staffSettingsPasswordInputs().forEach((input) => { if (input) input.value = ''; });
+            window.InigoToast?.show('Password updated.');
+        });
+    }
+
+    // ------------------------------------------------------------------
+    // Account Settings — Cancel button (mirrors the equivalent handler in
+    // includes/Dashboard.js / includes/owner_dashboard.js). Discards
+    // in-progress edits rather than leaving a button with no effect.
+    // ------------------------------------------------------------------
+    const staffPasswordCancelBtn = document.querySelector('[data-staff-settings-cancel="password"]');
+    if (staffPasswordCancelBtn) {
+        staffPasswordCancelBtn.addEventListener('click', () => {
+            staffSettingsPasswordInputs().forEach((input) => { if (input) input.value = ''; });
         });
     }
 });

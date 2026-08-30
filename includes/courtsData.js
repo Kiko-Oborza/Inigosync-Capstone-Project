@@ -239,19 +239,38 @@
     }
 
     let sportsPromise = null;
+    // Set inside getSports()'s own .then(), before the value it resolves to
+    // reaches any caller's .then()/await — see isSportsFallback() below.
+    let sportsWasFallback = false;
     function getSports({ force = false } = {}) {
         if (force) sportsPromise = null;
         if (!sportsPromise) {
             sportsPromise = safeSelect(() => window.sb.from('sport').select('*').eq('is_active', true).order('display_order'))
-                .then((rows) => rows || SPORTS_FALLBACK);
+                .then((rows) => {
+                    sportsWasFallback = !rows;
+                    return rows || SPORTS_FALLBACK;
+                });
         }
         return sportsPromise;
+    }
+
+    // Lets a caller tell "getSports() resolved with the real `sport` table"
+    // apart from "getSports() fell back to the static SPORTS_FALLBACK"
+    // without changing getSports()'s own return shape (still a plain
+    // array) — every existing caller (the admin Court Listings sport
+    // dropdown, staff_dashboard.js's schedule sport tabs) reads it that way
+    // and neither needs to know which case it got. Only meaningful after
+    // the getSports() promise the caller cares about has resolved; reflects
+    // whichever fetch actually ran, since getSports() memoizes.
+    function isSportsFallback() {
+        return sportsWasFallback;
     }
 
     window.InigoCourtsData = {
         getCourts,
         invalidateCourts,
         getSports,
+        isSportsFallback,
         monogramFor,
         slugify,
     };

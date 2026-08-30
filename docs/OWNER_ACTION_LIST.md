@@ -25,6 +25,7 @@ paste the file's contents → **Run**.
 | A2 | `database/schema/004_staff_module.sql` | Adds `booking.checked_in_at` / `checked_out_at` / `duration_minutes`, creates the `audit_log` table + RLS, adds walk-in name/mobile columns | Staff Time-In/Out and Transaction Records stay unavailable; the UI degrades to an honest empty state rather than erroring |
 | A3 | `database/schema/005_session_security.sql` | Creates the `active_session` table + RLS for one-device-at-a-time enforcement | Single-session silently no-ops. Login and dashboards work normally. |
 | A4 | `database/schema/006_court_unit_images.sql` | Adds a nullable `unit_images` jsonb column to `court`, so one sport can carry a photo per individual court/lane/table | The landing page's court viewer still lists every unit (Court 1–9, Duckpin/Ten-Pin, Table 1–2) — they just all share the sport's single photo. Nothing breaks. |
+| A5 | `database/schema/007_app_settings.sql` | Creates the single-row `app_settings` table + RLS (admin read/write, staff/customer read-only), seeded with today's defaults (GCash + Cash on, 50% downpayment) | The owner dashboard's Payment Configuration Save button fails with a clear "needs a database update" message instead of a fake success toast; the customer booking and staff walk-in screens keep using the hardcoded 50%/GCash+Cash-on defaults exactly as they do today. Nothing breaks. |
 
 > All frontend code is written to **work correctly before these are applied**.
 > Missing columns/tables degrade gracefully — they never break the app. Applying
@@ -370,7 +371,7 @@ Get the real answers and I'll drop them in, or edit the file directly.
 
 | Do this | Unlocks |
 |---|---|
-| **A1–A4** (run SQL) | Court ratings, staff Time-In/Out, audit trail, single-session, per-court photos |
+| **A1–A5** (run SQL) | Court ratings, staff Time-In/Out, audit trail, single-session, per-court photos, real Payment Configuration persistence |
 | **B** (`pg_cron` check) | Lets me *design* auto-cancellation + reminders correctly |
 | **C** (PayMongo) | Payment Automation objective, receipts, payment loading phase |
 | **D** (Resend) | Gmail booking reminders |
@@ -381,7 +382,7 @@ Get the real answers and I'll drop them in, or edit the file directly.
 | **F** (court rates) | Replaces every "Rate TBA" with real pricing |
 | **G** (T&C values) | Completes the Terms & Conditions page |
 
-**Cheapest high-impact combination:** A1–A4, E2, E3 and E4 — all three email
+**Cheapest high-impact combination:** A1–A5, E2, E3 and E4 — all three email
 templates, not two. That's roughly fifteen minutes of copy-paste in the Supabase
 dashboard and it activates most of what's already built and sitting dormant —
 including log-in, sign-up and password reset, all three of which are *currently

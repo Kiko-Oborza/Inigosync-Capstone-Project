@@ -528,6 +528,19 @@ body.staff-sidebar-open .staff-toggle-bar:nth-child(3) {
 
 .staff-select:focus, .staff-input:focus { outline: none; border-color: var(--color-primary); }
 
+/* Account Settings' password fields (Style/Dashboard.css's
+   .dash-input-wrap/.dash-toggle-visibility pattern, ported here since
+   staff previously had no password UI at all to need it). */
+.staff-input-wrap { position: relative; display: flex; align-items: center; }
+.staff-input-wrap input { padding-right: 44px; }
+.staff-toggle-visibility {
+    position: absolute; right: 10px; width: 30px; height: 30px;
+    display: flex; align-items: center; justify-content: center;
+    background: transparent; border: none; color: var(--color-ink-faint); cursor: pointer;
+    border-radius: 8px; transition: color 0.2s, background 0.2s;
+}
+.staff-toggle-visibility:hover { color: var(--color-ink); background: rgba(244, 239, 230, 0.08); }
+
 .staff-payment-options { display: flex; gap: 10px; }
 
 .staff-payment-option {
@@ -536,6 +549,12 @@ body.staff-sidebar-open .staff-toggle-bar:nth-child(3) {
 }
 
 .staff-payment-option.is-selected { border-color: var(--color-primary); }
+
+/* A payment method the admin has turned off in Payment Configuration
+   (app_settings.gcash_enabled/cash_enabled) — see
+   includes/staff_dashboard.js's applyWalkinPaymentSettings(). Same faded
+   "not just inert" treatment as Style/Dashboard.css's .dash-slot.is-unavailable. */
+.staff-payment-option.is-disabled { opacity: 0.5; cursor: not-allowed; }
 
 .staff-payment-option-head { display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: 0.86rem; }
 

@@ -161,33 +161,42 @@
                  ============================================================ -->
             <section class="admin-panel is-active" data-admin-panel="overview">
 
+                <!-- Values computed live in includes/owner_dashboard.js
+                     (refreshOverviewStats) from the real `booking`, `sport`,
+                     and `profiles` tables — no longer hardcoded to
+                     102/14/8/4. "—" is the pre-fetch/failure placeholder —
+                     an honest "not loaded yet", never a fake "0" (same rule
+                     as the "Rate TBA" placeholder in Court Listings below).
+                     refreshOverviewStats replaces it with a real count once
+                     the fetch resolves, or leaves it as "—" if window.sb
+                     isn't available yet or the fetch fails outright. -->
                 <div class="admin-stat-grid">
                     <div class="admin-stat-card">
                         <div class="admin-stat-icon">
                             <svg viewBox="0 0 24 24" fill="none"><rect x="3.5" y="4.5" width="17" height="16" rx="2" stroke="currentColor" stroke-width="1.8"/><path d="M3.5 9.5h17M8 3v3M16 3v3" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
                         </div>
-                        <span class="admin-stat-value">102</span>
+                        <span class="admin-stat-value" data-admin-stat="bookings-month">—</span>
                         <span class="admin-stat-label">Bookings this month</span>
                     </div>
                     <div class="admin-stat-card">
                         <div class="admin-stat-icon">
                             <svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.8"/><path d="M12 7v5l3.5 2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
                         </div>
-                        <span class="admin-stat-value">14</span>
+                        <span class="admin-stat-value" data-admin-stat="bookings-today">—</span>
                         <span class="admin-stat-label">Bookings today</span>
                     </div>
                     <div class="admin-stat-card">
                         <div class="admin-stat-icon">
                             <svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.8"/><path d="M12 3v18M3 12h18" stroke="currentColor" stroke-width="1.5"/></svg>
                         </div>
-                        <span class="admin-stat-value">8</span>
+                        <span class="admin-stat-value" data-admin-stat="sports-listed">—</span>
                         <span class="admin-stat-label">Sports listed</span>
                     </div>
                     <div class="admin-stat-card">
                         <div class="admin-stat-icon">
                             <svg viewBox="0 0 24 24" fill="none"><circle cx="9" cy="8" r="3.4" stroke="currentColor" stroke-width="1.8"/><path d="M2.5 19c1.2-3.4 3.8-5.2 6.5-5.2s5.3 1.8 6.5 5.2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
                         </div>
-                        <span class="admin-stat-value">4</span>
+                        <span class="admin-stat-value" data-admin-stat="active-staff">—</span>
                         <span class="admin-stat-label">Active staff accounts</span>
                     </div>
                 </div>
@@ -374,7 +383,7 @@
                                         <div class="admin-table-actions">
                                             <button type="button" class="admin-mini-btn" data-admin-reset-password>Reset Password</button>
                                             <button type="button" class="admin-mini-btn" data-admin-edit-staff>Edit</button>
-                                            <button type="button" class="admin-mini-btn is-danger" data-admin-delete-staff>Delete</button>
+                                            <button type="button" class="admin-mini-btn is-danger" data-admin-delete-staff>Deactivate</button>
                                         </div>
                                     </td>
                                 </tr>
@@ -387,7 +396,7 @@
                                         <div class="admin-table-actions">
                                             <button type="button" class="admin-mini-btn" data-admin-reset-password>Reset Password</button>
                                             <button type="button" class="admin-mini-btn" data-admin-edit-staff>Edit</button>
-                                            <button type="button" class="admin-mini-btn is-danger" data-admin-delete-staff>Delete</button>
+                                            <button type="button" class="admin-mini-btn is-danger" data-admin-delete-staff>Deactivate</button>
                                         </div>
                                     </td>
                                 </tr>
@@ -400,7 +409,7 @@
                                         <div class="admin-table-actions">
                                             <button type="button" class="admin-mini-btn" data-admin-reset-password>Reset Password</button>
                                             <button type="button" class="admin-mini-btn" data-admin-edit-staff>Edit</button>
-                                            <button type="button" class="admin-mini-btn is-danger" data-admin-delete-staff>Delete</button>
+                                            <button type="button" class="admin-mini-btn is-danger" data-admin-delete-staff>Deactivate</button>
                                         </div>
                                     </td>
                                 </tr>
@@ -563,8 +572,16 @@
                             <h3>Home featured slideshow</h3>
                             <p class="admin-card-sub">4 of 6 slots used. Recommended 1600×900, JPG or PNG, under 3 MB.</p>
                         </div>
-                        <span class="admin-media-hint">rotates every 5s · drag to reorder</span>
+                        <span class="admin-media-hint">rotates every 5s</span>
                     </div>
+                    <!-- Upload is disabled here — no Supabase Storage bucket
+                         exists yet (implementation_plan.md E4). Unlike Court
+                         photos below, these slides have no existing admin
+                         edit form to redirect to (the `event` table they'd
+                         map to is public-read-only today, see
+                         includes/landingPage.js), so the honest note is
+                         "not available", not a URL-paste workaround. -->
+                    <p class="admin-media-disabled-note" style="color: var(--color-ink-faint); font-size: 0.82rem; margin: -6px 0 4px;">Photo/caption upload isn't available from this dashboard yet — ask your developer to update these directly.</p>
 
                     <div class="admin-slide-grid" data-admin-slide-grid>
                         <div class="admin-slide-card" data-admin-slide>
@@ -573,13 +590,13 @@
                                 <span class="admin-slide-badge">Slide 1</span>
                             </div>
                             <div class="admin-slide-body">
-                                <input type="text" class="admin-input admin-slide-title" value="Bocohan Summer Basketball League">
-                                <input type="text" class="admin-input admin-slide-caption" value="Finals night · Aug 24 · Court 1">
+                                <input type="text" class="admin-input admin-slide-title" value="Bocohan Summer Basketball League" disabled>
+                                <input type="text" class="admin-input admin-slide-caption" value="Finals night · Aug 24 · Court 1" disabled>
                                 <div class="admin-slide-actions">
-                                    <button type="button" class="admin-btn-chip-primary" data-admin-slide-replace>Replace photo</button>
-                                    <button type="button" class="admin-btn-chip-danger" data-admin-slide-remove>Remove</button>
+                                    <button type="button" class="admin-btn-chip-primary" data-admin-slide-replace disabled>Replace photo</button>
+                                    <button type="button" class="admin-btn-chip-danger" data-admin-slide-remove disabled>Remove</button>
                                 </div>
-                                <input type="file" accept="image/*" class="admin-visually-hidden" data-admin-slide-file>
+                                <input type="file" accept="image/*" class="admin-visually-hidden" data-admin-slide-file disabled>
                             </div>
                         </div>
 
@@ -589,13 +606,13 @@
                                 <span class="admin-slide-badge">Slide 2</span>
                             </div>
                             <div class="admin-slide-body">
-                                <input type="text" class="admin-input admin-slide-title" value="Weekend Open Play">
-                                <input type="text" class="admin-input admin-slide-caption" value="Sat &amp; Sun · 8:00 AM – 10:00 PM · all courts">
+                                <input type="text" class="admin-input admin-slide-title" value="Weekend Open Play" disabled>
+                                <input type="text" class="admin-input admin-slide-caption" value="Sat &amp; Sun · 8:00 AM – 10:00 PM · all courts" disabled>
                                 <div class="admin-slide-actions">
-                                    <button type="button" class="admin-btn-chip-primary" data-admin-slide-replace>Replace photo</button>
-                                    <button type="button" class="admin-btn-chip-danger" data-admin-slide-remove>Remove</button>
+                                    <button type="button" class="admin-btn-chip-primary" data-admin-slide-replace disabled>Replace photo</button>
+                                    <button type="button" class="admin-btn-chip-danger" data-admin-slide-remove disabled>Remove</button>
                                 </div>
-                                <input type="file" accept="image/*" class="admin-visually-hidden" data-admin-slide-file>
+                                <input type="file" accept="image/*" class="admin-visually-hidden" data-admin-slide-file disabled>
                             </div>
                         </div>
 
@@ -605,13 +622,13 @@
                                 <span class="admin-slide-badge">Slide 3</span>
                             </div>
                             <div class="admin-slide-body">
-                                <input type="text" class="admin-input admin-slide-title" value="Four New Badminton Courts Open">
-                                <input type="text" class="admin-input admin-slide-caption" value="9 courts total · book any slot online">
+                                <input type="text" class="admin-input admin-slide-title" value="Four New Badminton Courts Open" disabled>
+                                <input type="text" class="admin-input admin-slide-caption" value="9 courts total · book any slot online" disabled>
                                 <div class="admin-slide-actions">
-                                    <button type="button" class="admin-btn-chip-primary" data-admin-slide-replace>Replace photo</button>
-                                    <button type="button" class="admin-btn-chip-danger" data-admin-slide-remove>Remove</button>
+                                    <button type="button" class="admin-btn-chip-primary" data-admin-slide-replace disabled>Replace photo</button>
+                                    <button type="button" class="admin-btn-chip-danger" data-admin-slide-remove disabled>Remove</button>
                                 </div>
-                                <input type="file" accept="image/*" class="admin-visually-hidden" data-admin-slide-file>
+                                <input type="file" accept="image/*" class="admin-visually-hidden" data-admin-slide-file disabled>
                             </div>
                         </div>
 
@@ -621,24 +638,29 @@
                                 <span class="admin-slide-badge">Slide 4</span>
                             </div>
                             <div class="admin-slide-body">
-                                <input type="text" class="admin-input admin-slide-title" value="Duckpin &amp; Ten-Pin Nights">
-                                <input type="text" class="admin-input admin-slide-caption" value="8 duckpin + 12 ten-pin lanes · Mon–Thu">
+                                <input type="text" class="admin-input admin-slide-title" value="Duckpin &amp; Ten-Pin Nights" disabled>
+                                <input type="text" class="admin-input admin-slide-caption" value="8 duckpin + 12 ten-pin lanes · Mon–Thu" disabled>
                                 <div class="admin-slide-actions">
-                                    <button type="button" class="admin-btn-chip-primary" data-admin-slide-replace>Replace photo</button>
-                                    <button type="button" class="admin-btn-chip-danger" data-admin-slide-remove>Remove</button>
+                                    <button type="button" class="admin-btn-chip-primary" data-admin-slide-replace disabled>Replace photo</button>
+                                    <button type="button" class="admin-btn-chip-danger" data-admin-slide-remove disabled>Remove</button>
                                 </div>
-                                <input type="file" accept="image/*" class="admin-visually-hidden" data-admin-slide-file>
+                                <input type="file" accept="image/*" class="admin-visually-hidden" data-admin-slide-file disabled>
                             </div>
                         </div>
 
-                        <div class="admin-slide-dropzone" data-admin-slide-dropzone tabindex="0" role="button" aria-label="Add a new slide">
+                        <!-- Not a real button anymore (no tabindex/role) —
+                             upload has no backend to receive it yet
+                             (implementation_plan.md E4). .is-disabled fades
+                             it so it doesn't look clickable; see
+                             Style/owner_dashboard.css. -->
+                        <div class="admin-slide-dropzone is-disabled" data-admin-slide-dropzone aria-disabled="true" aria-label="Adding a new slide is not available yet">
                             <div class="admin-dropzone-icon">
                                 <svg viewBox="0 0 24 24" fill="none"><path d="M12 16V5m0 0L8 9m4-4l4 4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><path d="M4 17v2a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
                             </div>
-                            <strong>Drop a photo or video</strong>
-                            <span>or <span class="admin-dropzone-browse">browse files</span></span>
+                            <strong>Upload not available yet</strong>
+                            <span>ask your developer to add a new slide</span>
                             <span class="admin-dropzone-meta">JPG · PNG · MP4 up to 20 MB</span>
-                            <input type="file" accept="image/*,video/mp4" class="admin-visually-hidden" data-admin-slide-add-file>
+                            <input type="file" accept="image/*,video/mp4" class="admin-visually-hidden" data-admin-slide-add-file disabled>
                         </div>
                     </div>
                 </div>
@@ -650,6 +672,14 @@
                             <p class="admin-card-sub">One photo per sport — shown on court listings and the booking flow.</p>
                         </div>
                     </div>
+                    <!-- Upload is disabled here — no Supabase Storage bucket
+                         exists yet (implementation_plan.md E4). Unlike the
+                         slideshow above, a court's photo already has a real
+                         edit path: the `image_url` field on Court Listings →
+                         Edit writes straight to `court.image_url`
+                         (includes/owner_dashboard.js:~530-600), so admins
+                         are pointed there instead of a dead upload button. -->
+                    <p class="admin-media-disabled-note" style="color: var(--color-ink-faint); font-size: 0.82rem; margin: -6px 0 4px;">Photo upload isn't available here yet — paste an image URL instead: <strong>Court Listings → Edit → Image URL</strong>. It updates the photo everywhere on the site immediately.</p>
 
                     <div class="admin-mediacourt-grid">
                         <div class="admin-mediacourt-card" data-admin-mediacourt>
@@ -657,8 +687,8 @@
                             <div class="admin-mediacourt-body">
                                 <h4>Basketball</h4>
                                 <p>updated Aug 2</p>
-                                <button type="button" data-admin-mediacourt-replace>Replace photo</button>
-                                <input type="file" accept="image/*" class="admin-visually-hidden" data-admin-mediacourt-file>
+                                <button type="button" data-admin-mediacourt-replace disabled>Replace photo</button>
+                                <input type="file" accept="image/*" class="admin-visually-hidden" data-admin-mediacourt-file disabled>
                             </div>
                         </div>
                         <div class="admin-mediacourt-card" data-admin-mediacourt>
@@ -666,8 +696,8 @@
                             <div class="admin-mediacourt-body">
                                 <h4>Badminton</h4>
                                 <p>updated Jul 28</p>
-                                <button type="button" data-admin-mediacourt-replace>Replace photo</button>
-                                <input type="file" accept="image/*" class="admin-visually-hidden" data-admin-mediacourt-file>
+                                <button type="button" data-admin-mediacourt-replace disabled>Replace photo</button>
+                                <input type="file" accept="image/*" class="admin-visually-hidden" data-admin-mediacourt-file disabled>
                             </div>
                         </div>
                         <div class="admin-mediacourt-card" data-admin-mediacourt>
@@ -675,8 +705,8 @@
                             <div class="admin-mediacourt-body">
                                 <h4>Bowling</h4>
                                 <p>updated Jul 12</p>
-                                <button type="button" data-admin-mediacourt-replace>Replace photo</button>
-                                <input type="file" accept="image/*" class="admin-visually-hidden" data-admin-mediacourt-file>
+                                <button type="button" data-admin-mediacourt-replace disabled>Replace photo</button>
+                                <input type="file" accept="image/*" class="admin-visually-hidden" data-admin-mediacourt-file disabled>
                             </div>
                         </div>
                         <div class="admin-mediacourt-card" data-admin-mediacourt>
@@ -684,8 +714,8 @@
                             <div class="admin-mediacourt-body">
                                 <h4>Pickleball</h4>
                                 <p>updated Aug 9</p>
-                                <button type="button" data-admin-mediacourt-replace>Replace photo</button>
-                                <input type="file" accept="image/*" class="admin-visually-hidden" data-admin-mediacourt-file>
+                                <button type="button" data-admin-mediacourt-replace disabled>Replace photo</button>
+                                <input type="file" accept="image/*" class="admin-visually-hidden" data-admin-mediacourt-file disabled>
                             </div>
                         </div>
                         <div class="admin-mediacourt-card" data-admin-mediacourt>
@@ -693,8 +723,8 @@
                             <div class="admin-mediacourt-body">
                                 <h4>Volleyball</h4>
                                 <p>updated Jun 30</p>
-                                <button type="button" data-admin-mediacourt-replace>Replace photo</button>
-                                <input type="file" accept="image/*" class="admin-visually-hidden" data-admin-mediacourt-file>
+                                <button type="button" data-admin-mediacourt-replace disabled>Replace photo</button>
+                                <input type="file" accept="image/*" class="admin-visually-hidden" data-admin-mediacourt-file disabled>
                             </div>
                         </div>
                         <div class="admin-mediacourt-card" data-admin-mediacourt>
@@ -702,8 +732,8 @@
                             <div class="admin-mediacourt-body">
                                 <h4>Lawn Tennis</h4>
                                 <p>no photo yet — never updated</p>
-                                <button type="button" data-admin-mediacourt-replace>Replace photo</button>
-                                <input type="file" accept="image/*" class="admin-visually-hidden" data-admin-mediacourt-file>
+                                <button type="button" data-admin-mediacourt-replace disabled>Replace photo</button>
+                                <input type="file" accept="image/*" class="admin-visually-hidden" data-admin-mediacourt-file disabled>
                             </div>
                         </div>
                         <div class="admin-mediacourt-card" data-admin-mediacourt>
@@ -711,8 +741,8 @@
                             <div class="admin-mediacourt-body">
                                 <h4>Billiards</h4>
                                 <p>no photo yet — never updated</p>
-                                <button type="button" data-admin-mediacourt-replace>Replace photo</button>
-                                <input type="file" accept="image/*" class="admin-visually-hidden" data-admin-mediacourt-file>
+                                <button type="button" data-admin-mediacourt-replace disabled>Replace photo</button>
+                                <input type="file" accept="image/*" class="admin-visually-hidden" data-admin-mediacourt-file disabled>
                             </div>
                         </div>
                         <div class="admin-mediacourt-card" data-admin-mediacourt>
@@ -720,8 +750,8 @@
                             <div class="admin-mediacourt-body">
                                 <h4>Table Tennis</h4>
                                 <p>no photo yet — never updated</p>
-                                <button type="button" data-admin-mediacourt-replace>Replace photo</button>
-                                <input type="file" accept="image/*" class="admin-visually-hidden" data-admin-mediacourt-file>
+                                <button type="button" data-admin-mediacourt-replace disabled>Replace photo</button>
+                                <input type="file" accept="image/*" class="admin-visually-hidden" data-admin-mediacourt-file disabled>
                             </div>
                         </div>
                     </div>
@@ -757,8 +787,14 @@
                             <input type="text" class="admin-input" value="Rosalinda Driz">
                         </div>
                         <div class="admin-form-group">
-                            <span class="admin-form-label">Username</span>
-                            <input type="text" class="admin-input" value="admin.driz">
+                            <!-- No `username` column exists on `profiles` — this
+                                 field used to be typeable and silently discarded
+                                 on Save (nothing read or wrote it). Disabled +
+                                 relabeled instead of removed, same "cannot be
+                                 changed here" pattern user_dashboard.html already
+                                 uses for the read-only email field. -->
+                            <span class="admin-form-label">Username · not available yet</span>
+                            <input type="text" class="admin-input" placeholder="Not available yet" disabled>
                         </div>
                         <div class="admin-form-group">
                             <span class="admin-form-label">Email address</span>
@@ -830,6 +866,11 @@
      Listings needs. Both must load before owner_dashboard.js. -->
 <script src="../includes/courts-data.js"></script>
 <script src="../includes/courtsData.js"></script>
+
+<!-- Payment/app settings data layer (E2, implementation_plan.md) — same
+     fetch-with-fallback shape as courtsData.js above. Must load before
+     owner_dashboard.js, which reads AND writes it (Payment Configuration). -->
+<script src="../includes/appSettings.js"></script>
 
 <!-- Script for owner dashboard functionality -->
 <script src="../includes/owner_dashboard.js"></script>

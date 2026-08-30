@@ -1,8 +1,10 @@
 // IñigoSync — Owner Dashboard controller
-// Staff Management, Account Settings, and (as of Phase 2) Court Listings
-// talk to the real Supabase database. Payment Configuration and Media
-// Manager are still UI/design only — those TODOs are unchanged. (Booking
-// trend chart setup lives in event/chart.js, loaded below.)
+// Staff Management, Account Settings, Court Listings, the Booking Overview
+// stat tiles, and Payment Configuration all talk to the real Supabase
+// database. Media Manager's upload controls are honestly disabled (no
+// Supabase Storage bucket exists — see that section's comment below); court
+// photos are still fully editable via Court Listings' image_url field.
+// (Booking trend chart setup lives in event/chart.js, loaded below.)
 
 document.addEventListener('DOMContentLoaded', () => {
     // ------------------------------------------------------------------
@@ -133,6 +135,120 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     renderClock();
     window.setInterval(renderClock, 30000);
+
+    // True when a Supabase/PostgREST error means "this column/table doesn't
+    // exist" — used to turn a raw Postgres error into an honest, specific
+    // "needs a database update" message instead of a generic one or (worse)
+    // a silent fake success. Same detector as staff_dashboard.js's
+    // isSchemaMismatchError — duplicated rather than shared, matching how
+    // every other helper in this file is self-contained (no shared module
+    // beyond escape.js/courtsData.js/appSettings.js).
+    function isSchemaMismatchError(error) {
+        if (!error) return false;
+        const code = error.code || '';
+        const message = String(error.message || '').toLowerCase();
+        return code === 'PGRST204' || code === 'PGRST205' || code === '42703' || code === '42P01'
+            || message.includes('could not find') || message.includes('does not exist')
+            || message.includes('schema cache');
+    }
+
+    // ------------------------------------------------------------------
+    // Booking Overview — 4 real stat tiles (previously hardcoded to
+    // 102/14/8/4 with no data-* binding at all). Computed from the same
+    // tables Staff Management, Court Listings, and staff_dashboard.js's own
+    // stat tiles already read — no new tables needed (implementation_plan.md
+    // E1). "—" (not "0") whenever a count is genuinely unknown — a query
+    // error, window.sb missing, or the whole fetch rejecting — matching the
+    // project's existing "Rate TBA"-style rule of never showing an invented
+    // number.
+    // ------------------------------------------------------------------
+    function setAdminStat(key, value) {
+        document.querySelectorAll(`[data-admin-stat="${key}"]`).forEach((el) => {
+            el.textContent = String(value);
+        });
+    }
+
+    const ADMIN_STAT_KEYS = ['bookings-month', 'bookings-today', 'sports-listed', 'active-staff'];
+    function setAllAdminStatsUnknown() {
+        ADMIN_STAT_KEYS.forEach((key) => setAdminStat(key, '—'));
+    }
+
+    function monthRange(date = new Date()) {
+        const start = new Date(date.getFullYear(), date.getMonth(), 1);
+        const end = new Date(date.getFullYear(), date.getMonth() + 1, 1);
+        return { start, end };
+    }
+
+    function dayRange(date = new Date()) {
+        const start = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+        const end = new Date(start.getTime() + 24 * 60 * 60 * 1000);
+        return { start, end };
+    }
+
+    async function refreshOverviewStats() {
+        // window.sb missing leaves the tiles on Pages/owner_dashboard.html's
+        // own markup default, which is "—" for exactly this reason (see
+        // that file's comment on the admin-stat-grid).
+        if (!window.sb) return;
+
+        const { start: monthStart, end: monthEnd } = monthRange();
+        const { start: dayStart, end: dayEnd } = dayRange();
+
+        let monthRes, todayRes, staffRes, sports;
+        try {
+            [monthRes, todayRes, staffRes, sports] = await Promise.all([
+                window.sb.from('booking').select('*', { count: 'exact', head: true })
+                    .gte('time_date', monthStart.toISOString()).lt('time_date', monthEnd.toISOString()),
+                window.sb.from('booking').select('*', { count: 'exact', head: true })
+                    .gte('time_date', dayStart.toISOString()).lt('time_date', dayEnd.toISOString()),
+                // "Not disabled" — NOT .eq('status', 'active'). staffStatusBadge()
+                // below and the Deactivate button both treat "anything but
+                // disabled" (including a NULL status, which no frontend code
+                // here ever sets, and profiles' real column constraints are
+                // unknown — see database/seed/001_seed_users.sql's "KNOWN
+                // LIMITATION" note) as active/shown; .eq('status', 'active')
+                // would only match seeded demo rows and disagree with the
+                // staff table on the same screen. Plain .neq('status',
+                // 'disabled') isn't enough on its own either: SQL's `<>`
+                // never matches a NULL column (three-valued logic), so a
+                // NULL-status row would still be silently dropped — the
+                // .or() below adds it back explicitly.
+                window.sb.from('profiles').select('*', { count: 'exact', head: true })
+                    .in('role', ['staff', 'admin']).or('status.neq.disabled,status.is.null'),
+                window.InigoCourtsData ? window.InigoCourtsData.getSports() : Promise.resolve([]),
+            ]);
+        } catch (err) {
+            // A rejected Promise.all (network failure, etc.) — as opposed to
+            // an individual query resolving with a Postgres error, handled
+            // below — means none of the four counts are known.
+            console.error('[admin] failed to load the overview stats', err);
+            setAllAdminStatsUnknown();
+            return;
+        }
+
+        if (monthRes.error) console.error('[admin] failed to load the bookings-this-month stat', monthRes.error);
+        if (todayRes.error) console.error('[admin] failed to load the bookings-today stat', todayRes.error);
+        if (staffRes.error) console.error('[admin] failed to load the active-staff stat', staffRes.error);
+
+        // getSports() falls back to a static SPORTS_FALLBACK array when the
+        // real `sport` table can't be reached (includes/courtsData.js) —
+        // isSportsFallback() reports that without changing getSports()'s own
+        // return shape, which the court-form sport dropdown below and
+        // staff_dashboard.js's schedule tabs still expect to be a plain
+        // array. A fallback count is a real number of *options*, not a real
+        // count of listed sports, so it's shown as unknown too.
+        const sportsIsFallback = Boolean(
+            window.InigoCourtsData && window.InigoCourtsData.isSportsFallback && window.InigoCourtsData.isSportsFallback()
+        );
+
+        setAdminStat('bookings-month', monthRes.error ? '—' : (monthRes.count || 0));
+        setAdminStat('bookings-today', todayRes.error ? '—' : (todayRes.count || 0));
+        setAdminStat('sports-listed', sportsIsFallback ? '—' : (sports || []).length);
+        setAdminStat('active-staff', staffRes.error ? '—' : (staffRes.count || 0));
+    }
+
+    refreshOverviewStats();
+    document.addEventListener('inigosync:profile-ready', refreshOverviewStats);
 
     // ------------------------------------------------------------------
     // Staff Management — toggle add-staff form, create/reset/edit/delete
@@ -367,22 +483,87 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // ------------------------------------------------------------------
-    // Payment Configuration — toggle switches + save
+    // Payment Configuration — toggle switches + real load/save against
+    // `app_settings` (database/schema/007_app_settings.sql, E2). Loaded
+    // through window.InigoAppSettings (includes/appSettings.js) — the same
+    // fetch-with-fallback data layer includes/Dashboard.js and
+    // includes/staff_dashboard.js read — so this form starts on whatever
+    // every other dashboard currently sees: the real saved row, or the
+    // identical hardcoded fallback if the migration hasn't been applied yet.
     // ------------------------------------------------------------------
-    document.querySelectorAll('[data-admin-payment-toggle]').forEach((toggle) => {
+    const paymentToggles = document.querySelectorAll('[data-admin-payment-toggle]');
+    const downpaymentPctInput = document.querySelector('[data-admin-downpayment-pct]');
+
+    paymentToggles.forEach((toggle) => {
         toggle.addEventListener('click', () => {
             toggle.classList.toggle('is-on');
         });
     });
 
+    function applyPaymentSettingsToForm(settings) {
+        if (paymentToggles[0]) paymentToggles[0].classList.toggle('is-on', settings.gcashEnabled);
+        if (paymentToggles[1]) paymentToggles[1].classList.toggle('is-on', settings.cashEnabled);
+        if (downpaymentPctInput) downpaymentPctInput.value = settings.downpaymentPct;
+    }
+
+    if (window.InigoAppSettings) {
+        window.InigoAppSettings.getSettings().then(applyPaymentSettingsToForm);
+    }
+
     const paymentSaveBtn = document.querySelector('[data-admin-payment-save]');
     if (paymentSaveBtn) {
-        paymentSaveBtn.addEventListener('click', () => {
-            const gcashOn = document.querySelectorAll('[data-admin-payment-toggle]')[0]?.classList.contains('is-on');
-            const cashOn = document.querySelectorAll('[data-admin-payment-toggle]')[1]?.classList.contains('is-on');
-            const downpaymentPct = document.querySelector('[data-admin-downpayment-pct]')?.value;
-            // TODO: PATCH /api/admin/payment-settings once the backend is ready.
-            console.log('[admin] payment settings saved (placeholder)', { gcashOn, cashOn, downpaymentPct });
+        paymentSaveBtn.addEventListener('click', async () => {
+            const gcashOn = paymentToggles[0] ? paymentToggles[0].classList.contains('is-on') : true;
+            const cashOn = paymentToggles[1] ? paymentToggles[1].classList.contains('is-on') : true;
+            const pct = Number(downpaymentPctInput ? downpaymentPctInput.value : NaN);
+
+            if (!Number.isFinite(pct) || pct < 0 || pct > 100) {
+                window.InigoToast?.show('Downpayment percentage must be a number between 0 and 100.', true);
+                downpaymentPctInput?.focus();
+                return;
+            }
+
+            if (!window.sb) {
+                window.InigoToast?.show('Unable to reach the server right now. Please try again shortly.', true);
+                return;
+            }
+
+            const originalLabel = paymentSaveBtn.textContent;
+            paymentSaveBtn.disabled = true;
+            paymentSaveBtn.textContent = 'Saving…';
+
+            // Single-row upsert — `id` is always `true` (see
+            // database/schema/007_app_settings.sql's singleton-row design),
+            // so one call handles both "first ever save" (insert) and every
+            // save after that (update); no read-then-branch needed.
+            const { error } = await window.sb.from('app_settings').upsert({
+                id: true,
+                gcash_enabled: gcashOn,
+                cash_enabled: cashOn,
+                downpayment_pct: pct,
+                updated_at: new Date().toISOString(),
+            }, { onConflict: 'id' });
+
+            paymentSaveBtn.disabled = false;
+            paymentSaveBtn.textContent = originalLabel;
+
+            if (error) {
+                // Most likely cause pre-migration: `app_settings` doesn't
+                // exist yet. Either way this is a real, specific failure —
+                // never a fake "Payment settings saved." toast over a save
+                // that didn't happen (implementation_plan.md success
+                // criterion #2).
+                window.InigoToast?.show(
+                    isSchemaMismatchError(error)
+                        ? "This needs a database update that hasn't been applied yet (see database/schema/007_app_settings.sql)."
+                        : (error.message || 'Could not save payment settings. Please try again.'),
+                    true
+                );
+                return;
+            }
+
+            window.InigoAppSettings?.invalidateSettings();
+            window.InigoToast?.show('Payment settings saved.');
         });
     }
 
@@ -730,8 +911,9 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     // Owner Profile — prefill from the real signed-in profile. The
-    // "Username" field has no backing column (profiles has no username),
-    // so it stays display-only and is never persisted.
+    // "Username" field has no backing column (profiles has no username) —
+    // it's now `disabled` in the markup and relabeled "not available yet"
+    // rather than a typeable field whose value silently never saves.
     function renderAdminProfile(profile) {
         const initials = (profile.full_name || profile.email || '?')
             .split(' ').map((p) => p[0]).slice(0, 2).join('').toUpperCase();
@@ -851,111 +1033,18 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     // ------------------------------------------------------------------
-    // Media Manager — home featured slideshow (replace/remove/add) and
-    // per-sport court photos. Client-side preview only, via
-    // URL.createObjectURL; nothing is uploaded or persisted.
-    // TODO: wire to a real backend upload endpoint (multipart POST) once
-    // the backend (PHP/MySQL) is ready — see includes/courts-data.js for
-    // the matching TODO on the read side of this data.
+    // Media Manager — upload is intentionally NOT wired here. Real file
+    // upload needs a Supabase Storage bucket + RLS policies — new
+    // owner-provisioned infrastructure that's out of scope this pass
+    // (implementation_plan.md E4). The old handlers (client-side preview
+    // only, via URL.createObjectURL; nothing was ever uploaded or
+    // persisted) have been removed rather than left dead behind disabled
+    // controls — every Replace/Remove/Add control in
+    // Pages/owner_dashboard.html's Media Manager panel is now a real
+    // `disabled` form control with an explanatory note next to it, so
+    // nothing there still looks interactive while silently doing nothing.
+    // Court photos remain fully editable today via Court Listings → Edit →
+    // Image URL, which writes straight to `court.image_url` (see the Court
+    // Listings section above).
     // ------------------------------------------------------------------
-    document.querySelectorAll('[data-admin-slide]').forEach((card) => {
-        const replaceBtn = card.querySelector('[data-admin-slide-replace]');
-        const removeBtn = card.querySelector('[data-admin-slide-remove]');
-        const fileInput = card.querySelector('[data-admin-slide-file]');
-        const img = card.querySelector('[data-admin-slide-img]');
-
-        if (replaceBtn && fileInput) {
-            replaceBtn.addEventListener('click', () => fileInput.click());
-        }
-
-        if (fileInput && img) {
-            fileInput.addEventListener('change', () => {
-                const file = fileInput.files && fileInput.files[0];
-                if (!file) return;
-                img.src = URL.createObjectURL(file);
-                // TODO: POST /api/admin/media/slides/:id once the backend is ready.
-                console.log('[admin] slide photo replaced (preview only, placeholder)', file.name);
-            });
-        }
-
-        if (removeBtn) {
-            removeBtn.addEventListener('click', () => {
-                // TODO: DELETE /api/admin/media/slides/:id once the backend is ready.
-                console.log('[admin] slide removed (placeholder)');
-                card.remove();
-            });
-        }
-    });
-
-    const slideDropzone = document.querySelector('[data-admin-slide-dropzone]');
-    if (slideDropzone) {
-        const addFileInput = slideDropzone.querySelector('[data-admin-slide-add-file]');
-
-        slideDropzone.addEventListener('click', () => {
-            if (addFileInput) addFileInput.click();
-        });
-
-        slideDropzone.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter' || e.key === ' ') {
-                e.preventDefault();
-                if (addFileInput) addFileInput.click();
-            }
-        });
-
-        ['dragenter', 'dragover'].forEach((evt) => {
-            slideDropzone.addEventListener(evt, (e) => {
-                e.preventDefault();
-                slideDropzone.classList.add('is-dragover');
-            });
-        });
-
-        ['dragleave', 'drop'].forEach((evt) => {
-            slideDropzone.addEventListener(evt, (e) => {
-                e.preventDefault();
-                slideDropzone.classList.remove('is-dragover');
-            });
-        });
-
-        slideDropzone.addEventListener('drop', (e) => {
-            const file = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
-            if (!file) return;
-            // TODO: POST /api/admin/media/slides once the backend is ready —
-            // this demo only logs the dropped file, it doesn't add a new
-            // slide card (that needs a slot-limit + real upload flow).
-            console.log('[admin] new slide dropped (placeholder)', file.name);
-        });
-
-        if (addFileInput) {
-            addFileInput.addEventListener('change', () => {
-                const file = addFileInput.files && addFileInput.files[0];
-                if (!file) return;
-                console.log('[admin] new slide selected (placeholder)', file.name);
-            });
-        }
-    }
-
-    document.querySelectorAll('[data-admin-mediacourt]').forEach((card) => {
-        const replaceBtn = card.querySelector('[data-admin-mediacourt-replace]');
-        const fileInput = card.querySelector('[data-admin-mediacourt-file]');
-        const img = card.querySelector('[data-admin-mediacourt-img]');
-        const caption = card.querySelector('.admin-mediacourt-body p');
-
-        if (replaceBtn && fileInput) {
-            replaceBtn.addEventListener('click', () => fileInput.click());
-        }
-
-        if (fileInput && img) {
-            fileInput.addEventListener('change', () => {
-                const file = fileInput.files && fileInput.files[0];
-                if (!file) return;
-                img.src = URL.createObjectURL(file);
-                if (caption) {
-                    const today = new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-                    caption.textContent = `updated ${today}`;
-                }
-                // TODO: POST /api/admin/media/courts/:sport once the backend is ready.
-                console.log('[admin] court photo replaced (preview only, placeholder)', file.name);
-            });
-        }
-    });
 });

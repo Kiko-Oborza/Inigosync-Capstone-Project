@@ -286,7 +286,14 @@ document.addEventListener('DOMContentLoaded', () => {
         date: bookDate ? bookDate.value : '',
         time: null,
         paymentType: 'downpayment',
+        // Overwritten once window.InigoAppSettings.getSettings() resolves
+        // below — 50 is the same fallback that module itself uses when
+        // `app_settings` doesn't exist yet, so this default is never
+        // visibly wrong, just possibly stale for a moment on first load.
+        downpaymentPct: window.InigoAppSettings ? window.InigoAppSettings.DEFAULT_SETTINGS.downpaymentPct : 50,
     };
+
+    const downpaymentDesc = document.querySelector('[data-dash-payment-desc="downpayment"]');
 
     function formatDate(value) {
         if (!value) return '—';
@@ -301,14 +308,21 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function updateSummary() {
         const isFull = bookingState.paymentType === 'full';
-        const amount = hasKnownRate() ? (isFull ? bookingState.rate : bookingState.rate * 0.5) : null;
+        const pct = bookingState.downpaymentPct;
+        const amount = hasKnownRate() ? (isFull ? bookingState.rate : bookingState.rate * (pct / 100)) : null;
 
         if (summaryCourt) summaryCourt.textContent = bookingState.court || '—';
         if (summaryDate) summaryDate.textContent = formatDate(bookingState.date);
         if (summaryTime) summaryTime.textContent = bookingState.time || '— Select a slot —';
         if (summaryRate) summaryRate.textContent = hasKnownRate() ? `₱${bookingState.rate}${bookingState.rateUnit}` : 'Rate TBA';
-        if (summaryPayment) summaryPayment.textContent = isFull ? 'Full Payment' : 'Downpayment (50%)';
+        if (summaryPayment) summaryPayment.textContent = isFull ? 'Full Payment' : `Downpayment (${pct}%)`;
         if (summaryTotal) summaryTotal.textContent = amount !== null ? `₱${amount.toFixed(2)}` : '—';
+        // Downpayment option's own description line ("Pay N% now, balance
+        // on-site.") — kept in sync with the same real downpayment_pct
+        // rather than left at its hardcoded "50%" (implementation_plan.md
+        // E2, the same duplicated-hardcoded-50% defect Payment
+        // Configuration was built to fix).
+        if (downpaymentDesc) downpaymentDesc.textContent = `Pay ${pct}% now, balance on-site.`;
 
         if (bookSubmit) {
             const ready = Boolean(bookingState.time) && Boolean(bookingState.court);
@@ -461,6 +475,20 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     updateSummary();
+
+    // Real downpayment percentage (E2, implementation_plan.md) — read once
+    // from `app_settings` via window.InigoAppSettings (includes/appSettings.js),
+    // falling back to the same 50% bookingState.downpaymentPct already
+    // started at if that table/row doesn't exist yet. GCash/Cash on/off
+    // (the other two app_settings columns) have no UI surface on this
+    // booking form — it only ever offered Downpayment vs Full Payment, never
+    // a GCash/Cash method choice — so only the percentage is wired here.
+    if (window.InigoAppSettings) {
+        window.InigoAppSettings.getSettings().then((settings) => {
+            bookingState.downpaymentPct = settings.downpaymentPct;
+            updateSummary();
+        });
+    }
 
     // ------------------------------------------------------------------
     // "Book Now" (Court Information cards) — jumps to the Booking panel and
@@ -645,6 +673,24 @@ document.addEventListener('DOMContentLoaded', () => {
         return d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
     }
 
+    // Profile panel's Total bookings / Completed / Cancelled tiles
+    // ([3]/[4]/[5] of .dash-profile-meta-item — Member since is [2],
+    // handled separately in renderProfile() via the auth session).
+    // Computed from the exact same booking rows refreshMyBookings() already
+    // fetches for the My Bookings table below, rather than a second query.
+    // booking.status is CHECK-constrained to pending/confirmed/cancelled/
+    // completed (confirmed live against the database), so those are the
+    // only values ever seen here.
+    function renderProfileBookingStats(bookings) {
+        const metaItems = document.querySelectorAll('[data-dash-panel="profile"] .dash-profile-meta-item');
+        const total = bookings.length;
+        const completed = bookings.filter((b) => b.status === 'completed').length;
+        const cancelled = bookings.filter((b) => b.status === 'cancelled').length;
+        if (metaItems[3]) metaItems[3].querySelector('span:last-child').textContent = String(total);
+        if (metaItems[4]) metaItems[4].querySelector('span:last-child').textContent = String(completed);
+        if (metaItems[5]) metaItems[5].querySelector('span:last-child').textContent = String(cancelled);
+    }
+
     async function refreshMyBookings() {
         if (!bookingsTableBody || !window.sb || !window.inigosyncProfile) return;
 
@@ -658,6 +704,8 @@ document.addEventListener('DOMContentLoaded', () => {
             console.error('[dashboard] failed to load bookings', error);
             return;
         }
+
+        renderProfileBookingStats(data || []);
 
         bookingsTableBody.innerHTML = '';
 
@@ -744,6 +792,17 @@ document.addEventListener('DOMContentLoaded', () => {
         return String(raw || '').replace(/[^0-9]/g, '');
     }
 
+    // Same hoisted-function-declaration reasoning as digitsOnly above —
+    // safe to call from renderProfile() regardless of source order.
+    // "July 2026" (the old hardcoded value) is coincidentally this
+    // function's exact output format, so a real date renders identically
+    // to how the placeholder used to look.
+    function formatMemberSince(iso) {
+        const d = new Date(iso);
+        if (Number.isNaN(d.getTime())) return '—';
+        return d.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+    }
+
     function renderProfile(profile) {
         const initials = (profile.full_name || profile.email || '?')
             .split(' ').map((p) => p[0]).slice(0, 2).join('').toUpperCase();
@@ -757,6 +816,20 @@ document.addEventListener('DOMContentLoaded', () => {
         const metaItems = document.querySelectorAll('[data-dash-panel="profile"] .dash-profile-meta-item');
         if (metaItems[0]) metaItems[0].querySelector('span:last-child').textContent = profile.email || '—';
         if (metaItems[1]) metaItems[1].querySelector('span:last-child').textContent = profile.contact_num || '—';
+
+        // Member since ([2]) — from the AUTH session's created_at, not a
+        // `profiles` column. There is no schema file for `profiles` in this
+        // repo and a created_at column there is unconfirmed
+        // (implementation_plan.md E3/"Open questions"), but Supabase Auth
+        // always provides session.user.created_at, so this has zero schema
+        // risk. Async and fire-and-forget — renderProfile()'s callers never
+        // await it, same as the rest of this function's side effects.
+        if (metaItems[2] && window.sb) {
+            window.sb.auth.getSession().then(({ data }) => {
+                const createdAt = data && data.session && data.session.user ? data.session.user.created_at : null;
+                metaItems[2].querySelector('span:last-child').textContent = createdAt ? formatMemberSince(createdAt) : '—';
+            });
+        }
 
         const settingsPanel = document.querySelector('[data-dash-panel="settings"]');
         if (settingsPanel) {

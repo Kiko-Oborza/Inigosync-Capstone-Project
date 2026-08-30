@@ -441,7 +441,11 @@
                                             <input type="radio" name="payment-option" checked data-dash-payment="downpayment">
                                             Downpayment
                                         </span>
-                                        <p>Pay 50% now, balance on-site.</p>
+                                        <!-- "50%" here is a pre-fetch placeholder —
+                                             includes/Dashboard.js rewrites it to the
+                                             real app_settings.downpayment_pct (or
+                                             this same 50% fallback) once loaded. -->
+                                        <p data-dash-payment-desc="downpayment">Pay 50% now, balance on-site.</p>
                                     </label>
                                     <label class="dash-payment-option" data-dash-payment-option>
                                         <span class="dash-payment-option-head">
@@ -637,21 +641,28 @@
                                 <span>Mobile number</span>
                                 <span>0912 345 6789</span>
                             </div>
+                            <!-- Values below are pre-fetch placeholders ("—"),
+                                 same honesty convention as this page's "Rate
+                                 TBA"/"Loading…" states — not invented numbers.
+                                 includes/Dashboard.js's renderProfile()
+                                 overwrites all four: Member since from the
+                                 auth session's created_at, the other three
+                                 from the customer's own `booking` rows. -->
                             <div class="dash-profile-meta-item">
                                 <span>Member since</span>
-                                <span>July 2026</span>
+                                <span>—</span>
                             </div>
                             <div class="dash-profile-meta-item">
                                 <span>Total bookings</span>
-                                <span>12</span>
+                                <span>—</span>
                             </div>
                             <div class="dash-profile-meta-item">
                                 <span>Completed</span>
-                                <span>9</span>
+                                <span>—</span>
                             </div>
                             <div class="dash-profile-meta-item">
                                 <span>Cancelled</span>
-                                <span>1</span>
+                                <span>—</span>
                             </div>
                         </div>
 
@@ -770,6 +781,10 @@
          Management court dropdown from window.InigoCourtsData. -->
     <script src="../includes/courts-data.js"></script>
     <script src="../includes/courtsData.js"></script>
+    <!-- Payment/app settings data layer (E2, implementation_plan.md) — same
+         fetch-with-fallback shape as courtsData.js above. Must load before
+         Dashboard.js, which reads the downpayment percentage from it. -->
+    <script src="../includes/appSettings.js"></script>
     <script src="../includes/Dashboard.js"></script>
 </body>
 </html>
