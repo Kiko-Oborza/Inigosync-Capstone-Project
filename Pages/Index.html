@@ -424,7 +424,7 @@
             </form>
 
             <!-- SIGN UP FORM — a two-step flow inside exactly ONE <form>.
-                 Step order is Email + Password → Full name + Mobile + Terms:
+                 Step order is Email + Password → Name + Mobile + Terms:
                  the two credentials the account is actually keyed on are asked
                  for together on the first screen, the profile details after.
 
@@ -442,13 +442,21 @@
                  .auth-panel-stack above exists to prevent. Stacked in one grid
                  cell, this panel is always as tall as its TALLEST step.
 
-                 HEIGHT NOTE (increment 8). Step 1 now carries the email field,
-                 the password field AND the five-line requirement checklist, so
-                 it measures 531px against the Log In panel's 477px. Sign Up is
-                 the taller panel again and the shared card sizes to IT — the
-                 opposite of what increment 4 arranged. See the
-                 .auth-panel-stack comment above; do not re-assert "the card is
-                 Log In's height" anywhere without re-measuring first.
+                 HEIGHT NOTE (increment 8, updated increment 10). Step 1 carries
+                 the email field, the password field AND the requirement
+                 checklist (five rules, laid out two columns wide since
+                 increment 9). At increment 8 it measured 531px against the Log
+                 In panel's 477px; as of increment 10's G1/G3 compaction (drop
+                 the "Already have an account?" line, tighten spacing
+                 throughout) it measures 392px — LESS than Log In's own panel,
+                 now 411px. Sign Up is still the taller PANEL overall (454px:
+                 this step plus its own heading and step indicator), so the
+                 shared card still sizes to Sign Up, not Log In — the opposite
+                 of what increment 4 arranged, same as increment 8 left it, just
+                 smaller. See the .auth-panel-stack comment in Style/Auth.css
+                 for the full history and the current card height at every
+                 breakpoint; do not re-assert either panel's height anywhere
+                 without re-measuring first.
 
                  The inactive step is visibility:hidden, so it keeps its box but
                  leaves the tab order and the accessibility tree. The rule that
@@ -472,10 +480,17 @@
 
                     <!-- STEP 1 — the two credentials the account is keyed on,
                          asked for together, with the live requirement checklist
-                         under the password. The divider, the Google button and
-                         the "Already have an account?" line live here because
-                         signing up with Google short-circuits step 2 entirely:
-                         it never reaches a password or a form submit.
+                         under the password. The divider and the Google button
+                         live here because signing up with Google short-circuits
+                         step 2 entirely: it never reaches a password or a form
+                         submit.
+
+                         There is deliberately NO "Already have an account?
+                         Log in" line: the Log In / Sign Up pill above the form
+                         already switches panels, so it was a second control for
+                         the same job. Log In's own switch line stays, because
+                         "Log in as Admin" has no equivalent control anywhere
+                         else on that panel.
 
                          TWO error lines, not one: each sits directly under the
                          field it is about, so a password message never renders
@@ -526,8 +541,6 @@
                         <div class="auth-divider"><span>or</span></div>
 
                         <div class="auth-google-btn" id="google-signin-signup" data-google-btn></div>
-
-                        <p class="auth-switch">Already have an account? <button type="button" class="auth-link" data-auth-tab="login">Log in</button></p>
                     </div>
 
                     <!-- STEP 2 — profile details and the Terms checkbox. The
@@ -535,20 +548,67 @@
                          pressing Enter on step 1 reaches the submit handler,
                          which turns it into "Continue" instead.
 
-                         ONE error line here, deliberately: three controls share
-                         it and includes/auth.js reports the first that fails,
-                         exactly as it did before the merge. It carries no
-                         data-signup-error-for, which is what makes
-                         setSignupStepError() fall back to it for any field. -->
+                         ONE error line here, deliberately: every control on
+                         this step shares it (four that can fail, since Middle
+                         name never does) and includes/auth.js reports the
+                         first that fails, exactly as it did before the merge.
+                         It carries no data-signup-error-for, which is what
+                         makes setSignupStepError() fall back to it for any
+                         field. -->
                     <div class="auth-step" data-signup-step="2">
-                        <label class="auth-field">
-                            <span class="auth-label">Full name</span>
-                            <input type="text" name="fullname" placeholder="Juan Dela Cruz" autocomplete="name" required>
-                        </label>
+                        <!-- The name is collected in THREE boxes but still
+                             stored as the one public.profiles.full_name text
+                             column it always was: includes/auth.js composes
+                             "First [Middle ]Surname" out of them at submit
+                             time, before validation and before signUp, so
+                             every downstream reader of full_name (all three
+                             dashboards, the seed data) is untouched. Field
+                             order here is the Philippine form convention
+                             (Surname first); the composed string is in
+                             natural reading order.
 
+                             Middle name carries no `required`: many Filipino
+                             users legitimately have none, and the single
+                             "Full name" field this replaced never demanded
+                             one either. There is deliberately no visible
+                             "(optional)" marker on the label — "MIDDLE NAME
+                             (OPTIONAL)" is ~165px of mono against a ~109px
+                             column and would wrap the row's labels out of
+                             alignment at every width. The absence of
+                             `required` is what carries it to assistive tech,
+                             and step 2's validation never asks for it.
+
+                             See .auth-field-row in Style/Auth.css for the
+                             three-column layout and its narrow-width
+                             behaviour. -->
+                        <div class="auth-field-row">
+                            <label class="auth-field">
+                                <span class="auth-label">Surname</span>
+                                <input type="text" name="surname" placeholder="Dela Cruz" autocomplete="family-name" required>
+                            </label>
+
+                            <label class="auth-field">
+                                <span class="auth-label">First name</span>
+                                <input type="text" name="firstname" placeholder="Juan" autocomplete="given-name" required>
+                            </label>
+
+                            <label class="auth-field">
+                                <span class="auth-label">Middle name</span>
+                                <input type="text" name="middlename" placeholder="Reyes" autocomplete="additional-name">
+                            </label>
+                        </div>
+
+                        <!-- Digits only, capped at 11 (see [data-digits-only]
+                             in includes/auth.js). inputmode/maxlength are the
+                             declarative half: inputmode picks the numeric
+                             keypad on a phone and maxlength is the value the
+                             filter reads its cap from, but neither one stops a
+                             letter being typed, so the JS filter is the actual
+                             enforcement. -->
                         <label class="auth-field">
                             <span class="auth-label">Mobile number</span>
-                            <input type="tel" name="mobile" placeholder="09XX XXX XXXX" autocomplete="tel" required>
+                            <input type="tel" name="mobile" placeholder="09XX XXX XXXX" autocomplete="tel"
+                                   inputmode="numeric" maxlength="11" data-digits-only required>
                         </label>
 
                         <!-- The Terms link opens the in-page dialog below; includes/auth.js

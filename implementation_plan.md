@@ -1023,6 +1023,626 @@ measured (report the actual number — the estimate was from one trial, not
 guaranteed exact). Live pass/fail ticking still works per rule. No regression to
 the increment 8 flow (advancing past step 1 still requires all 5 rules).
 
+### Increment 9 — execution notes (2026-08-30)
+
+Implemented and verified by measurement (headless Chrome over CDP). **One file
+touched: `Style/Auth.css`** — `.auth-password-rules` gains a two-column track
+template and a column gap, and one new rule spans the last odd item. No JS, no
+markup, no colour, no new transition, no new breakpoint.
+
+**The card dropped 43px, not the ~28px increment 8 estimated**, because that
+trial let the special-character rule wrap; this one gives it a row of its own.
+`.auth-modal.offsetHeight` on signup step 1, identical in both themes:
+
+| viewport | before | after | delta |
+|---|---|---|---|
+| 1440 / 1024 / 768 | 850 | **807** | **-43** |
+| 480 / 420 / 390 / 375 | 828 | **786** | **-42** |
+| 360 | 827 | **785** | -42 |
+| 361 | 828 | 828 | 0 — one column here (see below) |
+| 320 | 837 | 837 | 0 — one column here |
+
+The checklist itself goes 101px → 59px (5 rows → 3). Log In's own natural card
+height is unchanged at 715px, so **the dead space under Log In goes 135px →
+92px**: the card is still sized by signup step 1 (489px against Log In's
+477px), which is what the user accepted when choosing this option. The card
+still does not resize between panels or between steps at any width.
+
+**Layout: 2 × 2 plus a full-width fifth row**, in DOM order, reading left to
+right — `8–15 characters | 1 uppercase letter`, `1 lowercase letter | 1
+number`, then `1 special character (! ? @ # …)` spanning both tracks. The
+special rule is 177px of text against a 166px track at 1440, so left in a
+column it wraps to two lines and gives back 16 of the 42px — that is exactly
+the ~28px increment 8 measured, and why this increment measures more.
+
+**No media query.** `repeat(auto-fit, minmax(132px, 1fr))` decides from the
+list's own width, which is the right input: the modal caps at 420px and sheds
+side padding at 480px and again at 360px, so one viewport width does not map to
+one list width (346px at 1440/1024/768, 374 at 480, 296 at 390, 281 at 375, 267
+at 361, back up to 278 at 360, 238 at 320). 132px is the narrowest track that
+cannot wrap — the longest short rule, "1 uppercase letter", is 104.97px in Inter
+(98.98 in the 'Segoe UI' fallback) plus a 15px marker and its 8px gap = 127.97px
+— so wherever two columns render they are wrap-proof by construction rather than
+by measurement. Swept a viewport pixel at a time from 376 down to 320: zero
+wrapped labels anywhere, two columns from 1440 down to 372 and again at exactly
+360, a clean single column at 361–371 and at ≤359. Three columns are
+unreachable: a third track needs 3×132 + 2×14 = 424px of list against a 374px
+maximum.
+
+Two things worth knowing:
+
+1. **The fallback is not monotone in viewport width, on purpose.** Two columns
+   at 372+ and at exactly 360, one column at 361–371 and at ≤359. The 360px
+   media query that already existed drops the modal's padding from 22px to
+   16px, which *widens* the list by 11px right where the viewport narrows.
+   Every real device width lands on the sensible side (320 → one column,
+   360/375/390/393/412/430 → two); the inverted band is 361–371px wide, where
+   no device sits. Forcing one column at ≤360 with the existing breakpoint was
+   considered and dropped: it would cost 42px on the phones with the least
+   vertical room to spare, to fix a band nothing renders in. 360px is a knife
+   edge — its list is 278px, the two-track threshold to the pixel — so if a
+   later change moves the modal's padding it will fall back to one column
+   there, which is the safe direction.
+2. **`grid-column: 1 / -1` does work under `auto-fit`.** Per spec a track is
+   only collapsed when nothing is placed in *or spanning across* it, and the
+   spanning row keeps track 2 alive; asserted live (the special row measures the
+   full list width at every two-column size) rather than assumed.
+
+Verification: 116 new assertions × 2 themes on the checklist (layout geometry at
+9 widths, a 9-case tick truth table where each rule is independently the only
+failure, keystroke-by-keystroke ticking including backspace, the sr-only "met" /
+"not met" mirror, and the tick glyph and green fill read *after* the 0.2s marker
+transition lands), plus 17 on reduced motion and stylesheet parsing. Regression:
+increment 8 flow 72/72 × 2 themes, password policy 24/24, card-height matrix
+0 failures, focus trap 77/77 × 2 themes, increment 1–5 behaviour 38/38 × 2,
+recovery-by-code 69/69 × 2, recovery edge cases 35/35, terms nesting 25/25, live
+focus ring 27/27, double-submit 6/6, narrow viewports at 360/320 clean. Contrast
+re-measured rather than assumed: rule label 5.69:1 unmet / 10.32:1 met in dark,
+4.55:1 / 5.41:1 in light — byte-identical to increment 8, since no colour moved.
+Zero console errors in both themes.
+
+**Also covered:** the Reset Password panel uses the same class, so its checklist
+is two columns too and shortens by the same 42px. It is a one-off shrink-wrapping
+panel, so nothing else moves. **Unchanged and still true:** the ≤400px wrap of
+"Your password does not meet every requirement yet." still adds 16px when that
+message is showing (786 → 802 at 390), exactly as increment 8 recorded it.
+
+## Increment 10 — Card compaction, textbox colour parity, drop redundant line
+
+User goal (set via `/goal`, session-enforced): Log In and Sign Up render the
+same card size **with no internal scroll**, textbox colours match between the
+two panels, the "Already have an account?" line is removed from Sign Up, and
+element sizing/spacing inside the modal is tightened generally.
+
+**G1 — Remove "Already have an account? Log in" from signup step 1**
+(`Pages/Index.html:530`). Redundant: the Log In / Sign Up pill above already
+switches panels. Delete the `<p class="auth-switch">…</p>` and its comment.
+Login's mirror ("Are you a staff member or the owner? Log in as Admin") is
+**not** in scope — that link has no equivalent control elsewhere and stays.
+
+**G2 — Textbox colour mismatch, login vs signup.** `.auth-field input`
+(`Style/Auth.css:559`) is a single shared rule using `--color-bg-card` — there
+is no panel-specific override in the CSS, so the two *should* already render
+identically. The far more likely real cause: **no `-webkit-autofill` override
+exists anywhere in `Auth.css`.** Browsers repaint autofilled inputs with their
+own background (Chrome's pale yellow/blue), and login's email/password are the
+fields a browser is most likely to have saved and autofilled, while a fresh
+signup's typically aren't — producing exactly the symptom described ("login
+looks different, signup looks right"). Add the standard fix: a huge-delay
+`transition` + `-webkit-text-fill-color` + inset `box-shadow` trick on
+`input:-webkit-autofill` (and the `:hover`/`:focus`/`:active` variants Chrome
+requires) forcing the autofill background back to `--color-bg-card` in both
+themes. **Verify this diagnosis before committing to it** — force the
+`:-webkit-autofill` state via CDP/devtools and confirm the mismatch reproduces
+and the fix resolves it. If reproduction fails, re-inspect for a real
+code-level difference instead of shipping a fix for the wrong cause.
+
+**G3 — Fix sizing of elements inside.** General compaction pass, in service of
+G4: modal outer padding (`Style/Auth.css:44`, `40px 36px 32px`), field gaps,
+label-to-input spacing, and button heights have not been revisited since
+increment 4 first built the stepped layout. Tighten what can be tightened
+without harming legibility or tap targets (44px+ touch targets stay).
+
+**G4 — Same card size, no scroll.** Consequence of G1 + G3: removing the
+switch-line and compacting spacing both reduce signup step 1's height, which is
+what currently drives the shared card's size
+(increment 9 left it at ~807px desktop / ~786px at 480px-and-narrower, with the
+modal's `max-height: calc(100vh - 48px); overflow-y: auto` kicking in on
+short viewports). Push the height down as far as reasonably possible **without
+removing or hiding any field, password rule, or required control** — this is a
+layout compaction, not a content cut. **Report the actual resulting height and
+the viewport height at which internal scrolling starts**, in both themes;
+"zero scroll at every conceivable screen size" is not a claim to assert without
+a number behind it. Login and signup must land on the **same** measured height
+(the shared `.auth-panel-stack` / `.auth-step-stack` grid already guarantees
+this structurally — confirm it still holds after the edits, don't re-derive it).
+
+**Constraints.** No Supabase/logic changes. No change to password policy rules,
+signup field order, the two-column checklist's grouping, the terms dialog, the
+Google SVG, the brand lockup, the focus trap, or increment 7/8/9's behavior.
+WCAG AA held on anything whose size or color changes. Guard new transitions
+with `prefers-reduced-motion`.
+
+**Success criteria.** "Already have an account?" gone from signup, login's
+"Log in as Admin" line untouched. Autofilled and non-autofilled inputs render
+identically in both panels and both themes (verified, not assumed). Card
+height measured and reported at 1440/1024/768/390, both themes — equal between
+login and signup, and lower than increment 9's baseline. The no-scroll
+viewport-height threshold is measured and reported. No field, rule, or control
+removed to hit the number.
+
+### Increment 10 — execution notes (2026-08-30)
+
+G1–G3's code was written and committed to the working tree in an earlier
+session that was cut off mid-verification (last completed step: confirming a
+361–377px viewport band was byte-identical before/after; the sentence
+mid-measuring exact panel heights was never finished). This pass picked up
+from there: confirmed the existing diff against a fresh read rather than
+trusting the carried-over summary, then did everything G4 asks for plus a
+full increment 1–9 regression re-run. **Two files touched, both already
+diffed before this session began: `Pages/Index.html`, `Style/Auth.css`.**
+`includes/auth.js` has zero diff — confirmed with `git diff --exit-code
+includes/auth.js`. This session added no new code, only corrected three
+stale comments (below) and this write-up.
+
+**G1 — confirmed in the rendered DOM, not just the diff.** At every
+theme/width combination measured (20 total), `signup.textContent` never
+contains "Already have an account" and `login.textContent` always contains
+"Log in as Admin".
+
+**G2 — autofill parity, verified live for BOTH panels in BOTH themes,** not
+just the one case the interrupted session had reached. Method: CDP
+`CSS.forcePseudoState` → `["autofill"]` on the real input node (this actually
+triggers Chrome's UA autofill repaint, not just CSS selector matching — Chrome
+added this specifically for testing `:-webkit-autofill`/`:autofill`), then a
+**pixel sample of the rendered screenshot** at each field (not
+`getComputedStyle().backgroundColor`, which never changes — the fix works by
+painting an inset `box-shadow` over the UA background, so the property itself
+is static; only the composited pixel proves it). Sampled off-center (68% width,
+vertical middle, 3×3-averaged) to dodge placeholder-text antialiasing.
+
+| theme | panel | field | resting (baseline) | forced `:-webkit-autofill` | match |
+|---|---|---|---|---|---|
+| dark | login | email | rgb(36,29,22) | rgb(36,29,22) | yes |
+| dark | login | password | rgb(36,29,22) | rgb(36,29,22) | yes |
+| dark | signup | email | rgb(36,29,22) | rgb(36,29,22) | yes |
+| dark | signup | password | rgb(36,29,22) | rgb(36,29,22) | yes |
+| light | login | email | rgb(255,255,255) | rgb(255,255,255) | yes |
+| light | login | password | rgb(255,255,255) | rgb(255,255,255) | yes |
+| light | signup | email | rgb(255,255,255) | rgb(255,255,255) | yes |
+| light | signup | password | rgb(255,255,255) | rgb(255,255,255) | yes |
+
+8/8 byte-identical. Un-forcing each field afterward (`forcedPseudoClasses: []`)
+also returned it to the same resting colour, confirming the harness itself
+isn't leaving a field artificially stuck. **A real headless-Chrome trap along
+the way, worth recording:** `Page.captureScreenshot` can return a stale
+compositor frame the *first* time it's called right after a big paint change
+(the modal opening) — one capture showed the hero photo bleeding through an
+otherwise-opaque, `getComputedStyle`-confirmed-opaque modal; an immediate
+second capture, no extra wait, was correct. Every screenshot in this session
+is now taken twice, first discarded. Anyone scripting Chrome screenshots
+against this modal should do the same or risk exactly this false positive.
+
+Also verified live: under emulated `prefers-reduced-motion: reduce`, the
+autofilled input's computed `transition` is exactly `background-color 5000s
+ease-in-out` (the `border-color 0.2s` fade is dropped, the 5000s suppression
+is not), and `box-shadow`/`-webkit-text-fill-color` still resolve to the
+correct theme colours — confirming the reduced-motion exemption the plan
+required actually holds at runtime, not just in the stylesheet source.
+
+**G3 — compaction confirmed structurally sound.** One near-miss worth
+recording exactly rather than glossing over: `.auth-tab` (Log In / Sign Up
+pill) measures **43.61–44.00px across 24 samples** (both themes, both tested
+widths, all 3 panel-reach states it renders in — login, signup step 1,
+signup step 2; the tab bar stays visible through both signup steps, not just
+step 1), not a flat 44px as its own code comment's arithmetic implies
+("13 + 13 + an 18px line box = a 44px control"). Root cause, measured rather
+than guessed: `.auth-tab` has no explicit `line-height`, so it resolves to
+the UA default `line-height: normal`, which for Inter at 14.72px does not
+land on a clean 18px line box — `getComputedStyle` reports `lineHeight:
+"normal"` on the live element. This predates increment 10 (only the padding
+changed, 10px→13px vertical; the missing `line-height` was already absent
+before), the shortfall is sub-pixel (≤0.39px) at worst, and it clears the
+real WCAG 2.5.8 AA target-size minimum (24px) by a wide margin. Left
+uncorrected: fixing it would mean picking a new padding or an explicit
+`line-height`, which would shift every number in the G4 table below and
+require re-measuring the entire matrix for a change smaller than a device
+pixel on most real screens. Every OTHER sub-44px control in the modal is
+pre-existing and untouched by this increment's diff — confirmed with
+`git diff Style/Auth.css | grep -i
+"otp\|auth-link\|auth-close\|auth-toggle-visibility"`, which matches nothing
+but a comment: `.auth-close` 33.54–34px (28 samples, every panel),
+`.auth-toggle-visibility` 29.6–29.83px (20, every panel with a password
+field), the native "remember me"/"terms" checkboxes 12.89–13px (8, their own
+wrapping `<label>` is the real tap target), the plain-text `.auth-link`
+buttons like "Forgot password?" 15.86–18.89px (24, sized to a line of text,
+never padded to begin with), and `.auth-otp-box` — 48.91px at the 1440px
+sample but 43.75px (dark) / 43.95px (light) at the 390px one (untested at
+exactly 480; both samples are `aspect-ratio: 1` boxes sized off the modal's
+own width, so the phone-width one was already narrower than 44px before this
+increment touched anything). `.auth-field input`, `.auth-submit`,
+`.auth-back` and `.auth-google-button` — the controls the plan's own padding
+comments target — all measured comfortably ≥44px everywhere, all 28 panel
+visits.
+
+**G4 — card height, measured at 10 widths × 2 themes, login vs signup step 1
+vs signup step 2, via `.auth-modal.offsetHeight` after the open/switch
+transition fully settles (500ms; two `requestAnimationFrame`s alone is not
+enough for a screenshot but is enough for a layout read):**
+
+| width | dark = light | vs increment 9 baseline |
+|---|---|---|
+| 1440 / 1024 / 768 | **636px** | 807px → **-171** |
+| 480 / 420 / 390 / 375 | **628px** | 786px → **-158** |
+| 361 | 668px | 828px → -160 (still the inverted one-column band increment 9 documented) |
+| 360 | 633px | 785px → -152 |
+| 320 | 685px | 837px → -152 |
+
+Login, Sign Up step 1, and Sign Up step 2 are equal at **every** cell above
+(login = signup step 1: 20/20; signup step 2 also matches both at the four
+required widths: 8/8) — the shared `.auth-panel-stack` / `.auth-step-stack` grid
+technique still holds, confirmed by measurement rather than re-derived from
+the CSS. Panel-only breakdown (constant across width, since neither panel's
+own content reflows — only the modal's outer chrome does): Log In 411px,
+Sign Up 454px (heading + step indicator + tallest step, 392px). Sign Up is
+still the taller panel, same as increments 8–9 left it, just smaller; Log
+In's dead space is now ~43px, down from increment 8's ~135px. All four
+required widths (1440/1024/768/390) beat increment 9's baseline as the plan
+requires. Zero fields, rules or controls were removed to get there (checked
+live: signup step 1 always has exactly 2 inputs and 5 `.auth-password-rule`
+items, at every one of the 20 theme/width combinations; step 2 always has
+exactly 3 inputs including the Terms checkbox, at each of the 8
+theme/width combinations it was reached in).
+
+**No-scroll viewport-height threshold** — shrunk the viewport height and
+binary-searched for the exact pixel where `.auth-modal.scrollHeight` first
+exceeds `.clientHeight` (`max-height: calc(100vh - 48px)` is exact, so this
+is just natural-card-height + 48, confirmed rather than assumed):
+
+| width band | card height | scrolls at ≤ | clean at ≥ |
+|---|---|---|---|
+| 1440 (= 1024, 768) | 636px | 683px | **684px** |
+| 390 (= 480, 420, 375) | 628px | 675px | **676px** |
+| 320 (worst case tested) | 685px | 732px | **733px** |
+
+Identical across dark/light and login/signup at every width tested (12/12
+binary searches agree). **733px is the highest threshold found** — below
+that viewport height, at 320px-wide screens, the card scrolls internally
+exactly as the pre-existing `overflow-y: auto` always allowed; no clipping,
+no lost content.
+
+**Stale-comment finding, separate from G4 verification proper.** The
+orchestrator's specific concern — whether increment 10's padding changes
+touched `.auth-modal`'s *side* padding, which the `.auth-password-rules`
+comment's list-width measurements (346px at 1440/1024/768, etc.) depend on —
+checked out clean: side padding is `36px` (desktop), `22px` (≤480px), `16px`
+(≤360px) at every breakpoint, byte-identical before and after this
+increment's diff (only vertical padding numbers changed). That comment did
+**not** need correcting. Two other, unrelated comments **did**: the "Log In /
+Sign Up share one card height" block in `Style/Auth.css` and the "Sign Up —
+stepped flow" block beneath it were both still asserting increment 8's
+numbers (531px / 477px / 850px / 828px) as current fact — stale since
+increment 9 shipped (807/786), and doubly stale after this increment. A third,
+matching copy lived in `Pages/Index.html`'s "HEIGHT NOTE (increment 8)"
+comment on the signup form. All three now cite the measured numbers above and
+the current panel-vs-panel comparison (Sign Up 454px vs Log In 411px), with
+the increment-by-increment history kept rather than deleted, matching this
+file's own convention of narrating *why* a number moved, not just what it is
+now.
+
+**Regression, re-run rather than assumed given zero diff on `auth.js`:**
+
+- **Focus trap, all 7 panel states × 2 themes (14/14 pass).** Real Tab and
+  Shift+Tab key events over CDP (`Input.dispatchKeyEvent`, not synthetic JS
+  `KeyboardEvent`s — Tab's default focus-move only fires from genuine input
+  events), cycled two full loops forward and back from a known start,
+  compared against the exact `FOCUSABLE` selector + `isRenderedFocusable()`
+  filter copied verbatim from `includes/auth.js`. Ring sizes: login 11,
+  signup step 1 = 8 (down from the 9 increment 8 measured after merging email
+  + password onto one step — see that increment's own notes — and unchanged
+  through increment 9's CSS-only change; the drop to 8 is exactly G1 removing
+  the one "Already have an account?" link), signup step 2 = 9, admin 6,
+  forgot 4, verify 10, reset 6. Every ring visited in exact
+  DOM order and wrapped correctly at both ends, both themes. Verify and Reset
+  have no direct `[data-auth-tab]` entry point (only reachable normally via a
+  live OTP/recovery round trip), so they were reached for this check by
+  replicating `setActivePanel()`'s own DOM effects directly (same
+  class/hidden toggles, read straight out of `auth.js`) rather than by
+  stubbing Supabase — the real `trapTab()` keydown handler still runs
+  unmodified either way, since it only reads the resulting DOM state.
+- **Password policy, both themes.** Two-column grid confirmed live
+  (`getComputedStyle` on `.auth-password-rules` reports `166px 166px`, two
+  tracks, at 1440). Full 7-case truth table (all-pass, each of the 5 rules
+  independently the only failure, all-fail-on-empty) matches expected
+  `is-met` classes AND the sr-only "met"/"not met" mirror in both themes.
+  Gating re-confirmed: an invalid password blocks Continue (step 2 stays
+  inactive, correct inline error), a valid email+password pair advances to
+  step 2 — unchanged from increment 9.
+- **Contrast.** No `color`/`background` property appears anywhere in this
+  increment's diff (checked directly), so every ratio is mathematically
+  identical to increment 9's. Recomputed from the current token values as a
+  live cross-check rather than only citing the old number: rule label
+  5.69:1 dark / 4.55:1 light, error text 6.18:1 / 5.13:1, heading/body text
+  >15:1 in both themes — byte-identical to increment 9, all AA.
+- **Console errors: zero**, across height-matrix (20 sessions), autofill
+  parity (8), focus trap (14), password policy (2) — 44 browser sessions
+  spanning every panel state, both themes, ten viewport widths, with
+  `Runtime.consoleAPICalled` (type `error`), `Runtime.exceptionThrown` and
+  `Log.entryAdded` (level `error`) all captured and empty. The touch-target
+  sweep (28 more sessions, below) exercised the same code paths but its
+  script didn't persist its error capture to disk (a harness bug, not
+  re-run) — not treated as a gap given the other 44 sessions cover the
+  identical reach-panel logic cleanly.
+- **Touch targets, all input/button elements inside `.auth-modal`, all 7
+  panels × 1440/390 × 2 themes (28 sessions).** Findings summarized under G3
+  above; nothing newly below 44px except `.auth-tab`'s ≤0.39px shortfall,
+  which is not treated as a regression.
+
+**Judgment calls / things flagged rather than silently decided:**
+
+1. **Did not touch `.auth-tab`'s CSS** for the sub-pixel shortfall above —
+   explained under G3. Flagging instead of fixing because any fix would
+   invalidate the G4 height table and require a full re-measurement for a
+   change smaller than a device pixel on most real screens.
+2. **Did not re-verify the Terms dialog nesting or the OTP network
+   round-trip.** Zero diff touches `includes/auth.js`, `.auth-terms-*` rules,
+   the Google SVG, or anything Supabase-facing, and increments 5/7 already
+   verified those paths against this exact code. Re-running them would be
+   re-testing code nobody changed; time went to G4's measurement instead,
+   which is what this increment actually shipped.
+3. **Dev-only tooling, not part of the repo or its dependency surface:**
+   `websocket-client` and `Pillow` were `pip install`ed into the machine's
+   global Python (no `requirements.txt`/`package.json` exists to add them
+   to) purely to script headless Chrome for this verification pass, the same
+   category of tooling every prior increment's "headless Chrome over CDP"
+   notes imply but don't name. Nothing in the working tree references them.
+
+**Not verified here (pre-existing, out of scope):** the same native
+`<select>`-popup Escape behaviour increments 2/5 already flagged as
+untestable by headless Chrome — moot for this increment regardless, since
+the auth modal has no `<select>`.
+
+## Increment 11 — Split Full name into three fields; digits-only mobile
+
+**H1 — Signup step 2's "Full name" field becomes three fields, laid out
+horizontally: Surname, First name, Middle name.** Only signup step 2
+(`Pages/Index.html`, currently `name="fullname"`) is in scope — no other page's
+name field changes.
+
+**No schema change.** `public.profiles.full_name` is a single text column read
+and written across `Dashboard.js`, `owner_dashboard.js`, `staff_dashboard.js`
+and the seed data — untouched by this increment. The three new inputs are named
+`surname`, `firstname`, `middlename` and are composed into one `data.fullname`
+string in `includes/auth.js`'s submit handler, right where `const data =
+Object.fromEntries(new FormData(form))` already runs, before validation and
+before the `signUp` call — so every downstream consumer keeps receiving the
+same shape it always has. Compose as `First [Middle ]Surname` (natural full-name
+reading order), collapsing extra whitespace, trimmed.
+
+**Surname and First name are required; Middle name is optional** — many
+Filipino users legitimately have no middle name to disclose, and the old single
+field never demanded one either. State this assumption plainly to the user
+rather than silently deciding it; it's a product call, flagged for their
+confirmation, not just an implementation footnote.
+
+**Horizontal layout, one row, three roughly-equal columns** (`display: flex` or
+`grid-template-columns: 1fr 1fr 1fr` with a small gap) — matches the phrase
+"divided into 3... but it should be horizontally." Must degrade sensibly at
+390px/360px without breaking the increment-10 44px touch-target floor or
+reopening the card-height regression that increment 10 just closed — measure,
+don't assume, since three inputs plus labels is more vertical-DOM-weight than
+one.
+
+**H2 — Mobile number field accepts digits only, capped at 11 characters,**
+matching the "09XX XXX XXXX" placeholder (2 + 9 = 11 digits, the local format
+`validatePhMobile` already normalizes to). Filter on `input` and `paste`,
+stripping everything but `0-9` and slicing to 11 — same pattern
+`includes/auth.js` already uses for the OTP boxes
+(`box.value.replace(/[^0-9]/g, '').slice(0, 1)`), just with a length of 11
+instead of 1. Add `inputmode="numeric"` and `maxlength="11"` as declarative
+backup; the JS filter is what actually blocks non-digit keystrokes and
+over-length paste, since `maxlength`/`pattern` alone don't prevent typing.
+
+**`window.validatePhMobile` (`includes/phoneValidation.js`) is NOT changed.**
+It is shared with Account Settings (`Dashboard.js`), which is out of scope —
+the user said "on the signup." Restricting the *signup* input to digits-only
+naturally satisfies the validator's local-format branch without touching the
+shared file; the validator's `+639…` international branch simply becomes
+unreachable from this one input, which is fine since the field can no longer
+produce a `+` character. Flag to the user, don't just quietly narrow it, that
+Account Settings' mobile field still accepts the `+639` form and pasted
+spaces/dashes — ask whether they want the same restriction applied there.
+
+**Constraints.** All prior-increment constraints hold: no Supabase logic
+changes beyond the `data.fullname` composition, no change to the password
+step, the OTP hand-off, the terms dialog, the focus trap (recompute the
+focusable set correctly over 3 inputs instead of 1 — this is exactly the kind
+of DOM change increment 5's live-recomputation was built to handle
+automatically, confirm it does), or increment 10's card-height/no-scroll
+result. WCAG AA on the three new labels; guard any new transition with
+`prefers-reduced-motion`.
+
+**Success criteria.** Surname/First name/Middle name render in one horizontal
+row on signup step 2; Surname and First name are required, Middle name is not;
+submitting composes a single correct `fullname` string and the existing
+`sb.auth.signUp` payload shape is unchanged. Mobile number field rejects every
+non-digit keystroke and paste, and cannot exceed 11 characters, in the DOM —
+not just via a validation message after the fact. Focus trap still correctly
+cycles over the new field count. Card height/no-scroll result from increment 10
+is re-measured and still holds (or the delta is reported honestly if it
+doesn't).
+
+### Increment 11 — execution notes (2026-08-30)
+
+Implemented and verified by measurement (headless Chrome over CDP). Three files
+touched: `Pages/Index.html`, `Style/Auth.css`, `includes/auth.js`. 234 new
+assertions green (94 behavioural × 2 themes, 23 regression × 2), plus a
+before/after height matrix and a 168-width layout sweep.
+
+**Increment 10's card height and no-scroll thresholds did not move by one
+pixel.** Measured with `.auth-modal.offsetHeight` on Log In, Sign Up step 1 and
+Sign Up step 2, at ten widths × both themes, against a copy of the tree with
+increment 11 reverted and served side by side:
+
+| width | card (before = after) | no-scroll at ≥ (before = after) |
+|---|---|---|
+| 1440 / 1024 / 768 | 636 | 684 |
+| 480 / 420 / 390 | 628 | 676 |
+| 375 | 628 | 690 |
+| 361 | 668 | 716 |
+| 360 | 633 | 690 |
+| 320 | 685 | 733 |
+
+60 of 60 card cells and 40 of 40 threshold cells identical; Log In, step 1 and
+step 2 equal in every row. The only cell that moved anywhere is step 2's OWN
+height at the two widths where the name row falls to two columns (262 → 337 at
+361 and at 320) — invisible at the card level, because step 1 is 433/445px
+there and is what the shared grid sizes to. Step 2 never once reached step 1
+across the 168-width sweep.
+
+**H1 — the row is `repeat(auto-fit, minmax(86px, 1fr))`, not three fixed
+tracks, and that is the narrow-width decision.** 86px is measured, not chosen:
+"MIDDLE NAME", the longest of the three labels, is 85.16px in Space Mono
+(77.28px in the monospace fallback), so any track the grid actually renders is
+wrap-proof by construction — the same argument and the same mechanism increment
+9 used for the password checklist, and for the same reason (the modal sheds
+side padding at 480 and again at 360, so viewport width does not map to row
+width). Swept a viewport pixel at a time from 320 to 480: three columns at ≥372
+and again at exactly 360, two columns at 361–371 and at ≤359 — the same
+non-monotone band the checklist has, and again no real device sits in it. Every
+real width lands on the sensible side: 390 / 375 / 360 and everything wider get
+three columns of 86–92px; 320 gets two columns of 114px with Middle name
+half-width on a second row. Zero wrapped labels and zero horizontal overflow at
+every width from 320 to 1920. The smallest box measured anywhere is 86 × 45px,
+so increment 10's 44px touch-target floor holds throughout.
+
+Fixed `repeat(3, minmax(0, 1fr))` was measured first and rejected: it holds to
+375, but below ~365 the middle label wraps to two lines and the boxes fall to
+72px at 320. Stacking the three fields was rejected outright — each extra row
+costs 75px and step 2 has only 130px of headroom before it starts driving the
+card, so a full stack (+150px) would have reopened exactly the regression
+increment 10 closed.
+
+**Middle name has no visible "(optional)" marker.** "MIDDLE NAME (OPTIONAL)" is
+~165px of mono against a ~109px column, so it would wrap the row's labels out
+of alignment at every width. The absence of `required` is what carries it to
+assistive tech, and step 2's validation never asks for it. Flagged rather than
+silently decided: adding the marker is a one-line change if the user wants it
+and is happy for that label to sit on two lines.
+
+**H2 — the JS filter, not `maxlength`, is what enforces the cap, and the paste
+handler has to preempt `maxlength` to do it.** Proven both ways in the same
+session: with the browser doing the insertion (`Input.insertText`), maxlength
+truncates `"+63 917 123 4567"` to `"+63 917 123"` BEFORE anything can filter it
+and the field ends up holding `63917123`; with the paste handler running (real
+OS-clipboard Ctrl+V, `isTrusted: true`), the same clipboard content strips
+first and caps second, landing `63917123456`. Both are digits-only and ≤ 11,
+which is the requirement, but only the second is the intended filter-then-cap
+behaviour. Real keystrokes over CDP: `abc09xy17!12 34-56()789` → `09171234567`;
+a 12th digit cannot land; a letters-only run leaves the box empty. Real pastes:
+`0917 123 4567` and `09-17-12-34-567` → `09171234567`, a 19-digit run → the
+first 11, text with no digits → empty. A rejected keystroke mid-value leaves
+the value and the caret untouched — the handler only writes `.value` back when
+it actually differs, which is also what stops the caret jumping to the end on
+every accepted keystroke.
+
+**Two more things worth knowing about that field:**
+
+1. **The paste handler dispatches its own `input` event.** Assigning `.value`
+   fires nothing, and the step's shared `input` listener is what clears the
+   field's inline error — without it a stale "Mobile number is required."
+   outlives the paste that fixed it. Asserted live.
+2. **`window.validatePhMobile` and `includes/phoneValidation.js` are
+   untouched**, as the plan requires. The validator's `+639…` branch is now
+   unreachable from the signup box (it can no longer produce a `+`), and its
+   local branch accepts exactly what the field can hold — verified by
+   round-tripping the filtered value back through it. **Account Settings
+   (`includes/Dashboard.js`) still accepts `+639…` and pasted spaces/dashes**;
+   the user asked for signup only, so that field was left alone. Giving it the
+   same treatment is a small change if they want the two to match.
+
+**Focus trap: zero code changes, confirmed rather than assumed.** The step-2
+ring goes 9 → 11 (surname, firstname, middlename replacing the one fullname
+box) and `focusablesWithin()` picks all three up because it recomputes on every
+Tab. Two full forward cycles and two full backward cycles of real
+`Input.dispatchKeyEvent` Tab / Shift+Tab in both themes visit exactly the
+expected 11 controls in DOM order, wrap at both ends, and never leave
+`.auth-modal`.
+
+**Everything downstream of `full_name` is untouched.** `composeFullName()` runs
+on the `FormData` snapshot inside the `mode === 'signup'` branch, before the
+mobile check and before `signUp`, so `data.fullname` reaches the payload in the
+exact shape it always had. Asserted against the stubbed `signUp` call: keys are
+still `email` / `password` / `options`, `options` still only `data`, `data`
+still only `full_name` + `contact_num`. `Juan` + `Reyes` + `Dela Cruz` →
+`"Juan Reyes Dela Cruz"`; with the middle box empty → `"Juan Dela Cruz"` (one
+space, not two); `"  Dela   Cruz  "` + `"  Juan  "` + `"   "` →
+`"Juan Dela Cruz"`. `FormData` now carries `surname` / `firstname` /
+`middlename` in place of `fullname`, and `public.profiles.full_name` is
+unchanged — no migration, no dashboard change, no seed change.
+
+**Cosmetic, reported rather than fixed:** at 390 and 360 the surname box has
+62px / 56px of text room against the ~66px "Dela Cruz" placeholder, so the
+placeholder clips to "Dela Cru" / "Dela Cr". Typed values behave normally (the
+field scrolls); only the example name is clipped, and the label carries the
+meaning. A one-word surname would fit at every width but loses the "a compound
+surname goes in this one box" hint the old `Juan Dela Cruz` placeholder
+carried.
+
+**No new transition and no new colour**, so the `prefers-reduced-motion` guard
+and the contrast work have nothing new to cover. The three labels reuse
+`.auth-label` unchanged and measure 5.69:1 (dark) / 4.55:1 (light) on the real
+modal surface — identical to every other label in this form. Console on load
+and through the whole flow: zero errors in both themes beyond Chrome's own
+`/favicon.ico` 404, which this repo has never shipped a favicon for.
+
+**Found while verifying, and not this increment's to fix: increments 9 and 10
+are NOT committed.** `HEAD` (20591d1) is still the increment-8 state — its
+`.auth-modal` is `padding: 40px 36px 32px` and its card measures 850px.
+Increment 9's two-column checklist and increment 10's compaction, autofill
+parity and G1 removal exist only in the working tree, so a `git stash`,
+`git checkout` or `git restore` would destroy them (this pass hit exactly that
+while building a before/after comparison, and recovered from the stash).
+Increment 11 is stacked on top of them in the same uncommitted state. Worth a
+commit before anything else touches this repo.
+
+**Not verified here:** a real end-to-end signup against Supabase. Every run
+blocked `*supabase.co/auth/*` and stubbed `sb.auth.signUp`, so no account was
+created and nothing here confirms how the composed `full_name` looks once
+`public.profiles` actually stores it — the payload was asserted at the call
+site instead.
+
+## Increment 12 — Loading phase on signup submit
+
+**Bug confirmed by reading source.** `includes/auth.js`'s submit handler shows
+`window.InigoLoading` before every other network call it makes — login
+(`'Signing you in…'`, line ~1396), forgot (`'Sending your reset code…'`, line
+~1596), reset (`'Updating your password…'`, line ~1640), recovery/login OTP
+verify (`'Verifying…'`), resend (`'Sending a new code…'`), Google
+(`'Redirecting to Google…'`) — **except `mode === 'signup'`**, whose
+`sb.auth.signUp(...)` call (which sends the verification code) runs with no
+loading state at all. The button just sits disabled with no explanation while
+the network round-trip happens.
+
+**Fix:** add `InigoLoading.show('Creating your account…')` immediately before
+the `signUp` call (after the mobile-number validation, which is synchronous and
+should still fail instantly with no overlay), and `hide()` once the response
+comes back — before branching into whichever of the three outcomes applies
+(already-registered error, session-already-returned redirect, or the normal
+hand-off to the verify/OTP panel). The existing `catch` block already calls
+`hide()` on a thrown error, so the only gap is the success path. Match the
+wording style already used by the other five messages in this file.
+
+**Constraints.** One function, `includes/auth.js`'s signup branch only. No
+change to validation order, the `signUp` payload, the OTP hand-off, or any
+other mode's branch. This is additive — do not restructure the try/catch.
+
+**Success criteria.** Clicking Create Account shows a loading overlay
+immediately, which clears the instant a response arrives, on all three
+outcomes (already-registered, immediate-session, and the normal path to the
+verify panel) — matching the show/hide discipline every other auth action in
+this file already has, including hiding on error.
+
 ## Execution notes (2026-08-28) — deviations accepted
 
 Implemented and verified. Six deviations from the plan as written, all accepted:

@@ -1081,6 +1081,23 @@ document.addEventListener('DOMContentLoaded', () => {
         syncPasswordRules();
     }
 
+    // Signup asks for the name in three boxes (Surname / First name /
+    // Middle name) while public.profiles.full_name is, and stays, ONE text
+    // column — read and written by all three dashboards and the seed data.
+    // They are composed back into that single string here, in natural
+    // reading order, so nothing downstream sees any difference.
+    //
+    // filter(Boolean) is what makes Middle name optional without leaving the
+    // double space "First  Surname" a naive template produces, and the inner
+    // replace collapses any run of whitespace typed inside one box (a
+    // two-word surname pasted with a stray tab, say) down to one.
+    function composeFullName(first, middle, last) {
+        return [first, middle, last]
+            .map((part) => String(part || '').trim().replace(/\s+/g, ' '))
+            .filter(Boolean)
+            .join(' ');
+    }
+
     // Returns [] when the step's rules are satisfied, otherwise one
     // { step, field, message } per problem to render inline.
     //
@@ -1088,8 +1105,8 @@ document.addEventListener('DOMContentLoaded', () => {
     // fields and two error lines, and answering "your email is wrong" first
     // and "your password is wrong" only on the next Continue would make the
     // visitor pay for the merge twice. Step 2 still stops at the first
-    // failure: its three controls share one line, so a second message there
-    // would only overwrite the first.
+    // failure: every control on it shares one line, so a second message
+    // there would only overwrite the first.
     function validateSignupStep(step) {
         if (!signupForm) return [];
         const fields = signupForm.elements;
@@ -1112,8 +1129,16 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         if (step === 2) {
-            if (!(fields.fullname.value || '').trim()) {
-                return [{ step: 2, field: 'fullname', message: 'Enter your full name.' }];
+            // Surname and First name are required, Middle name is NOT: many
+            // Filipino users legitimately have no middle name, and the single
+            // "Full name" box these three replaced never asked for one
+            // either. The markup carries the same split (`required` on two of
+            // the three), so form.checkValidity() and this agree.
+            if (!(fields.surname.value || '').trim()) {
+                return [{ step: 2, field: 'surname', message: 'Enter your surname.' }];
+            }
+            if (!(fields.firstname.value || '').trim()) {
+                return [{ step: 2, field: 'firstname', message: 'Enter your first name.' }];
             }
             // Same shared validator the submit handler runs before signUp —
             // called here only so the message lands inline on this step
@@ -1209,6 +1234,56 @@ document.addEventListener('DOMContentLoaded', () => {
             stepEl.addEventListener('change', clearOwn);
         });
 
+        // Digits-only fields (the mobile number). Same filter the OTP boxes
+        // further down use — strip everything but 0-9 on the way in — with a
+        // cap read from the field's own maxlength (11: the local 09XXXXXXXXX
+        // form window.validatePhMobile normalises to, which is what the
+        // "09XX XXX XXXX" placeholder spells out) instead of the boxes' 1.
+        //
+        // The JS is the enforcement, not the attributes: inputmode only picks
+        // a keypad, and maxlength truncates a paste BEFORE anything can
+        // filter it — pasting "+63 917 123 4567" past maxlength alone leaves
+        // "+63 917 123", which then filters down to a wrong 8-digit number.
+        // Hence the paste handler below preempts it and does the stripping
+        // first, exactly as the OTP boxes do.
+        signupForm.querySelectorAll('[data-digits-only]').forEach((field) => {
+            const maxDigits = field.maxLength > 0 ? field.maxLength : 11;
+            const digitsOnly = (raw) => String(raw || '').replace(/[^0-9]/g, '');
+
+            field.addEventListener('input', () => {
+                const filtered = digitsOnly(field.value).slice(0, maxDigits);
+                // Written back only when it actually differs: assigning
+                // .value drops the caret to the end of the box, and every
+                // accepted keystroke would otherwise pay that for nothing.
+                if (filtered !== field.value) field.value = filtered;
+            });
+
+            field.addEventListener('paste', (e) => {
+                const clipboard = e.clipboardData || window.clipboardData;
+                // No clipboard data to read (older Safari): let the browser
+                // paste and leave it to the input handler above, which still
+                // filters whatever lands.
+                if (!clipboard) return;
+                e.preventDefault();
+
+                const pasted = digitsOnly(clipboard.getData('text'));
+                // Respects the caret and any selection, so a paste into the
+                // middle of a half-typed number behaves like a normal paste.
+                const start = field.selectionStart ?? field.value.length;
+                const end = field.selectionEnd ?? field.value.length;
+                const next = (field.value.slice(0, start) + pasted + field.value.slice(end)).slice(0, maxDigits);
+                field.value = next;
+                const caret = Math.min(start + pasted.length, next.length);
+                field.setSelectionRange(caret, caret);
+
+                // Assigning .value fires nothing, and the step's own 'input'
+                // listener is what clears this field's inline error — so a
+                // paste has to announce itself or a stale error outlives the
+                // value that caused it.
+                field.dispatchEvent(new Event('input', { bubbles: true }));
+            });
+        });
+
         setSignupStep(1);
     }
 
@@ -1291,6 +1366,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
             const mode = form.dataset.authPanel;
             const data = Object.fromEntries(new FormData(form));
+            if (mode === 'signup') {
+                // Three inputs in, one full_name out — see composeFullName().
+                // Done HERE, on the FormData snapshot, so it lands before the
+                // mobile check and before signUp: everything downstream of
+                // this line still reads the exact `data.fullname` shape it
+                // always did, and the signUp payload is unchanged.
+                data.fullname = composeFullName(data.firstname, data.middlename, data.surname);
+            }
             // Sign Up carries two .auth-submit buttons — step 1's Continue
             // (type="button") and Create Account — and only the last is the
             // form's real submit control. Matching on type keeps setBusy()
@@ -1331,6 +1414,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         return;
                     }
 
+                    if (window.InigoLoading) window.InigoLoading.show('Creating your account…');
                     const { data: signUpData, error } = await window.sb.auth.signUp({
                         email: data.email,
                         password: data.password,
@@ -1342,6 +1426,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         }
                     });
                     if (error) throw error;
+                    if (window.InigoLoading) window.InigoLoading.hide();
 
                     // Supabase returns no error and no session for an email that's
                     // already registered — it just silently no-ops (anti-enumeration

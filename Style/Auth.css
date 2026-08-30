@@ -42,7 +42,12 @@ body.auth-lock {
     background: var(--color-bg-elevated);
     border: 1px solid var(--color-line);
     border-radius: 20px;
-    padding: 40px 36px 32px;
+    /* Vertical padding is part of the height budget (increment 10): the
+       card is driven by Sign Up step 1, which cannot shed a field, a
+       password rule or a control. Side padding is deliberately unchanged
+       — it sets the password checklist's track width, whose two-column
+       threshold is measured in the .auth-password-rules comment below. */
+    padding: 24px 36px 22px;
     box-shadow: 0 24px 60px rgba(0, 0, 0, 0.45);
     transform: translateY(16px) scale(0.98);
     opacity: 0;
@@ -93,8 +98,8 @@ body.auth-lock {
 .auth-brand {
     position: relative;
     text-align: center;
-    margin-bottom: 24px;
-    padding-bottom: 18px;
+    margin-bottom: 12px;
+    padding-bottom: 10px;
 }
 
 /* The accent rule. Not a full-width hairline: a short centred bar reads as
@@ -147,7 +152,11 @@ body.auth-lock {
 .auth-brand-text {
     display: flex;
     flex-direction: column;
-    gap: 2px;
+    /* No gap: the wordmark's own 1.15 line box already leaves the
+       strapline enough air, and 2px here made the lockup 46px — 2px
+       taller than the 44px mark beside it, so the text, not the mark, was
+       setting the header's height. */
+    gap: 0;
     min-width: 0;
 }
 
@@ -188,7 +197,7 @@ body.auth-lock {
     border: 1px solid var(--color-line);
     border-radius: 999px;
     padding: 4px;
-    margin-bottom: 28px;
+    margin-bottom: 14px;
 }
 
 /* Log In / Sign Up tabs are hidden while the Admin or Verify panel is active
@@ -199,7 +208,9 @@ body.auth-lock {
 
 .auth-tab {
     flex: 1;
-    padding: 10px 0;
+    /* 13 + 13 + an 18px line box = a 44px control. This is the modal's
+       primary switch and it was a 38px target before increment 10. */
+    padding: 13px 0;
     border-radius: 999px;
     border: none;
     background: transparent;
@@ -220,7 +231,7 @@ body.auth-lock {
 .auth-form {
     display: none;
     flex-direction: column;
-    gap: 18px;
+    gap: 14px;
 }
 
 .auth-form.is-active {
@@ -241,11 +252,28 @@ body.auth-lock {
    (see "Sign Up — stepped flow" below) with every step shorter than this
    panel, so the row resolved to Log In's own natural height, 715px at
    1440×900. Increment 8 then merged the email and password steps onto one
-   screen at the user's request, and that step measures 531px against Log In's
-   477px — so SIGN UP IS THE TALLER PANEL AGAIN and the row resolves to it:
-   850px at 1440/1024/768 and 828px at 390. Log In carries the leftover space.
+   screen at the user's request, which made that step taller than this panel
+   and flipped the winner back to Sign Up: 850px at 1440/1024/768, 828px at
+   390. Increment 9's two-column checklist clawed back 43px (807 / 786).
+
+   Increment 10 (G1: dropped the "Already have an account?" line from Sign
+   Up step 1; G3: a general padding/gap/line-height compaction) shrank BOTH
+   panels, not just Sign Up — most of what moved (modal padding, brand
+   spacing, tab padding, field/button padding and line-heights) is shared
+   chrome and shared field/button rules, not panel-specific markup. SIGN UP
+   IS STILL THE TALLER PANEL: panel-only 411px (Log In) vs 454px (Sign Up —
+   heading + step indicator + tallest step, 392px), identical at every width
+   tested since neither panel's own content reflows between breakpoints, only
+   the modal's outer chrome does. Current row/card height, measured on
+   .auth-modal.offsetHeight, identical in both themes: **636px at
+   1440/1024/768, 628px at 480/420/390/375** (390-and-narrower turns
+   non-monotonic below 480 — 668 at 361, 633 at 360, 685 at 320 — from the
+   password checklist's own column collapse; see the width comment on
+   .auth-password-rules below). Log In's dead space is now ~43px (panel-stack
+   454 vs Log In's own panel 411), not the ~135px increment 8 left it with.
    That is a measured, deliberate trade for the merged first screen, not a
-   regression that crept back in.
+   regression that crept back in. Re-measure before citing a number; do not
+   assume this one stays put either.
 
    The inactive panel keeps its box but is visibility:hidden, which — unlike
    opacity — also removes it from the tab order and from the accessibility
@@ -293,9 +321,15 @@ body.auth-lock {
 
    Height contract: the card is max(Log In panel, this panel), and this panel
    is its own heading + step indicator + tallest step. Since increment 8 merged
-   email and password onto one screen, the maximum is the SIGN UP side (step 1
-   = 531px against Log In's 477px), so anything added to a step now grows the
-   card on BOTH panels. Measure it rather than assuming — and measure
+   email and password onto one screen, the maximum has been the SIGN UP side —
+   step 1 was 531px against Log In's 477px at increment 8, then 489px after
+   increment 9's two-column checklist, and is **392px against Log In's 411px**
+   as of increment 10's G1/G3 compaction (see the "Log In / Sign Up share one
+   card height" comment above for the full history and the current row height).
+   Sign Up is still the taller PANEL even though step 1 alone now measures
+   under Log In's panel height, because the panel also carries its own heading
+   and step indicator above the step-stack. Anything added to a step still
+   grows the card on BOTH panels. Measure it rather than assuming — and measure
    .auth-modal.offsetHeight, never getBoundingClientRect(), which returns the
    transformed box while the modal is still scaling in.
 
@@ -316,6 +350,7 @@ body.auth-lock {
 .auth-step-indicator {
     font-family: var(--font-mono);
     font-size: 0.72rem;
+    line-height: 1.25;
     letter-spacing: 0.06em;
     text-transform: uppercase;
     color: var(--color-ink-faint);
@@ -354,7 +389,7 @@ body.auth-lock {
     grid-area: 1 / 1;
     display: flex;
     flex-direction: column;
-    gap: 18px;
+    gap: 14px;
     visibility: hidden;
 }
 
@@ -388,20 +423,18 @@ body.auth-lock {
     display: flex;
     align-items: stretch;
     gap: 10px;
-    margin-top: 4px;
 }
 
-/* .auth-submit is width:100% + margin-top:4px on its own; inside the nav row
-   the row owns the spacing and the button just takes the leftover width. */
+/* .auth-submit is width:100% on its own; inside the nav row the row owns
+   the width and the button just takes what is left beside Back. */
 .auth-step-nav .auth-submit {
     flex: 1 1 auto;
     width: auto;
-    margin-top: 0;
 }
 
 .auth-back {
     flex: 0 0 auto;
-    padding: 14px 20px;
+    padding: 13px 20px;
     border: 1px solid var(--color-line);
     border-radius: 999px;
     background: var(--color-bg-card);
@@ -436,15 +469,43 @@ body.auth-lock {
 .auth-password-group {
     display: flex;
     flex-direction: column;
-    gap: 10px;
+    gap: 8px;
 }
 
 .auth-password-rules {
     display: grid;
-    gap: 5px;
+    /* TWO COLUMNS, sized by the list rather than by the viewport. A track has
+       to hold the longest short rule on one line — "1 uppercase letter",
+       104.97px in Inter (98.98 in the 'Segoe UI' fallback) — plus the 15px
+       marker and its 8px gap = 127.97px, so 132px is the narrowest track that
+       cannot wrap, whatever the font resolves to. auto-fit then drops to one
+       column by itself wherever two of those plus the 14px column gap do not
+       fit, with no new breakpoint: the deciding width is THIS LIST's, and the
+       modal caps at 420px while shedding side padding at 480px and again at
+       360px, so the same viewport can leave the list anywhere from 238px to
+       374px wide. Measured list widths: 346px at 1440/1024/768, 374 at 480,
+       326 at 420, 296 at 390, 281 at 375, 267 at 361, 278 at 360, 238 at 320.
+       Swept a pixel at a time, two columns hold from 1440 down to 372 (list
+       278 = exactly 2x132 + 14) and again at 360, where the existing 360px
+       padding rule widens the list by 11px just as the viewport narrows; one
+       column at 361-371 and at 359 and below. Three columns are unreachable:
+       a third track needs 3x132 + 2x14 = 424px against a 374px maximum. */
+    grid-template-columns: repeat(auto-fit, minmax(132px, 1fr));
+    gap: 4px 14px;
     margin: 0;
     padding: 0;
     list-style: none;
+}
+
+/* The special-character rule is 177px of text, half again as wide as any
+   other row, so it takes a row of its own instead of wrapping to two lines in
+   a 166px track — wrapping it is why increment 8's two-column trial measured
+   only ~28px of savings. Scoped to an ODD last child so it only spans when it
+   would otherwise sit alone in a half-empty row; an even number of rules
+   leaves a clean pair of columns. Collapses to a no-op in the one-column
+   fallback, where 1 / -1 is the only column. */
+.auth-password-rule:nth-child(odd):last-child {
+    grid-column: 1 / -1;
 }
 
 .auth-password-rule {
@@ -511,18 +572,80 @@ body.auth-lock {
     font-family: var(--font-display);
     font-weight: 600;
     font-size: 1.3rem;
-    margin-bottom: 2px;
+    /* Tight, like every other display-face heading on the site. The
+       inherited body 1.5 wrapped a 21px single-line heading in a 31px
+       line box. */
+    line-height: 1.2;
 }
 
 .auth-field {
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    gap: 6px;
+}
+
+/* --------------------------------------------------------------------------
+   Name row — Surname / First name / Middle name, side by side (increment 11)
+   --------------------------------------------------------------------------
+   Signup step 2 collects the name in three boxes laid out horizontally, in
+   one row of three equal tracks. Horizontal is not only the ask, it is also
+   what keeps the card's height where increment 10 left it: each extra ROW of
+   name fields costs 75px (measured), and step 2 has only 130px of headroom
+   before it overtakes step 1 (392px) and starts driving the shared card, so
+   three stacked fields (+150px) would. Laid out in one row the step costs
+   nothing at all: 262px before this change, 262px after.
+
+   The track floor is measured, not guessed, exactly as .auth-password-rules'
+   is below: 86px is the narrowest track "MIDDLE NAME" — the longest of the
+   three labels, 85.16px in Space Mono at 0.72rem/0.06em (77.28px in the
+   monospace fallback) — cannot wrap in. So wherever three columns render,
+   they are wrap-proof by construction rather than by measurement.
+
+   auto-fit off the ROW's own width, not a viewport media query, for the same
+   reason the checklist uses it: the modal sheds side padding at 480px and
+   again at 360px, so one viewport width does not map to one row width (346px
+   at 1440/1024/768, 374 at 480, 296 at 390, 281 at 375, 278 at 360, 267 at
+   361, 238 at 320). Swept a viewport pixel at a time from 320 to 480: three
+   columns at ≥372 and again at exactly 360, two columns at 361–371 and at
+   ≤359 — the same non-monotone band the checklist has, for the same reason
+   (the ≤360 padding drop widens the row by 11px right where the viewport
+   narrows), and no real device sits in it. Every real width lands on the
+   sensible side: 320 → two columns of 114px, 360/375/390/393/412/430 → three
+   of 86–92px. Zero wrapped labels and zero horizontal overflow at any width
+   from 320 to 1920, and the narrowest box measured anywhere is 86 x 45px, so
+   increment 10's 44px touch-target floor holds throughout. Four tracks are
+   unreachable — a fourth needs 4x86 + 3x10 = 374px against a 374px maximum,
+   and auto-fit (not auto-fill) collapses the empty one regardless.
+
+   Falling back to two columns rather than to one keeps the two-row form well
+   inside step 2's headroom: the step is 262px against step 1's 392px, and
+   two rows only reach 337px, so the card's height still comes from step 1 at
+   every width — measured at all 168 widths swept, step 2 never once reached
+   step 1, and every card height matches its pre-increment-11 value to the
+   pixel (see the .auth-panel-stack comment for the table).
+
+   minmax's floor also fixes what a plain 1fr cannot: a grid item's automatic
+   minimum size is its min-content width, and an <input>'s min-content width
+   is its intrinsic size-attribute width (~170px in Chrome, not its CSS
+   width), so three plain 1fr tracks would demand ~510px of a 348px-wide card
+   and overflow it sideways.
+
+   The 10px gap matches .auth-step-nav's, the only other horizontal gap in
+   this form.
+   -------------------------------------------------------------------------- */
+.auth-field-row {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(86px, 1fr));
+    gap: 10px;
 }
 
 .auth-label {
     font-family: var(--font-mono);
     font-size: 0.72rem;
+    /* One line of uppercase mono with no descenders: the inherited body
+       1.5 reserved 17px around a 12px glyph box. Type size and colour are
+       unchanged, so contrast is unchanged. */
+    line-height: 1.25;
     letter-spacing: 0.06em;
     text-transform: uppercase;
     color: var(--color-ink-faint);
@@ -533,7 +656,9 @@ body.auth-lock {
     background: var(--color-bg-card);
     border: 1px solid var(--color-line);
     border-radius: 10px;
-    padding: 13px 14px;
+    /* 12 + 12 + a 19px line box + 2px of border = a 45px control. Do not
+       go below 12px here: 44px is the floor for a text input's target. */
+    padding: 12px 14px;
     color: var(--color-ink);
     font-family: var(--font-body);
     font-size: 0.95rem;
@@ -547,6 +672,71 @@ body.auth-lock {
 .auth-field input:focus {
     outline: none;
     border-color: var(--color-primary);
+}
+
+/* --------------------------------------------------------------------------
+   Autofill parity — why an autofilled box has to be repainted, not restyled
+   --------------------------------------------------------------------------
+   Chrome paints an autofilled control from its own UA sheet:
+
+       input:-internal-autofill-selected {
+           background-color: rgb(232, 240, 254) !important;
+           color: fieldtext !important;
+       }
+
+   A UA !important declaration outranks an author !important, so the
+   `background: var(--color-bg-card)` above cannot win the cascade — the box
+   has to be painted over instead. Measured, not assumed: with the pseudo-class
+   forced over CDP (CSS.forcePseudoState → "autofill"), an autofilled input
+   rendered rgb(232,240,254) in BOTH themes, against rgb(36,29,22) dark /
+   rgb(255,255,255) light for a non-autofilled one on the same card.
+
+   That is the "Log In's boxes are a different colour from Sign Up's" report.
+   Nothing panel-specific exists in this file — both panels share the one
+   `.auth-field input` rule above and their resting computed backgrounds are
+   byte-identical. What differs is the markup the browser reacts to: Log In
+   carries autocomplete="email" + "current-password", exactly the pair a
+   browser has saved and refills on sight, while Sign Up carries "email" +
+   "new-password", which Chrome does not refill.
+
+   Three declarations, each doing a different job:
+     • box-shadow — an inset spread paints on top of the background box, which
+       is the only way past the UA !important. 1000px is simply larger than any
+       input this modal will ever have.
+     • -webkit-text-fill-color — outranks the UA's forced `color` for painted
+       glyphs, so the value stays legible on the dark card.
+     • transition — Chrome fades its background in; a 5000s background-color
+       transition never lands, so the fade is never seen. Both halves of the
+       fix are kept because browsers differ over which one they honour.
+
+   Scoped to `.auth-field input`: Auth.css is loaded only by Pages/Index.html
+   today (checked — no dashboard page links it), and scoping keeps this off any
+   form that borrows the file later. The OTP boxes are deliberately out of
+   scope; they carry no autocomplete attribute and are never autofilled.
+   -------------------------------------------------------------------------- */
+.auth-field input:-webkit-autofill,
+.auth-field input:-webkit-autofill:hover,
+.auth-field input:-webkit-autofill:focus,
+.auth-field input:-webkit-autofill:active {
+    -webkit-text-fill-color: var(--color-ink);
+    -webkit-box-shadow: 0 0 0 1000px var(--color-bg-card) inset;
+    box-shadow: 0 0 0 1000px var(--color-bg-card) inset;
+    caret-color: var(--color-ink);
+    transition: background-color 5000s ease-in-out 0s, border-color 0.2s;
+}
+
+/* The 5000s background-color transition STAYS under reduced motion, on
+   purpose: it exists to SUPPRESS Chrome's autofill repaint, not to animate
+   anything, and dropping it here would let the pale blue flash back in for
+   exactly the visitors who asked for less movement. Only the border-color fade
+   inherited from `.auth-field input` is removed. */
+@media (prefers-reduced-motion: reduce) {
+    .auth-field input:-webkit-autofill,
+    .auth-field input:-webkit-autofill:hover,
+    .auth-field input:-webkit-autofill:focus,
+    .auth-field input:-webkit-autofill:active {
+        transition: background-color 5000s ease-in-out 0s;
+    }
 }
 
 .auth-input-wrap {
@@ -623,9 +813,9 @@ body.auth-lock {
 }
 
 .auth-submit {
-    margin-top: 4px;
     width: 100%;
-    padding: 14px 0;
+    /* 13 + 13 + a 20px line box = a 46px control. */
+    padding: 13px 0;
     border: none;
     border-radius: 999px;
     background: var(--color-primary);
@@ -653,9 +843,10 @@ body.auth-lock {
     display: flex;
     align-items: center;
     gap: 12px;
-    margin: -4px 0;
+    margin: -6px 0;
     color: var(--color-ink-faint);
     font-size: 0.78rem;
+    line-height: 1.2;
     text-transform: uppercase;
     letter-spacing: 0.04em;
 }
@@ -673,7 +864,7 @@ body.auth-lock {
     display: flex;
     justify-content: center;
     width: 100%;
-    min-height: 48px;
+    min-height: 46px;
 }
 
 .auth-google-button {
@@ -682,8 +873,8 @@ body.auth-lock {
     justify-content: center;
     gap: 10px;
     width: 100%;
-    min-height: 48px;
-    padding: 13px 16px;
+    min-height: 46px;
+    padding: 12px 16px;
     border: 1px solid var(--color-line);
     border-radius: 999px;
     background: var(--color-bg-card);
@@ -1067,13 +1258,13 @@ body.auth-lock {
 /* Responsive */
 @media (max-width: 480px) {
     .auth-modal {
-        padding: 32px 22px 26px;
+        padding: 22px 22px 20px;
         border-radius: 16px;
     }
 
     .auth-brand {
-        margin-bottom: 22px;
-        padding-bottom: 16px;
+        margin-bottom: 12px;
+        padding-bottom: 10px;
     }
 
     .auth-brand-mark {
@@ -1137,7 +1328,7 @@ body.auth-lock {
 
 @media (max-width: 360px) {
     .auth-modal {
-        padding: 24px 16px 20px;
+        padding: 18px 16px 16px;
     }
 
     /* .auth-close is absolutely positioned and reaches 52px in from the
