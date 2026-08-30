@@ -688,7 +688,19 @@
                             </div>
                             <div class="dash-form-group">
                                 <span class="dash-form-label">Mobile number</span>
-                                <input type="tel" class="dash-input" placeholder="09XX XXX XXXX" value="0912 345 6789">
+                                <!-- Digits only, capped at 11 (increment 13) — same
+                                     [data-digits-only] pattern includes/auth.js uses for
+                                     signup's mobile field (see its wiring comment), reused
+                                     rather than reimplemented; wired in includes/Dashboard.js.
+                                     inputmode/maxlength are the declarative half only — the
+                                     JS filter is the actual enforcement. Demo value is
+                                     digits-only for the same reason: contact_num is always
+                                     stored spaceless (window.validatePhMobile's `normalized`
+                                     is always the local 09XXXXXXXXX form), so a spaced demo
+                                     value would be the one thing on this page that could
+                                     never actually come from the database. -->
+                                <input type="tel" class="dash-input" placeholder="09XX XXX XXXX" value="09123456789"
+                                       inputmode="numeric" maxlength="11" data-digits-only>
                             </div>
                         </div>
                         <div class="dash-form-actions">

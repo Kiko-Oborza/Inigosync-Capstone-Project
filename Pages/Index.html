@@ -570,17 +570,37 @@
                              Middle name carries no `required`: many Filipino
                              users legitimately have none, and the single
                              "Full name" field this replaced never demanded
-                             one either. There is deliberately no visible
-                             "(optional)" marker on the label — "MIDDLE NAME
-                             (OPTIONAL)" is ~165px of mono against a ~109px
-                             column and would wrap the row's labels out of
-                             alignment at every width. The absence of
-                             `required` is what carries it to assistive tech,
-                             and step 2's validation never asks for it.
+                             one either. The absence of `required` is what
+                             carries it to assistive tech, and step 2's
+                             validation never asks for it.
 
-                             See .auth-field-row in Style/Auth.css for the
-                             three-column layout and its narrow-width
-                             behaviour. -->
+                             VISIBLE "(optional)" MARKER (increment 13).
+                             Increment 11 shipped this label bare: "MIDDLE NAME
+                             (OPTIONAL)" is ~165px of mono against an
+                             86-118px column (see .auth-field-row below) and
+                             would wrap the row's labels out of alignment at
+                             every width. Re-measured for increment 13:
+                             "MIDDLE NAME" alone already measures 85.16px, so
+                             there is 0-33px of same-line headroom at ANY
+                             width this row renders — nowhere near enough for
+                             any legible suffix at any font size, on the same
+                             line, ever. The marker is therefore a nested
+                             .auth-label-hint span, forced onto its own line
+                             (display:block, not reliant on incidental wrap),
+                             in a smaller sentence-case run so it reads as a
+                             lighter secondary hint rather than a fourth
+                             shouted word. It reuses --color-ink-faint (same
+                             token .auth-label already uses, already AA at
+                             4.55:1 light / 5.69:1 dark on this modal surface
+                             — contrast is unaffected by the smaller size,
+                             since the ratio depends only on colour). Surname
+                             and First name are untouched and stay
+                             single-line, level with each other; only Middle
+                             name's own field grows taller to fit its second
+                             line — see implementation_plan.md (increment 13)
+                             for the full pixel measurements at every
+                             breakpoint, including the narrow two-column
+                             fallback. -->
                         <div class="auth-field-row">
                             <label class="auth-field">
                                 <span class="auth-label">Surname</span>
@@ -593,7 +613,7 @@
                             </label>
 
                             <label class="auth-field">
-                                <span class="auth-label">Middle name</span>
+                                <span class="auth-label">Middle name<span class="auth-label-hint">(optional)</span></span>
                                 <input type="text" name="middlename" placeholder="Reyes" autocomplete="additional-name">
                             </label>
                         </div>

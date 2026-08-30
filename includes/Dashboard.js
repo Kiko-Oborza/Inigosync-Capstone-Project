@@ -731,6 +731,19 @@ document.addEventListener('DOMContentLoaded', () => {
     // — distinguished by data-dash-settings-save="profile"/"password" in
     // the markup) to real Supabase calls.
     // ------------------------------------------------------------------
+
+    // Shared by the Mobile number field's load-time display (below) and its
+    // [data-digits-only] input/paste wiring further down (increment 13) — a
+    // function declaration (hoisted), not a const arrow, so it is safe to
+    // reference from renderProfile() regardless of source order; this file
+    // otherwise declares everything inline at the point of use (no top-level
+    // `let` a later call could run into before its declaration executes, the
+    // way includes/auth.js once did), and a hoisted function keeps that same
+    // guarantee for this one shared helper.
+    function digitsOnly(raw) {
+        return String(raw || '').replace(/[^0-9]/g, '');
+    }
+
     function renderProfile(profile) {
         const initials = (profile.full_name || profile.email || '?')
             .split(' ').map((p) => p[0]).slice(0, 2).join('').toUpperCase();
@@ -750,7 +763,14 @@ document.addEventListener('DOMContentLoaded', () => {
             const inputs = settingsPanel.querySelectorAll('.dash-settings-grid .dash-input');
             if (inputs[0]) inputs[0].value = profile.full_name || '';
             if (inputs[1]) inputs[1].value = profile.email || '';
-            if (inputs[2]) inputs[2].value = profile.contact_num || '';
+            // Digits-only on load too, matching the field's own [data-digits-only]
+            // contract (increment 13). Both write paths (signup and this panel's
+            // own Save below) already run contact_num through
+            // window.validatePhMobile first, whose `normalized` is always the
+            // spaceless local 09XXXXXXXXX form — so this is a defensive strip for
+            // any value that got into the database another way, not a fix for
+            // anything either write path produces today.
+            if (inputs[2]) inputs[2].value = digitsOnly(profile.contact_num).slice(0, 11);
         }
     }
 
@@ -774,6 +794,53 @@ document.addEventListener('DOMContentLoaded', () => {
             const isHidden = input.type === 'password';
             input.type = isHidden ? 'text' : 'password';
             btn.setAttribute('aria-label', isHidden ? 'Hide password' : 'Show password');
+        });
+    });
+
+    // Mobile number — digits only, capped at 11 (increment 13). Identical
+    // pattern to includes/auth.js's [data-digits-only] wiring for signup's
+    // mobile field (see its comment there for the full reasoning): maxlength
+    // alone would truncate a paste BEFORE anything can filter it, landing the
+    // wrong digits, so the paste handler preempts it and strips first. Wired
+    // once here at setup time rather than inside renderProfile() — that
+    // function can run more than once (on 'inigosync:profile-ready' AND
+    // immediately if window.inigosyncProfile already exists), and attaching
+    // this twice would double-apply the paste handler's manual splice.
+    document.querySelectorAll('[data-dash-panel="settings"] .dash-settings-grid .dash-input[data-digits-only]').forEach((field) => {
+        const maxDigits = field.maxLength > 0 ? field.maxLength : 11;
+
+        field.addEventListener('input', () => {
+            const filtered = digitsOnly(field.value).slice(0, maxDigits);
+            // Written back only when it actually differs: assigning .value
+            // drops the caret to the end of the box, and every accepted
+            // keystroke would otherwise pay that for nothing.
+            if (filtered !== field.value) field.value = filtered;
+        });
+
+        field.addEventListener('paste', (e) => {
+            const clipboard = e.clipboardData || window.clipboardData;
+            // No clipboard data to read (older Safari): let the browser
+            // paste and leave it to the input handler above, which still
+            // filters whatever lands.
+            if (!clipboard) return;
+            e.preventDefault();
+
+            const pasted = digitsOnly(clipboard.getData('text'));
+            // Respects the caret and any selection, so a paste into the
+            // middle of a half-typed number behaves like a normal paste.
+            const start = field.selectionStart ?? field.value.length;
+            const end = field.selectionEnd ?? field.value.length;
+            const next = (field.value.slice(0, start) + pasted + field.value.slice(end)).slice(0, maxDigits);
+            field.value = next;
+            const caret = Math.min(start + pasted.length, next.length);
+            field.setSelectionRange(caret, caret);
+
+            // Assigning .value fires nothing, so a paste has to announce
+            // itself with its own input event (nothing here currently
+            // listens for it, unlike signup's per-field error clearing, but
+            // this keeps the two implementations identical rather than
+            // dropping a line signup's copy relies on).
+            field.dispatchEvent(new Event('input', { bubbles: true }));
         });
     });
 

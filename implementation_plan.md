@@ -1643,6 +1643,417 @@ outcomes (already-registered, immediate-session, and the normal path to the
 verify panel) — matching the show/hide discipline every other auth action in
 this file already has, including hiding on error.
 
+## Increment 13 — Middle name "(optional)" marker; Account Settings mobile parity
+
+User approved both recommendations flagged at the end of increment 11/12.
+
+**I1 — Visible "(optional)" marker on signup's Middle name field.** Increment 11
+left this unmarked because "MIDDLE NAME (OPTIONAL)" (~165px in the existing
+mono label style) doesn't fit the ~86–109px column without wrapping the row's
+three labels out of alignment. Needs a compact solution that actually fits,
+measured the same way increment 11 measured its column widths — not asserted.
+Candidates to weigh: a shorter marker ("(OPT.)"), a lighter/smaller-weight
+"optional" placed so it doesn't force alignment across all three labels (e.g.
+only this one label allowed to wrap to a second line, since it's the one
+field where that's tolerable), or folding the hint into the placeholder
+instead of the label. Pick whichever holds up under measurement at every width
+this row already supports (including the narrow two-column fallback from
+increment 11), and report the actual numbers.
+
+**I2 — Same digits-only/11-character mobile restriction on Account Settings.**
+`Pages/user_dashboard.html`'s Mobile number field (`.dash-settings-grid
+.dash-input`, third input, referenced *positionally* by
+`includes/Dashboard.js` — `inputs[2]`) currently accepts anything a `type="tel"`
+field allows, including the seed value's `"0912 345 6789"` spaced format.
+Apply the identical filter increment 11 added to signup's mobile field —
+strip non-digits, cap at 11, on `input` and `paste` — reusing the same
+implementation pattern rather than writing a second one. Decide explicitly
+whether the pre-filled/loaded value should be reformatted to digits-only for
+display consistency, or left as-is until the user next edits it, and state
+which was chosen and why. `window.validatePhMobile`
+(`includes/phoneValidation.js`) stays untouched, same reasoning as increment
+11 — Account Settings' save path already runs through it
+(`includes/Dashboard.js:792`).
+
+**Constraints.** No schema change, no change to `contact_num`'s stored shape,
+no change to the signup fields or increment 11's composed-fullname logic, no
+change to `owner_dashboard.js` / `staff_dashboard.js` (out of scope — Account
+Settings only, matching what the user actually asked to extend), no change to
+the shared validator. WCAG AA on any new/changed label text; guard new
+transitions with `prefers-reduced-motion`; keep the 44px touch-target floor.
+
+**Success criteria.** Middle name visibly reads as optional to sighted users,
+with zero wrapping/misalignment regression at any width the row already
+supports. Account Settings' mobile field rejects non-digit keystrokes/paste
+and caps at 11 characters, verified with real keystroke/paste events exactly
+as increment 11 verified signup's. Save still round-trips correctly through
+`validatePhMobile` and `contact_num`.
+
+### Increment 13 — execution notes (2026-08-30)
+
+Implemented and verified by measurement (headless Chrome over CDP). Four
+files touched: `Pages/Index.html`, `Style/Auth.css` (I1), `Pages/user_dashboard.html`,
+`includes/Dashboard.js` (I2). `includes/auth.js`, `includes/owner_dashboard.js`,
+`includes/staff_dashboard.js` and `includes/phoneValidation.js` all have zero
+diff — confirmed with `git diff --stat`.
+
+**I1 — measured, not asserted; the marker is a forced second line, and the
+numbers show why that was the only option left standing.** Re-measured "MIDDLE
+NAME" alone in the live modal: **85.16px**, byte-identical to increment 11's
+number. Swept the row's own rendered column width at 17 points from 1440 down
+to 320 (adding 430/412/393/372/365/359/340 to increment 11's original sweep):
+3-column tracks run 86.0px (372, 360) up to **118.0px (480 — the single
+widest column at any width)**; the 2-column fallback (371–361, 359–340, 320)
+runs 114.0–133.5px. Also measured every candidate string live, in the real
+`.auth-label` style, off-flow: `"MIDDLE NAME (OPTIONAL)"` = 170.31px,
+`"MIDDLE NAME (OPT.)"` = 139.36px, and even the single word `"(OPT.)"` on its
+own = 46.45px — which still does not fit: 85.16 + a space + 46.45 ≈ 135px
+against a **118px ceiling that never grows past that at any width this row
+renders**. No same-line suffix fits, at any abbreviation, at any width — this
+is what settled I1's option choice, not a style preference.
+
+Shipped as a nested `<span class="auth-label-hint">(optional)</span>` inside
+Middle name's `.auth-label`, `display: block` (forces its own line
+deterministically rather than relying on incidental wrap surviving future
+font/metric changes), 0.64rem Inter, sentence case, reusing
+**`--color-ink-faint`** — the exact same token `.auth-label` itself already
+uses, so the contrast ratio is provably the label's own ratio, recomputed
+live rather than assumed: **5.69:1 dark / 4.55:1 light** against the real
+composited modal surface (`rgb(25,20,16)` dark / `rgb(247,240,228)` light) —
+both clear AA's 4.5:1, and font-size does not change which ratio applies
+(only the ≥18pt/14pt-bold "large text" carve-out would, and 0.64rem is far
+below it).
+
+Full sweep of the actual shipped markup/CSS (not a synthetic prototype), one
+browser session per theme, resized to all 17 widths within each session (34
+data points total):
+
+| | result |
+|---|---|
+| Hint wraps to a 3rd line anywhere | **never** (`hintLines === 1` at all 17 widths, both themes) |
+| Row/modal horizontal overflow | **zero** at all 17 widths (`overflowX` / `modalOverflowX` both 0.0px) |
+| Surname vs First name input alignment | **identical `top` at all 17 widths** (byte-for-byte) — untouched by this change |
+| Middle name's own input, 3-col rows | **+14.78px lower** than Surname/First in the same row — the accepted, task-sanctioned trade-off; only this one field's box grows |
+| Step 2 height | +14.8px (3-col: 261.8→276.6px) / +14.7px (2-col: 337.2→351.9px) |
+| **Card height, every width, both themes** | **byte-identical to the pre-I1 baseline at all 17 widths** (636/628/668/633/673/685) — step 1 (392.3–444.8px) still exceeds the grown step 2 (276.6–351.9px) everywhere, so increment 10's card-height/no-scroll result is untouched |
+| Input touch targets (all 3 name boxes) | 45px unchanged at all 17 widths — increment 10's 44px floor holds |
+| Dark vs light geometry | byte-identical (only colour differs) |
+
+Screenshotted at 1440 (widest 3-col), 372 (narrowest 3-col), 361 (2-col
+fallback) and 320 (narrowest 2-col), both themes — visually clean at every
+one, no wrapping, no clipping beyond the pre-existing "Dela Cru[z]" placeholder
+clip increment 11 already flagged and left alone (surname box text room,
+unrelated to this change).
+
+**Focus trap: zero code diff to `includes/auth.js`, re-verified live anyway**
+because a DOM change happened even though the trap's own file didn't move.
+Step 2's ring is still exactly **11** (increment 11's own number — a plain
+`<span>` with no `href`/`tabindex` can never match `FOCUSABLE`), confirmed
+with real `Input.dispatchKeyEvent` Tab **and** Shift+Tab, full cycle, both
+directions, both themes: `surname → firstname → middlename → mobile → terms →
+Terms link → Back → Create Account → close (×) → Log In tab → Sign Up tab →
+(wraps)`. The hint span is never focused; focus never leaves `.auth-modal`.
+Console: zero errors in both themes across every session above.
+
+**I2 — reused increment 11's exact pattern, not a second implementation.**
+`Pages/user_dashboard.html`'s Mobile number input gained `data-digits-only`,
+`inputmode="numeric"`, `maxlength="11"`. `includes/Dashboard.js` gained one
+hoisted `digitsOnly()` helper (a function declaration, not a `const` arrow —
+this file has no top-level TDZ-hazard pattern the way `auth.js` once did, and
+a hoisted declaration keeps that guarantee trivially rather than requiring a
+source-order proof) plus the identical input/paste wiring `auth.js` uses for
+signup's mobile field: strip non-digits on `input`, and on `paste`
+`preventDefault()` + manual caret-respecting splice + a dispatched synthetic
+`input` event, because `maxlength` alone truncates a paste before any filter
+sees it (increment 11's own finding, reproduced again here). **Wired once, at
+top-level setup, not inside `renderProfile()`** — that function can run twice
+(on `inigosync:profile-ready` **and** immediately if `window.inigosyncProfile`
+already exists at load), and attaching the paste handler twice would
+double-apply its manual splice.
+
+**Decision — the pre-filled/loaded value IS reformatted to digits-only, on
+both paths, not left as-is.** Reasoning: `window.validatePhMobile`'s
+`normalized` return is *always* the spaceless local form (confirmed by
+reading `includes/phoneValidation.js` directly), and both write paths that
+can ever populate `contact_num` — signup and this same Account Settings Save
+handler — already store exactly that `normalized` value; the real seed rows
+in `database/seed/001_seed_users.sql` (`'09171234501'` etc.) confirm this
+holds in practice too. The **only** spaced value anywhere in the codebase was
+the static HTML demo default (`"0912 345 6789"`), which would otherwise be
+the one thing on the page that could never actually come from the database —
+and would directly contradict the field's own new `maxlength="11"` (13
+characters against an 11-character cap). Fixed at both the source that
+matters:
+1. The static seed value → `value="09123456789"` (verified: this is the
+   literal on-disk value the browser renders with **zero** Supabase session
+   at all — `authGuard.js`'s own `!window.sb` guard bails out and leaves the
+   static shell untouched, confirming the fix is real and not merely masked
+   by a live profile load).
+2. `renderProfile()` → `inputs[2].value = digitsOnly(profile.contact_num).slice(0, 11)` —
+   defensive, not a fix for anything either write path produces today, but
+   guarantees the field displays what its own contract promises regardless
+   of how a value got into the database. Verified live with a deliberately
+   dirty fake profile (`contact_num: '0917 123 4501'`) → field displayed
+   `'09171234501'` after load.
+
+**Verification — real dispatched keystrokes and paste, same test matrix
+increment 11 used for signup, 44/44 checks green across both themes** (22
+checks × 2 themes; headless Chrome over CDP, `authGuard.js` satisfied with a
+minimal fake `window.sb` — the real CDN script is blocked and a hand-rolled
+chainable mock stands in, same category of substitution increment 8's own
+verification used, "stubbed `sb.auth.signUp` and blocked `*supabase.co/auth/*`"):
+
+- Real keystrokes `abc09xy17!12 34-56()789` → `09171234567` (byte-identical
+  to increment 11's own signup test string). A 12th digit cannot land.
+  Letters-only leaves the field empty. A rejected keystroke mid-value leaves
+  both the value and the caret position untouched.
+- Paste `0917 123 4567` → `09171234567`; `09-17-12-34-567` → `09171234567`;
+  a 19-digit run → the first 11; text with no digits → stays empty; a paste
+  into the middle of an existing value splices at the caret correctly
+  (`'0917'` at caret 2 + pasted `'99'` → `'099917'`).
+- Paste `+63 917 123 4567` → `63917123456`: digits-only extraction, capped at
+  11, **not** a valid local number — expected and by design, identical to
+  increment 11's own finding that the international branch becomes
+  unreachable from a digits-only field once it can no longer produce a `+`.
+- Full name (`inputs[0]`) accepts symbols/spaces unfiltered
+  (`"O'Brien-Cruz III"` round-trips exactly) — confirms the filter is scoped
+  to the mobile field alone. Email (`inputs[1]`) stays `disabled` and
+  untouched throughout.
+- Save round-trips correctly: a valid `09181234567` reaches the mocked
+  `profiles` update payload's `contact_num` unchanged (already local-format,
+  so `validatePhMobile` passes it straight through), `window.inigosyncProfile`
+  and the re-rendered field both reflect it afterward. An invalid short entry
+  (`091`, 3 digits) is blocked by the pre-existing `validatePhMobile` gate —
+  **zero** update calls reach Supabase — confirming increment 13 added no new
+  path around that validation and `includes/Dashboard.js:792`'s call site is
+  unchanged.
+- `.dash-settings-grid .dash-input` positional structure is unchanged:
+  querying it inside the settings panel still returns 5 elements in the same
+  order (Full name, Email, Mobile, New password, Confirm new password — the
+  panel has two separate `.dash-settings-grid` blocks, and `inputs[0..2]` has
+  always meant "the first three in DOM order," pre-existing behaviour this
+  increment did not touch). The Change Password card's own 3
+  `input[type="password"]` fields are untouched and not matched by the new
+  `[data-digits-only]`-scoped selector.
+- Console: zero errors in both themes beyond one **deliberate, harness-induced**
+  message (`[supabaseClient] supabase-js failed to load…`) that fires only
+  because the test setup blocks the real CDN to substitute the fake client —
+  it cannot occur with real network access and is unrelated to any file this
+  increment touched.
+
+**`prefers-reduced-motion`: nothing new to guard.** Neither I1 nor I2 adds a
+`transition`, `animation`, or any other motion — `.auth-label-hint` is static
+text styling and the digits-only wiring is behavioural, not visual. Checked
+directly rather than assumed: neither diff contains the string `transition`.
+
+**Not verified here: real OS-clipboard paste.** This sandboxed shell has no
+clipboard access — both `clip.exe` (`"Access is denied"`) and PowerShell's
+`Set-Clipboard` (`ExternalException`) fail outright when actually invoked
+with content. Every paste check above instead dispatches a synthetic
+`ClipboardEvent` carrying a real `DataTransfer` (`isTrusted: false`), proven
+first against a throwaway `about:blank` input to confirm it reliably reaches
+`e.clipboardData.getData('text')`. This exercises the exact same handler code
+path a real Ctrl+V would — the handler never branches on `event.isTrusted` —
+but does not prove Chrome's own trusted-paste delivery pipeline, which is
+standard platform behaviour this increment has no reason to doubt rather than
+something specific to this code.
+
+**Not this increment's to fix, flagged for the record:** the "Increment 12 —
+execution notes" section referenced by this increment's own opening line
+("both recommendations flagged at the end of increment 11/12") does not exist
+in this file — increment 12's plan text has no matching write-up. The
+recommendations actually being approved here (the marker, and Account
+Settings parity) both trace to increment 11's own notes, not anything
+increment 12 flagged, so this did not block I1/I2; noted only because a
+future reader searching for "increment 12 execution notes" will not find one.
+
+## Increment 14 — Fix Surname/First name/Middle name textbox misalignment
+
+User-reported (screenshot) and confirmed: increment 13's `.auth-label-hint`
+("(optional)") forces Middle name's label onto two lines while Surname's and
+First name's labels stay on one, so **Middle name's input box sits visibly
+lower than the other two** in the same horizontal row — exactly the alignment
+regression increment 13 was supposed to avoid, now visible in a real
+screenshot rather than only theorized.
+
+**Fix: reserve equal label height across all three fields in the row**, not
+by removing the hint. Give the label area inside `.auth-field-row .auth-field`
+a `min-height` sized to the *tallest* label (Middle name's two-line version),
+so Surname's and First name's single-line labels reserve the same vertical
+space even though they render shorter — pushing all three `<input>` elements
+to start at the identical Y position. Measure the real rendered heights (label
+line height + hint line height + its `margin-top`) rather than guessing a
+round number, and verify with `getBoundingClientRect().top` equality across
+the three inputs, not just a visual screenshot.
+
+**Scope this to the row that actually has three unequal labels.** Increment
+11's two-column narrow fallback (≤371px, and ≥360 as a special case) already
+puts Middle name on its own row below Surname/First name — there is no
+three-way alignment to fix there, only the two-name row (which has no hint)
+above it. Confirm the fix does not add unwanted empty space to that narrow
+layout, where reserving two-line height for a label that's alone on its own
+row serves no purpose.
+
+**Constraints.** All increment 13 constraints hold: no schema change, no
+change to `composeFullName()`, no change to `data-digits-only` mobile
+filtering, no change to Surname/First name's `required` state or Middle
+name's optional state, WCAG AA / 44px floor / `prefers-reduced-motion` per
+house convention. Do not remove or reword the "(optional)" hint — the fix is
+alignment, not reverting increment 13.
+
+**Success criteria.** All three input boxes' top edges align exactly (0px
+difference) at every width where they render as three columns in one row, in
+both themes. The narrow two-column fallback is unaffected or improved, not
+regressed. Screenshot confirms it visually, matching the measured numbers.
+
+### Increment 14 — execution notes (2026-08-30)
+
+Implemented and verified by measurement (headless Chrome over CDP). **One
+file touched: `Style/Auth.css`** — a single new rule, `.auth-field-row
+.auth-label { min-height: 29.2px }`, scoped inside a media query. No markup,
+no JS, no colour, no new transition.
+
+**Reproduced the bug live before touching anything.** Baseline measurement
+(pre-fix) at 12 widths × 2 themes: Surname's and First name's `.auth-label`
+render at 14px (one line); Middle name's at 29px (two lines, its
+`.auth-label-hint`), at every width, both themes, without exception. At every
+three-column width the three inputs'
+`getBoundingClientRect().top` matched Surname == First name exactly, and
+Middle name **14.65–14.78px lower** than both — confirming the reported bug
+pixel-for-pixel, not just visually.
+
+**The number is the real rendered one, not the JS-rounded one.**
+`getComputedStyle()` on the live modal: `.auth-label` line box 14.4px
+(0.72rem × line-height 1.25) + `.auth-label-hint` line box 12.8px (0.64rem ×
+the same inherited 1.25) + the 2px `margin-top` between them = **29.2px**,
+identical in both themes and at every width tested (320–1920; the label text
+never wraps a third line). The obvious first choice — Middle name's own
+`label.offsetHeight`, which CSSOM rounds to a plain **29** — was tried first
+and produced a **0.168–0.172px residual** between Middle name's input and the
+other two at every three-column width (measured, not eyeballed): Middle
+name's real two-line box is the unrounded 29.2px internally, and a
+`min-height` of the rounded integer on the *other two* labels falls 0.2px
+short of matching it. Switching the literal to the unrounded 29.2px closed
+the residual to **exactly 0.0000px** at every one of the 12 widths, both
+themes — logged in the CSS comment so a future re-measure knows why the
+number isn't a round one.
+
+**Scoped to the three-column state, not applied unconditionally — checked by
+rendering both ways, per the plan's own instruction, not assumed.** Rendered
+an unconditional build (same rule, no media query) side by side with the true
+baseline: at every two-column fallback width (361/359/320, both themes),
+Surname's and First name's inputs — which have no taller row-mate in that
+layout — were both pushed down **14.797px**, and Middle name's own input a
+near-identical **14.812px**, i.e. the *entire* two-column row grows by about
+15px of dead space above text that never needed it. That is a real,
+measured regression against "unaffected or improved," not a hypothetical
+one, so the rule ships inside
+`@media (min-width: 372px), (min-width: 360px) and (max-width: 360px)` —
+reusing `.auth-field-row`'s own documented three-column thresholds (≥372px,
+and again at exactly 360px, the same non-monotone edge case increments 9 and
+11 already found and left alone) rather than inventing a new breakpoint.
+Re-confirmed live for this specific rule, not just carried over from memory:
+at 372px and 360px the row renders 3 columns and the fix applies; at 361px
+and 359px it renders 2 and the fix does not. With the scoped rule shipped,
+the two-column fallback measures **byte-identical to the pre-fix baseline**
+at 361/359/320 in both themes — 0.0px change to Surname's, First name's, or
+Middle name's input position. Nothing was added, nothing was removed; the
+fallback was already correct and stays that way.
+
+Full width/theme matrix, `.auth-modal.offsetHeight` (card height) before vs.
+after — **unchanged at every cell**:
+
+| width | 1440/1024/768 | 480/420/390/375/372 | 361 | 360 | 359 | 320 |
+|---|---|---|---|---|---|---|
+| card height, before = after (both themes) | 636 | 628 | 668 | 633 | 673 | 685 |
+
+This is the expected result, not a coincidence: step 2's height was already
+being set by Middle name's own two-line label before this increment (that's
+what increment 13 measured as step 2 growing from 261.8/337.2 to
+276.6/351.9px). This fix only makes Surname's and First name's *own* labels
+catch up to a row height the grid was already reserving for Middle name — it
+does not add any new height to the row itself, so the step, and therefore the
+card, does not move.
+
+Top-alignment matrix, `getBoundingClientRect().top`, byte-identical in both
+themes except where noted — two separate comparisons, because "aligned" only
+means something between elements that actually share a row:
+
+| width | 1440 | 1024 | 768 | 480 | 420 | 390 | 375 | 372 | 361 | 360 | 359 | 320 |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| columns | 3 | 3 | 3 | 3 | 3 | 3 | 3 | 3 | 2 | 3 | 2 | 2 |
+| Surname vs. First name, before | 0.000 | 0.000 | 0.000 | 0.000 | 0.000 | 0.000 | 0.000 | 0.000 | 0.000 | 0.000 | 0.000 | 0.000 |
+| Surname vs. First name, after | 0.000 | 0.000 | 0.000 | 0.000 | 0.000 | 0.000 | 0.000 | 0.000 | 0.000 | 0.000 | 0.000 | 0.000 |
+| Middle name vs. Surname, before | 14.65–14.70‡ | 14.76–14.77‡ | 14.78 | 14.78 | 14.78 | 14.78 | 14.78 | 14.78 | 90.17† | 14.78 | 90.17† | 90.17† |
+| Middle name vs. Surname, after | **0.000** | **0.000** | **0.000** | **0.000** | **0.000** | **0.000** | **0.000** | **0.000** | 90.17† | **0.000** | 90.17† | 90.17† |
+
+Surname vs. First name — the pair that are always row-mates, in both the
+three- and two-column layouts — measured 0.000px apart before this fix and
+still do after, at all 12 widths, both themes: they were never the bug and
+this change does not touch them beyond growing their shared label height.
+Middle name vs. Surname is the actual bug metric, and it only means anything
+in the three-column state (where all three genuinely share one row): **every
+three-column width, including the 360px non-monotone one, goes from a real,
+reproduced 14.65–14.78px gap to an exact 0.000px** in both themes. At 361,
+359 and 320 the 90.17px reading is unchanged before vs. after (†) — that is
+Middle name legitimately sitting on its own row below Surname/First name, not
+a misalignment, and this fix leaves it exactly as it was; the number that
+actually matters there — Surname's and First name's own top, individually,
+against the true pre-fix baseline — also measured **0.0px difference** at
+every one of those three widths, confirming zero pixels of new dead space
+was added to the fallback (see the unconditional-vs-scoped comparison below
+for what happens when that scoping is removed). ‡ dark/light differ by
+≤0.05px at 1440/1024 only, sub-pixel font-hinting noise unrelated to this
+fix (present in the "before" numbers too).
+
+**Touch targets and overflow, re-checked rather than assumed unaffected:**
+input height stayed **≥44.6px** at all 24 width/theme cells (44.60–44.98px at
+1440/1024/768, a flat 45.00px everywhere narrower — small run-to-run
+sub-pixel variance was visible specifically at 1440, the first width measured
+right after navigation, consistent with web-font swap-in timing rather than
+this fix; every repeat measurement still cleared 44px by a comfortable
+margin). The input element's own CSS was never touched — the new rule only
+sizes the label above it. `scrollWidth − clientWidth` stayed **0** for both
+`.auth-field-row` and `.auth-modal` at every cell — no horizontal overflow
+introduced.
+
+**Focus trap: zero code touched, re-verified live anyway** because a
+rendering change happened even though `includes/auth.js` didn't move. 26 real
+`Input.dispatchKeyEvent` Tabs and 26 Shift+Tabs from Surname, both themes,
+visit exactly increment 13's own documented 11-control ring in the same
+order — `surname → firstname → middlename → mobile → terms → Terms link →
+Back → Create Account → close (×) → Log In tab → Sign Up tab → (wraps)` —
+every stop reporting `inModal: true`. Unchanged, as expected for a CSS-only
+change.
+
+**Console: zero errors or exceptions in either theme**, across the full
+navigate → theme-set → step-2 → 26-Tab-cycle session (captured via a fixed
+event-logging bug in the measurement harness itself, not just a one-off
+sample at the end, so nothing early was silently missed). The only messages
+present are the two pre-existing `console.log` informational lines
+(`courts-data.js loaded…`, `hero showcase carousel loaded…`) and one
+pre-existing Chrome DevTools "verbose" `[DOM]` password-form recommendation —
+all three predate this increment and are not errors.
+
+**WCAG AA and `prefers-reduced-motion`: nothing new to check.** The diff
+touches no `color`/`background` declaration (`--color-ink-faint` is
+mentioned only inside a pre-existing, untouched comment) and adds no
+`transition`/`animation` — confirmed by re-reading the exact lines added, not
+just by category. Contrast is therefore provably the same 4.55:1 light /
+5.69:1 dark `.auth-label` already held.
+
+Screenshots (both themes, `.auth-modal` clipped): 1440px (three-column, wide)
+confirms all three boxes level; 360px confirms the non-monotone edge case
+itself renders three level boxes, not just the widths on either side of it;
+320px confirms the two-column fallback with Middle name cleanly on its own
+row and no dead space above Surname/First name.
+
+**Not verified here:** a real OS window resize (every width above is a CDP
+`Emulation.setDeviceMetricsOverride`, the same category of substitution prior
+increments' responsive sweeps used) and real-device rendering (Android's
+common 360px-wide viewport was covered exactly at the value most devices
+report, but only through Chrome's engine, not a physical device).
+
 ## Execution notes (2026-08-28) — deviations accepted
 
 Implemented and verified. Six deviations from the plan as written, all accepted:

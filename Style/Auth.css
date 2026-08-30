@@ -651,6 +651,93 @@ body.auth-lock {
     color: var(--color-ink-faint);
 }
 
+/* --------------------------------------------------------------------------
+   Middle name's "(optional)" marker (increment 13)
+   --------------------------------------------------------------------------
+   A same-line suffix was measured and rejected: "MIDDLE NAME" alone is
+   85.16px (see the name-row comment below) against an 86-118px column, so
+   there is 0-33px of same-line room at any width this row renders — not
+   enough for "(OPT.)" let alone "(optional)" at any legible size. Forced
+   onto its own line instead via display:block, which is deterministic
+   (does not depend on exact font-metric rounding the way incidental
+   wrapping would) and, since .auth-label is already blockified as a flex
+   item of .auth-field, simply ends the label's first line rather than
+   fighting any inline layout.
+
+   text-transform/letter-spacing are reset to read as a distinct, lighter
+   secondary line rather than a fourth shouted mono word — the primary
+   "MIDDLE NAME" text is completely unchanged. Colour is deliberately the
+   SAME --color-ink-faint token .auth-label already uses (already the
+   faintest token that still clears AA on this modal surface — see
+   LandingPage.css's --color-ink* comment — so there is no fainter AA-safe
+   option to express "more muted" with; the lighter weight comes from size
+   and case instead). Contrast is unaffected by font-size, only colour, so
+   this is the same measured 4.55:1 light / 5.69:1 dark .auth-label already
+   holds.
+
+   Nested inside .auth-label (not a sibling in .auth-field's flex column) so
+   it costs no extra flex `gap`, and so a screen reader announcing this
+   <label>'s accessible name includes "optional" too, not just sighted
+   users. Surname/First name are untouched by this rule; only Middle name's
+   own field grows taller — see implementation_plan.md (increment 13) for
+   the measured row/step-height deltas at every breakpoint. */
+.auth-label-hint {
+    display: block;
+    text-transform: none;
+    font-family: var(--font-body);
+    font-size: 0.64rem;
+    letter-spacing: normal;
+    margin-top: 2px;
+    color: var(--color-ink-faint);
+}
+
+/* --------------------------------------------------------------------------
+   Name-row top alignment fix (increment 14)
+   --------------------------------------------------------------------------
+   User-reported and confirmed by screenshot: the .auth-label-hint above
+   gives Middle name's label a second line that Surname's and First name's
+   labels don't have, so in the three-column state (all three fields sharing
+   one grid row) Middle name's own input rendered visibly lower than the
+   other two. Measured before this rule: every input's top is identical
+   between Surname/First name, and Middle name's is 14.65-14.78px lower
+   than both, at every three-column width, in both themes.
+
+   Fix: reserve Middle name's OWN rendered two-line label height on every
+   label in the row, not just its own, so Surname's and First name's
+   single-line labels give up the same vertical space Middle name's already
+   needs and all three inputs start at the identical Y position. The number
+   is measured, not guessed: getComputedStyle() on the live modal reports
+   .auth-label's own line box at 14.4px (0.72rem font-size * the 1.25
+   line-height above) plus .auth-label-hint's line box at 12.8px (0.64rem *
+   the same inherited 1.25) plus the 2px margin-top between them = 29.2px,
+   identical in both themes and at every three-column width from 320-1920,
+   since the label text never wraps a third line (see .auth-label-hint's
+   own comment above). The rounded integer (Middle name's own
+   label.offsetHeight, which CSSOM rounds to 29) was tried first and
+   rejected: it left a measured ~0.17px residual between Middle name's
+   input and the other two, because Middle's real two-line box is the
+   unrounded 29.2px internally — the exact sum is what a min-height on the
+   OTHER two labels has to match. Verified after with the exact sum: 0px
+   difference between all three inputs' getBoundingClientRect().top, at
+   every three-column width, both themes.
+
+   Scoped to the three-column state ONLY: >=372px, and again at exactly
+   360px, the same non-monotone edge case .auth-field-row's own comment
+   documents (re-confirmed live for this rule: 3 columns render at 372px
+   and 360px, 2 at 361px and 359px). Below that the row falls back to two
+   columns with Middle name alone on its own row underneath Surname/First
+   name — there is no taller row-mate to match there (confirmed live:
+   Surname's and First name's labelTop already equal each other with no
+   rule needed), so reserving two-line height on their labels in that
+   layout would only add ~15px of dead space above two inputs that have
+   nothing to align against. Checked by rendering both ways, not assumed,
+   and left out on purpose. */
+@media (min-width: 372px), (min-width: 360px) and (max-width: 360px) {
+    .auth-field-row .auth-label {
+        min-height: 29.2px;
+    }
+}
+
 .auth-field input {
     width: 100%;
     background: var(--color-bg-card);
