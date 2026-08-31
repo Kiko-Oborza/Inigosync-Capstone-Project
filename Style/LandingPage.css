@@ -1491,11 +1491,20 @@ body.court-viewer-lock {
    the "Ready to lock in your slot?" CTA band that used to close out #about,
    along with the background-photo treatment that was this stylesheet's only
    url() reference into assets/). The image file itself is untouched on disk.
+
+   §8 of the feedback doc ("Footer Updates"): the footer was disproportionately
+   large — this block only reduces padding/font/logo/gap/map sizing to make it
+   much more compact. Every rule below still targets the exact same content
+   (brand, Visit us / Contact / Follow cards, embedded map) — nothing was
+   removed, only shrunk. This file is shared by Pages/Index.html AND
+   Pages/user_dashboard.html (both <link> it), so the compaction applies to
+   both automatically — §8's "Global Application" — with zero duplication
+   into Style/Dashboard.css.
    ========================================================================== */
 .site-footer {
     background: var(--surface-band);
     border-top: 1px solid var(--border-soft);
-    padding: 48px 0 40px;
+    padding: 26px 0 22px;
     transition: background-color 0.2s ease, border-color 0.2s ease;
 }
 
@@ -1508,48 +1517,48 @@ body.court-viewer-lock {
 .footer-inner {
     display: flex;
     flex-direction: column;
-    gap: 24px;
+    gap: 16px;
 }
 
 .footer-brand {
     display: flex;
     flex-direction: column;
-    gap: 10px;
+    gap: 6px;
 }
 
 .footer-brand-main {
     display: inline-flex;
     align-items: center;
-    gap: 10px;
+    gap: 8px;
 }
 
 .footer-logo {
-    width: 44px;
-    height: 44px;
+    width: 30px;
+    height: 30px;
     object-fit: contain;
 }
 
 .footer-tagline {
-    font-size: 0.95rem;
+    font-size: 0.84rem;
     color: var(--color-ink-dim);
-    line-height: 1.7;
+    line-height: 1.5;
     max-width: 560px;
 }
 
 .footer-grid {
     display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 16px;
+    gap: 12px;
 }
 
 .footer-card {
     background: var(--surface-card);
     border: 1px solid var(--border-card);
-    border-radius: 16px;
-    padding: 18px;
+    border-radius: 12px;
+    padding: 13px 14px;
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    gap: 4px;
     box-shadow: var(--shadow-card);
     transition: background-color 0.2s ease, border-color 0.2s ease;
 }
@@ -1562,24 +1571,24 @@ body.court-viewer-lock {
 
 .footer-card h3 {
     font-family: var(--font-display);
-    font-size: 1rem;
+    font-size: 0.86rem;
     font-weight: 600;
     color: var(--color-accent-text);
-    margin-bottom: 2px;
+    margin-bottom: 1px;
 }
 
 .footer-card p,
 .footer-card a {
-    font-size: 0.9rem;
+    font-size: 0.8rem;
     color: var(--color-ink-dim);
-    line-height: 1.6;
+    line-height: 1.45;
     text-decoration: none;
 }
 
 .footer-card a {
     display: inline-flex;
     align-items: center;
-    gap: 8px;
+    gap: 6px;
     width: fit-content;
     transition: color 0.2s ease;
 }
@@ -1600,24 +1609,29 @@ body.court-viewer-lock {
     justify-content: center;
 }
 
+.footer-social-icon svg {
+    width: 15px;
+    height: 15px;
+}
+
 .footer-map-block {
     display: flex;
     flex-direction: column;
-    gap: 10px;
+    gap: 6px;
 }
 
 .footer-map-label {
     margin: 0;
-    font-size: 0.95rem;
+    font-size: 0.8rem;
     font-weight: 600;
     color: var(--color-ink);
 }
 
 .footer-map-frame {
     width: 100%;
-    min-height: 240px;
+    min-height: 150px;
     border: 0;
-    border-radius: 16px;
+    border-radius: 12px;
 }
 
 /* ==========================================================================
@@ -1685,6 +1699,17 @@ body.court-viewer-lock {
 
     .footer-grid {
         grid-template-columns: 1fr;
+    }
+
+    /* Slightly tighter still at phone widths (§8) — the 3-column grid above
+       already collapses to 1 column here, so without this the footer would
+       be the tallest section on a phone purely from stacking. */
+    .site-footer {
+        padding: 20px 0 18px;
+    }
+
+    .footer-map-frame {
+        min-height: 130px;
     }
 
     .site-nav .logo-image {

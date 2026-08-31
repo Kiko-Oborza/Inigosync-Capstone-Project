@@ -1,267 +1,241 @@
-# Customer Dashboard Overview — replace Calendar/Live Availability with a sortable Court + Slot Peek widget, add site footer
+# Customer Page Redesign — InigoSync_Dashboard_Feedback_v6
 
 ## Goal
 
-On the Customer dashboard ([Pages/user_dashboard.html](Pages/user_dashboard.html))
-Overview panel, remove the static "Calendar" and "Live availability" cards and
-replace them with one real, data-backed widget: a court list sortable by
-**sport type** that lets the customer peek today's available/booked time
-slots for any court without leaving the Overview tab, and jump straight into
-the Booking panel from an open slot. Additionally, add the same site footer
-already used on the landing page to the bottom of the dashboard shell, so it
-appears on every dashboard tab. This is a data-wiring + new-feature pass on
-the Overview panel only — the separate "Courts" nav panel (full court grid)
-is untouched.
+Implement all 9 sections of `InigoSync_Dashboard_Feedback_v6.md` on the
+Customer page (`Pages/user_dashboard.html` + `includes/Dashboard.js` +
+`Style/Dashboard.css`), including the two Supabase schema additions the
+feedback implies. The through-line of the document is **accessibility for
+older, non-tech-savvy users**: fewer things on screen at once, guided
+step-by-step flows, bigger obvious buttons, and clearer visual grouping.
 
 ## Context and current state
 
-Verified by direct read of the live files today (2026-08-31):
+Verified by direct read today. PR #1 (sortable court + slot-peek widget,
+site footer) is merged into this branch's history and is the starting point.
 
-- [Pages/user_dashboard.html:277-357](Pages/user_dashboard.html:277) — the
-  Overview panel's right-hand column of `.dash-grid-2` holds two cards: a
-  "Calendar" (`.dash-cal*`, a fully static July-2026 month grid with
-  hardcoded `has-booking` dots) and a "Live availability" list
-  (`.dash-avail-list`, 4 hardcoded rows: "Basketball — Available 2–3 PM",
-  "Badminton 1 — Booked until 4 PM", etc.). Neither reads real data.
-- [includes/Dashboard.js:214-242](includes/Dashboard.js:214) — the only JS
-  behind those two cards: month-label cycling (`calPrev`/`calNext`) and a
-  click-to-highlight day, both UI-only, no data. No JS touches
-  `.dash-avail-*` at all — it's inert markup.
-- `.dash-cal*` and `.dash-avail-*` classes ([Style/Dashboard.css:585-731](Style/Dashboard.css:585))
-  are used **only** on this one Overview panel (confirmed by grep across
-  `Pages/*.html`, `includes/*.js`, `Style/*.css`) — safe to remove/repurpose
-  without touching any other page.
-- The real "court viewing feature" the user likes is the **Courts nav panel**
-  ([Pages/user_dashboard.html:364-386](Pages/user_dashboard.html:364)),
-  rendered by `renderCourtGrid()`/`renderCourtCard()` in
-  [includes/Dashboard.js:548-601](includes/Dashboard.js:548) from
-  `window.InigoCourtsData.getCourts()` — real `court`/`sport` table data
-  (name, sport, rate, status, rating), no fabricated fields. This plan reuses
-  that same data source; it does not add a second court list.
-- There is **no real per-slot availability anywhere yet**. The Booking
-  panel's time-slot grid (`[data-dash-slot]`,
-  [Pages/user_dashboard.html:420-433](Pages/user_dashboard.html:420)) is
-  static placeholder markup — some slots hardcoded `is-unavailable` — not
-  derived from the `booking` table (confirmed by reading
-  [includes/Dashboard.js:352-359](includes/Dashboard.js:352), which just
-  wires clicks, and the comment at
-  [includes/Dashboard.js:252-255](includes/Dashboard.js:252) stating "real
-  per-slot availability... [is] a later phase").
-- A real, working precedent for computing per-slot occupancy from the actual
-  `booking` + `walk_in_booking` tables already exists: the Staff dashboard's
-  Court Schedule grid,
-  [includes/staff_dashboard.js:809-950](includes/staff_dashboard.js:809). It
-  queries both tables for a date range, builds fixed hourly/2-hourly slot
-  windows, and marks a slot occupied if `[booking.start, booking.start +
-  duration_minutes)` overlaps the slot window (`windowsOverlap`,
-  `bookingWindow`, `slotWindow`). This plan's slot-peek reuses that exact
-  overlap algorithm, adapted to hourly granularity (to match the Booking
-  panel's own hourly slot list) and scoped to "today" only (same scope the
-  Staff Court Schedule already uses — no new calendar/date-picker UI is
-  introduced, consistent with the user's request to remove calendar UI, not
-  add a different one).
-- **Known, standing, documented risk** (already called out by the project
-  itself, not new to this plan): `booking` and `walk_in_booking`'s RLS
-  policies were **not created by this repo's migrations** — they were set up
-  directly in the live Supabase project before schema tracking started, and
-  are "not visible to this migration" (see
-  [database/schema/004_staff_module.sql:22-27](database/schema/004_staff_module.sql:22)).
-  It is not confirmed whether the `customer` role can SELECT booking rows
-  belonging to *other* customers. Staff's Court Schedule works today only
-  because staff apparently has (or the table has) broad-enough SELECT access
-  for that role — that says nothing about the `customer` role.
-  **Mitigation built into this plan** (see Approach, item 3): the peek query
-  selects only the minimal columns needed (`courts, time_date,
-  duration_minutes, status`) — never another customer's name/contact — and
-  the UI fails safe: if the query errors or the result looks suspiciously
-  empty in a way the code can detect as an error (not just "nothing booked
-  today"), the widget shows an honest "Live slot status unavailable right
-  now" note instead of ever asserting a slot is open when it might not be.
-  This is a UI feature addition, not a schema change — no RLS policy is
-  modified by this task.
+**Nav (`Pages/user_dashboard.html:44-99`)** — currently 7 links: Dashboard,
+Courts, Book a Court, My Bookings, Receipts, *divider*, Profile, Account
+Settings, plus **Log Out** in `.dash-sidebar-foot`. The target list is 5.
+Critically, **Log Out already exists in the topbar avatar dropdown**
+(`:156-159`, `data-dash-logout`, wired by `includes/authGuard.js`), so
+removing it from the sidebar loses no functionality.
+
+**Courts** — exists twice today: the standalone `data-dash-panel="courts"`
+card grid (`:311-333`, `renderCourtCard()` in `includes/Dashboard.js:548`)
+and the new Overview peek widget (PR #1). §4 of the feedback puts Courts
+*inside* the Dashboard content area, so these two collapse into one.
+
+**A large, directly reusable asset**: the landing page already solves §4's
+combo-box + per-court-imagery requirement. `database/schema/006_court_unit_images.sql`
+adds `court.unit_images` (a `jsonb` array of `{label, image_url}`, one entry
+per individual court/lane/table), and `includes/landingPage.js`'s
+`resolveCourtUnits()` (`:336`) + court-viewer dialog (`Pages/Index.html:301-330`)
+already render a per-sport `<select>` of "Court 1…Court 9" with a photo that
+swaps per selection, degrading to a "Photo coming soon" placeholder when a
+unit has no image. **§4 and §5's "dynamic court preview" are the same
+mechanism**, so both reuse `resolveCourtUnits()`'s logic rather than
+inventing a second one.
+
+**Notifications** (`:132-135`) — a bell icon with a static red dot and **no
+click handler and no data source at all**. No `notification` table exists in
+`database/schema/`.
+
+**Feedback** — does not exist anywhere. No table, no UI.
+
+**My Bookings** (`:440-541`) — has the 5 status filter chips §6 asks to
+delete. The chips are cosmetic-only today (`includes/Dashboard.js:204-212`
+just toggles `.is-active` with a `TODO: filter … once real data exists`), so
+removing them deletes no working behavior. Rows are real
+(`refreshMyBookings()`).
+
+**Receipts** (`:546-560`) — honestly empty (`includes/Dashboard.js:1103-1108`
+renders "No receipts yet"). No download anything.
+
+**Account Settings** (`:626-707`) — one "Full name" box; a Change Password
+card showing **all three password fields at once**. §9's mobile-number
+requirement (**digits only, letters/symbols blocked**) is *already fully
+implemented* — `[data-digits-only]` with keystroke+paste filtering
+(`includes/Dashboard.js:1217`), `inputmode="numeric"`, `maxlength="11"`,
+plus `window.validatePhMobile` on save. **No work needed for that bullet**;
+it will be verified, not rebuilt.
+
+**`profiles` has no schema file in this repo** and its real columns are
+unconfirmed (a standing, documented risk). Everything today reads/writes
+`full_name` — including the **owner and staff dashboards**
+(`includes/owner_dashboard.js` updates `{ full_name, position }`). This
+constrains §9's name-splitting decision (see D3).
 
 ## Approach and architectural decisions
 
-1. **Markup**: In [Pages/user_dashboard.html](Pages/user_dashboard.html),
-   delete the "Calendar" card
-   ([Pages/user_dashboard.html:278-332](Pages/user_dashboard.html:278)) and
-   the "Live availability" card
-   ([Pages/user_dashboard.html:334-356](Pages/user_dashboard.html:334)).
-   Replace both with a single new `.dash-card` in the same column slot,
-   titled "Courts" (or "Court availability"), containing:
-   - A card head with the title and a `<select class="dash-select"
-     data-dash-overview-sort>` sort control (small width) — options: **Sport
-     (A–Z)** (default — groups courts by their real `sportName`, courts
-     within the same sport secondarily ordered by name, e.g. "Bowling —
-     Duckpin" before "Bowling — Ten-Pin"), **Available first**, and **Price:
-     Low to High**. Per the user's correction, sorting is centered on
-     **sport type**, not plain court name — there is no separate "Name
-     (A–Z)" option.
-   - A compact court list (`[data-dash-overview-court-list]`), one row per
-     court (reusing/repurposing the existing `.dash-avail-row` /
-     `.dash-avail-name` / `.dot` classes, which are otherwise dead after the
-     Live-availability card is removed — no new CSS needed for the row
-     shell). Each row shows: status dot (available/unavailable, from the
-     court's real `status`), court name + sport, rate (or "Rate TBA"), and a
-     "Peek slots" toggle.
-   - Toggling a row expands an inline strip of small pills — one per hourly
-     slot, 8 AM–8 PM — styled as a compact variant of the existing
-     `.dash-slot` class (new `.dash-slot-mini` modifier for smaller
-     padding/font, sharing the same open/booked/selected color logic). Open
-     slots are clickable.
-   - Clicking an **open** slot pill jumps to the Booking panel with that
-     court + today's date + that time slot pre-filled (same hand-off pattern
-     `wireBookNowButtons()` already uses for "Book Now"), so the peek is
-     genuinely "for easy access," not just a read-only preview.
-   - A small footer link ("View all courts") reusing `.dash-link-btn`,
-     `data-dash-nav="courts"`, matching the "Upcoming reservations" card's
-     existing "View all" pattern.
-   - A11y: the sort `<select>` gets a visually-hidden `<label>`; peek toggle
-     buttons get `aria-expanded`.
+**D1 — Nav trimmed to 5; Courts and Profile stop being *nav items*, not
+features.** Sidebar becomes exactly Dashboard / Book a Court / My Bookings /
+Receipt / Account Settings, and Log Out leaves the sidebar (still in the
+avatar dropdown). The **Courts panel is deleted outright**, its rich card
+grid moving into the Dashboard panel per §4. The **Profile panel is kept but
+delisted** — still reachable via the dropdown's existing "View Profile", so
+the nav matches the spec without destroying a working screen. `panelMeta`
+and the `courts` panel's `data-dash-nav="courts"` deep-links (the Overview
+"View all courts" button from PR #1, and `renderCourtCard`'s hand-off) are
+repointed accordingly.
 
-2. **Delete dead JS**: remove the calendar month-cycling block in
-   [includes/Dashboard.js:214-242](includes/Dashboard.js:214) (`calLabel`,
-   `calPrev`, `calNext`, `months`, `calMonthIndex`, `renderCalLabel`, the
-   `.dash-cal-day` click wiring) — nothing else in the file references these
-   variables.
+**D2 — One court component, three requirements.** The Dashboard's Courts
+section is rebuilt as sport-grouped sections (§4 "visual segregation"): a
+heading per sport, then that sport's court cards. Each card gets (a) a
+`<select>` of its individual units built by a **shared `resolveCourtUnits()`
+port** from `landingPage.js`, (b) an image that swaps to the selected unit's
+`image_url` — falling back to the sport image, then to the existing
+"Photo coming soon" placeholder — and (c) the **existing peek-slots strip,
+kept as-is** per §4's "Pixlot Integration" bullet. To avoid a third copy of
+this logic, the port lands in **`includes/courtsData.js`** (already the
+shared court data layer loaded by every dashboard) as
+`window.InigoCourtsData.resolveCourtUnits(court)`, and `landingPage.js` is
+left untouched this pass to avoid regressing the shipped landing page.
 
-3. **New JS module** in `includes/Dashboard.js`, placed after the existing
-   Court Information / Booking Management block (so it can reuse
-   `window.InigoCourtsData.getCourts()`, `bookingState`, `setActivePanel`,
-   `updateSummary`, `slots`, and `wireBookNowButtons`'s hand-off pattern
-   already defined above it):
-   - `todayRange()` — same 2-line helper as
-     [includes/staff_dashboard.js:143-148](includes/staff_dashboard.js:143).
-   - `OVERVIEW_SLOT_HOURS = [8,9,10,11,12,13,14,15,16,17,18,19,20]` (hourly,
-     8 AM–8 PM inclusive of the 8 PM start), independent of the Booking
-     panel's static markup's slightly irregular hour list.
-   - `refreshOverviewCourtWidget()`:
-     - `Promise.all([window.InigoCourtsData.getCourts(), sb.from('booking').select('courts, time_date, duration_minutes, status').gte(...).lt(...), sb.from('walk_in_booking').select('courts, time_date, duration_minutes').gte(...).lt(...)])`.
-     - On either query erroring, set a `bookingDataOk = false` flag; slot
-       peeks render with the fail-safe "Live slot status unavailable" note
-       instead of pills, per the risk mitigation above. Court rows (name,
-       rate, status dot) still render either way — only the *peek* is
-       gated, since court status/rate is unrelated to the RLS risk.
-     - Sort the court array per current `sortMode` state (`sport` default —
-       `court.sportName.localeCompare(...)` then `court.name.localeCompare(...)`
-       as tiebreaker, `available`, `price`) before rendering rows.
-     - Render rows + wire: sort-select `change`, row/toggle `click`
-       (expand/collapse + lazy-render that court's slot strip from the
-       already-fetched booking/walk-in arrays — no extra query per toggle),
-       and open-pill `click` → set `bookingState` fields + `setActivePanel('booking')` + `updateSummary()`.
-   - Called once at load and again on `document.addEventListener('inigosync:profile-ready', refreshOverviewCourtWidget)`, matching the existing re-fetch-on-profile-ready idiom used elsewhere in this file and in `staff_dashboard.js`.
-   - Every interpolated string (`court.name`, `court.sportName`, etc.) goes
-     through the existing global `window.escapeHtml`, matching every other
-     render function in this file.
+**D3 — Name split without breaking the other two dashboards.** New migration
+adds `first_name` / `middle_name` / `last_name` to `profiles`. Because owner
+and staff dashboards still read `full_name`, Save writes **both**: the three
+parts *and* a composed `full_name` ("First Middle Last", collapsed
+whitespace), keeping `full_name` the compatibility field. Load prefers the
+three columns and falls back to **parsing `full_name`** (first token → first,
+last token → surname, remainder → middle) when they're absent — so the three
+boxes are populated correctly *before* the migration is applied, and the page
+never hard-depends on it. Same fetch-with-fallback shape used throughout.
 
-4. **CSS**: in [Style/Dashboard.css](Style/Dashboard.css), delete the
-   `.dash-cal*` block (lines 585–682, confirmed unused anywhere else). Keep
-   `.dash-avail-list/-row/-name/-time` and `.dot.available/.booked` (now
-   repurposed for the court list rows). Add: `.dash-slot-mini` (compact pill
-   modifier), a small strip container class for the expanded peek row, and
-   minimal styling for the sort `<select>` sitting in a `.dash-card-head`
-   (flex already supports an extra inline control there — verified against
-   [Style/Dashboard.css:549-554](Style/Dashboard.css:549)).
+**D4 — Password change becomes a 2-step wizard** (§9): Step 1 current
+password + **Next** (disabled until non-empty); Step 2 new + confirm, with
+**Go Back** and **Save Password**. The existing, genuinely-secure save logic
+is preserved unchanged — it re-verifies via
+`sb.auth.signInWithPassword()` before `updateUser()`
+(`includes/Dashboard.js:1320-1324`); only the presentation is re-staged.
 
-5. **Dashboard footer, reused verbatim from the landing page**: add a
-   `<footer class="site-footer">` at the bottom of the dashboard shell,
-   copying the exact markup/content of
-   [Pages/Index.html:227-276](Pages/Index.html:227) (brand block, "Visit
-   us"/"Contact"/"Follow" cards, embedded map) into
-   [Pages/user_dashboard.html](Pages/user_dashboard.html) — same real
-   contact details/socials/map, not a placeholder. No new CSS is needed: the
-   `.site-footer`/`.footer-*`/`.section-inner` classes already live in
-   [Style/LandingPage.css:1495-1621](Style/LandingPage.css:1495), and
-   `user_dashboard.html` already `<link>`s `LandingPage.css`
-   ([Pages/user_dashboard.html:24](Pages/user_dashboard.html:24)).
-   Placement: as a sibling **after** `</main class="dash-content">`, still
-   inside `.dash-main` (so it sits below whichever panel is active and is
-   never itself hidden by the `.dash-panel`/`.is-active` toggle — it should
-   render on every tab, the same way a site footer always renders regardless
-   of which page section you're viewing). `.dash-shell`'s sidebar is
-   `position: sticky; height: 100vh` inside a two-column CSS grid
-   ([Style/Dashboard.css:11-28](Style/Dashboard.css:11)), not `position:
-   fixed`, so appending a full-width block after `.dash-content` extends the
-   grid row height and scrolls naturally with the page — confirmed no layout
-   change needed for this to work.
+**D5 — Book a Court becomes a 3-step wizard** (§5) reusing the existing
+`bookingState` + `updateSummary()` + insert logic rather than rewriting it.
+Step 1 Sport → Court (+ the D2 unit `<select>` and dynamic preview image),
+Step 2 Date → Time slot, Step 3 Confirm (payment option, summary, submit).
+A progress indicator, one step visible at a time, **Back**/**Next** with
+Next gated on that step's required field. PR #1's peek-slot hand-off
+(`jumpToBookingFromPeekSlot`) is updated to land the user on **Step 3** with
+everything pre-filled, since it already supplies court + date + time.
+
+**D6 — Notifications derive from the customer's own real bookings; no
+`notification` table.** The bell opens a dropdown (same click-outside/Escape
+pattern as the existing `[data-dash-profile]` menu) listing at most **10**
+items built from `booking` rows the page already fetches — upcoming
+reservations, plus cancelled/completed status alerts — newest first, with an
+empty state. **Rationale:** a `notification` table would need a writer
+(trigger or backend) to ever contain anything; nothing in this project writes
+one today, so it would ship guaranteed-empty. Deriving from bookings makes
+the dropdown genuinely useful immediately, needs no schema, and avoids adding
+a trigger to `booking`, whose RLS this repo cannot see
+(`database/schema/004_staff_module.sql:22-41`). The unread dot only shows
+when there is ≥1 item.
+
+**D7 — Feedback: new table + two entry points.** New `feedback` migration
+(id, profile_id → profiles, rating smallint 1-5 nullable, message text not
+null, created_at) with RLS: a customer may INSERT their own row and SELECT
+only their own; staff/admin may SELECT all, reusing the existing
+`public.inigosync_is_staff_or_admin()` helper from `002_content_tables.sql`.
+UI: one shared modal, opened from a **sidebar card** ("How are we doing? Let
+us know!" + "Give Feedback") on desktop/tablet, and from a **prominent
+button inside the mobile nav** — one modal, two triggers, per §2. Fails
+honestly with a toast if the table isn't migrated yet.
+
+**D8 — Receipt PNG via `html2canvas` from CDN.** Matches the project's
+no-build-step, `<script src>` convention (same as the supabase-js CDN tag).
+Each receipt card gets a **Download** button that rasterizes that card to
+PNG via `canvas.toBlob()` + an `<a download>` click, which works on desktop,
+Android and iOS Safari. The panel keeps its honest empty state until real
+receipts exist; the card is built to render from a real booking/payment row
+so it lights up automatically once payments land.
+
+**D9 — Compact footer, changed in one place.** `.site-footer` and `.footer-*`
+live in `Style/LandingPage.css:1495-1621` and are **shared by the landing
+page and the dashboard**, so reducing padding/font/logo/map sizes and
+collapsing the 3 cards into a tighter row there satisfies §8's "global
+application" for both pages at once, with **zero content removed** (§8
+explicitly keeps all links). Nothing is duplicated into `Dashboard.css`.
+
+## Files to change
+
+- `Pages/user_dashboard.html` — nav trim; feedback card+button; notification
+  dropdown markup; Courts moved into Dashboard panel & standalone panel
+  deleted; booking wizard steps; My Bookings chips removed; receipt card +
+  Download; Account Settings name fields + password wizard.
+- `includes/Dashboard.js` — panel/nav wiring, court grouping + unit select +
+  dynamic image, wizard state machine, notifications, feedback submit,
+  receipt PNG, settings name load/save, password wizard.
+- `includes/courtsData.js` — add shared `resolveCourtUnits()`.
+- `Style/Dashboard.css` — sport group headers, wizard steps/stepper,
+  notification & feedback UI, receipt card.
+- `Style/LandingPage.css` — compact footer only.
+- `database/schema/008_profile_name_parts.sql` — **new**.
+- `database/schema/009_feedback.sql` — **new**.
 
 ## Constraints and non-goals
 
-- Do not touch the "Courts" nav panel (`data-dash-panel="courts"`) or its
-  existing `renderCourtGrid`/`renderCourtCard` — this task only replaces the
-  Overview panel's Calendar + Live availability cards.
-- Do not touch the Staff or Owner dashboards.
-- Do not add or modify any RLS policy, migration, or schema file. If the
-  Coder finds during verification that the customer role's `booking` SELECT
-  is actually restricted to own rows (making the peek silently show
-  everything as open), the correct fix is the fail-safe/honest-degradation
-  behavior described above — **not** a schema change, and not fabricating
-  slot data.
-- No new date picker / calendar UI is introduced — the peek is scoped to
-  "today," consistent with removing calendar UI per the user's request and
-  with the existing Staff Court Schedule precedent.
-- Keep using `window.escapeHtml` on every interpolated value; keep the
-  fetch-with-fallback / graceful-degradation conventions already used
-  throughout this file (`window.InigoCourtsData`, `window.InigoAppSettings`).
-- No unrelated refactors of Dashboard.js.
+- **Do not touch** `Pages/staff_dashboard.html`, `Pages/owner_dashboard.html`,
+  `includes/staff_dashboard.js`, `includes/owner_dashboard.js`, or
+  `includes/landingPage.js`. `full_name` must keep working for them (D3).
+- Do not delete the peek-slots feature (§4 explicitly keeps it).
+- Do not remove any footer content — §8 is layout/sizing only.
+- Keep `window.escapeHtml` on every interpolated value; keep the
+  fetch-with-fallback / honest-empty-state conventions already used
+  throughout. Never fabricate a receipt, notification, or availability.
+- Migrations are **written as files, not applied** — this environment has no
+  Supabase admin access. Every feature must degrade honestly until the owner
+  runs them (D3 falls back to parsing `full_name`; D7 shows a toast).
+- No build step; CDN `<script>` tags only.
 
 ## Success criteria
 
-- Loading the Customer dashboard's Overview panel shows no "Calendar" card
-  and no "Live availability" card anywhere in the DOM.
-- In their place is one card listing real courts (from `window.InigoCourtsData`),
-  sortable by **Sport (A–Z)**, **Available first**, and **Price (Low to
-  High)** via a working `<select>` — sport is the primary/default sort, not
-  plain court name.
-- Clicking a court row's peek toggle reveals today's hourly slots for that
-  specific court, correctly marked open/booked using real `booking` +
-  `walk_in_booking` rows and the same overlap logic as the Staff Court
-  Schedule (a slot the Staff Court Schedule shows booked for a given
-  court/hour today must also show booked here for the same court/hour).
-- Clicking an open slot pill switches to the Book a Court panel with that
-  court, today's date, and that time slot already selected/highlighted, and
-  the Booking Summary reflects it immediately.
-- If the booking/walk-in query fails, the widget still shows the court list
-  (name/rate/status) but shows an honest unavailable-data note instead of
-  fabricated slot pills — never shows a slot as open when the data couldn't
-  be verified.
-- No references to `dash-cal`/`dash-avail-*`(old inert usage)/`calMonthIndex`
-  etc. remain as dead code; `.dash-cal*` CSS is removed.
-- No console errors on load; existing Overview features (hero carousel,
-  Upcoming reservations card, quick actions) still work unchanged.
-- A site footer (brand, Visit us / Contact / Follow, embedded map — same
-  content as the landing page's) renders at the bottom of the dashboard on
-  every tab, styled identically to [Pages/Index.html](Pages/Index.html)'s
-  footer, with no layout breakage in the sidebar/topbar/panels above it.
+1. Sidebar shows exactly Dashboard, Book a Court, My Bookings, Receipt,
+   Account Settings — no Logout, no Courts, no Profile — and logout still
+   works from the avatar dropdown.
+2. Feedback is reachable on mobile (button in nav) and desktop (sidebar
+   card); submitting inserts a `feedback` row, or toasts honestly if the
+   table is missing.
+3. Bell opens a dropdown of ≤10 real alerts, closes on outside-click/Escape,
+   and never navigates away.
+4. Dashboard Courts are visually grouped per sport, each card has a working
+   unit combo box whose selection swaps the displayed photo, and peek-slots
+   still works.
+5. Book a Court shows **one step at a time** with Back/Next, a court preview
+   image that updates on selection, and still creates the same valid
+   `booking` row; peek-slot hand-off lands on the confirm step pre-filled.
+6. My Bookings has no status filter chips; the table is otherwise unchanged.
+7. A receipt card downloads as a **.PNG** on desktop and mobile.
+8. Footer is visibly shorter on both the dashboard and the landing page with
+   all original links/content intact.
+9. Account Settings has First/Middle/Surname boxes that round-trip correctly
+   (incl. before migration, via `full_name` parsing) and keep `full_name` in
+   sync; mobile still blocks non-digits; password change is a 2-step wizard
+   that still re-verifies the current password before updating.
+10. No console errors; `node --check includes/Dashboard.js` passes.
 
 ## Verification steps
 
-1. Static review: grep confirms no leftover `dash-cal-*` selectors/handlers
-   and no leftover hardcoded "Basketball — Available 2–3 PM" style strings.
-2. Run the app (open `Pages/user_dashboard.html` via the project's normal
-   local flow) logged in as a customer test account; visually confirm the
-   new card renders in place of Calendar/Live availability, sorting changes
-   row order live, peeking a court shows a plausible slot strip, and clicking
-   an open slot navigates to Booking with fields pre-filled.
-3. Cross-check at least one court/hour against the Staff dashboard's Court
-   Schedule for the same day to confirm open/booked agreement.
-4. Confirm the Courts nav panel and Booking panel are visually/functionally
-   unchanged.
-5. Confirm the footer renders correctly on at least two different nav tabs
-   (e.g. Overview and My Bookings) and that its links (`tel:`, `mailto:`,
-   Facebook, embedded map) match the landing page's exactly, and that it
-   doesn't overlap or get clipped by the sticky sidebar/topbar.
+1. `node --check` on every edited JS file.
+2. Grep that no dead references remain to the removed Courts panel/chips.
+3. Serve locally (`py -m http.server`) and click through as a customer:
+   each nav item, feedback both breakpoints (resize to mobile), bell
+   dropdown, court unit select + image swap, full 3-step booking, receipt
+   download producing a real PNG, and the password wizard.
+4. Confirm the landing page's footer still renders correctly after the
+   shared-CSS change, and that the staff/owner dashboards are untouched.
 
 ## Open questions and risks
 
-- **RLS on `booking`/`walk_in_booking` for the `customer` role is unverified**
-  (documented pre-existing risk, not introduced by this task — see Context).
-  The Coder should note in its handoff whether the peek query succeeded with
-  plausible data during manual testing, or hit the fail-safe path, so this
-  can be tracked as a follow-up if the fail-safe path is what's actually
-  happening in production.
-- Slot granularity: this plan uses hourly slots (8 AM–8 PM) for the peek,
-  independent of the Booking panel's own static slot list (which currently
-  skips 12 PM and is not real data either). If the Booking panel's slots are
-  made real in a future phase, both should be reconciled to the same slot
-  source — out of scope here.
+- **"Pixlot Integration" (§4) is read as "peek slot"** — the feature shipped
+  in PR #1, which the user explicitly praised ("I like the court viewing
+  feature that are capable also to peek if there is available slots").
+  Treated as "keep it unchanged". Flagged for confirmation.
+- **§6 removes status *filters*, not the Status column.** "Retain the current
+  overall visual display" is read as keeping the column, since Cancelled /
+  Completed remain real states even with PayMongo automation. Flagged.
+- **PayMongo is referenced (§6) but not integrated** in this repo. This pass
+  does not add payment processing; the receipt is built to populate from real
+  payment rows once that exists.
+- Two migrations require the owner to run them in the Supabase SQL editor.
+  Until then: name parts fall back to parsing `full_name`, and feedback
+  submission toasts an honest error.
