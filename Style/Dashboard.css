@@ -771,6 +771,23 @@ body.dash-body {
     font-size: 0.68rem;
 }
 
+/* Revision 2, R1 (implementation_plan.md) — peek-strip pills are a
+   READ-ONLY availability display now (includes/Dashboard.js's
+   renderOverviewSlotPill() renders plain <span>s, not <button>s), but they
+   still share the base .dash-slot class for their open/booked coloring, so
+   its pointer cursor + hover "you can click this" affordance need
+   overriding HERE, scoped to this strip only — the Booking panel's own
+   [data-dash-slot] step-2 buttons (which ARE clickable) must keep their
+   normal interactive styling. */
+.dash-overview-peek-strip .dash-slot {
+    cursor: default;
+}
+
+.dash-overview-peek-strip .dash-slot:hover {
+    border-color: var(--color-line);
+    color: var(--color-ink-dim);
+}
+
 /* Expanded per-court peek strip. Hidden/shown via .is-active (same idiom as
    .dash-panel.is-active elsewhere on this page) rather than the `hidden`
    attribute — an unconditional `display` rule here would otherwise silently
@@ -914,6 +931,19 @@ body.dash-body {
 .dash-status.cancelled {
     background: rgba(214, 72, 47, 0.16);
     color: var(--color-alert);
+}
+
+/* Revision 2, R4 (implementation_plan.md) — DISPLAY-only status for a
+   booking more than 30 minutes past its start with no check-in (see
+   includes/Dashboard.js's displayStatusFor(); never written to the
+   database). Uses --color-alert-text rather than --color-alert/.cancelled's
+   own rgba tint — both read as "this didn't go as planned", but an
+   automatically-missed booking and a genuinely cancelled one are different
+   facts, so they get a related-but-distinguishable red rather than an
+   identical one. */
+.dash-status.unattended {
+    background: rgba(238, 111, 102, 0.16);
+    color: var(--color-alert-text);
 }
 
 /* Quick actions */
@@ -1128,10 +1158,11 @@ body.dash-body {
     gap: 6px;
 }
 
-/* Peek slots toggle row (§4 "Pixlot Integration — keep as-is") — same
-   .dash-mini-btn the button already used in the old compact avail-row;
-   this just right-aligns it inside the card body. The strip itself
-   (.dash-overview-peek-strip) is unchanged, defined earlier in this file. */
+/* Peek slots toggle row (§4 "Pixlot Integration") — same .dash-mini-btn the
+   button already used in the old compact avail-row; this just right-aligns
+   it inside the card body. The toggle itself still shows/hides the strip
+   exactly as before; only the strip's CONTENTS changed (Revision 2, R1 —
+   read-only now, see .dash-overview-peek-strip .dash-slot above). */
 .dash-court-peek {
     display: flex;
     justify-content: flex-end;
@@ -1602,6 +1633,12 @@ body.dash-body {
     display: flex;
     align-items: flex-start;
     justify-content: space-between;
+    /* R6 (Revision 2) — the status badge (.dash-status) never shrinks below
+       its own text width (white-space: nowrap); wrapping it below a long
+       court name on a narrow card, instead of squeezing both onto one row,
+       is what actually keeps this row from ever overflowing. */
+    flex-wrap: wrap;
+    gap: 8px 12px;
 }
 
 .dash-receipt-top h4 {
@@ -2141,5 +2178,90 @@ body.dash-body {
 
     .dash-wizard-nav {
         flex-wrap: wrap;
+    }
+}
+
+/* ==========================================================================
+   Revision 2, R6 — responsive audit (implementation_plan.md). Audited at
+   1280/1024/768/480/360px. 1280, 1024, and 768 all already fit within the
+   existing 1080px/860px rules above (verified — nothing new needed there:
+   .dash-court-grid is already 2 columns by 1080px and the sidebar is
+   already off-canvas by 860px, well before 768px is reached). 480 and 360
+   both needed a genuinely NEW breakpoint below the existing 640px one —
+   added here rather than widening the 640px block, so nothing that already
+   renders correctly between 481-640px shifts. Fixes below:
+     • Notifications dropdown (§3, D6) could spill off the LEFT edge of the
+       viewport below ~386px — the profile avatar sitting to its right meant
+       .dash-notif-menu's `right: 0` was resolving against the tiny bell
+       icon's own wrapper, not the space actually available.
+     • The topbar's own icon row (Feedback/Theme/Notifications/Profile)
+       genuinely doesn't fit next to the page title below ~380px wide — a
+       real, measured horizontal-overflow bug (checked with a headless-
+       browser scrollWidth comparison at 360px), not merely a cosmetic
+       squeeze. Tightened rather than dropping a control.
+     • .dash-form-actions (Feedback modal's Cancel/Submit, also reused by
+       Profile's Log Out/Edit Profile and Account Settings' Cancel/Save
+       Changes) wraps instead of squeezing two buttons onto one line.
+     • The booking/change-password wizard's step circles shrink a touch
+       further, giving the 3 step labels a little more breathing room.
+   Everything else audited at these 2 widths (receipt cards, court cards +
+   unit combo boxes, the wide .dash-table, Account Settings' name fields)
+   was already safe: .dash-table-wrap's overflow-x: auto already turns the
+   table into a horizontal-scroll region instead of stretching the page,
+   .dash-name-fields/.dash-settings-grid already collapse to 1 column by
+   1080px, and the court/receipt grids already collapse to 1 column by
+   1080px/640px respectively with flexbox content that wraps rather than
+   overflows.
+   ========================================================================== */
+@media (max-width: 480px) {
+    /* Re-anchors the notifications dropdown to .dash-topbar-actions (flush
+       with the topbar's own right padding edge) instead of .dash-notif
+       (basically just the bell icon's own ~38px width) — matching where
+       .dash-profile-menu already sits safely, since Profile is the actual
+       last/rightmost icon in that row. Removing position:relative from
+       .dash-notif doesn't affect anything else inside it: .dash-badge-dot
+       is positioned against .dash-icon-btn (its own direct parent, which
+       keeps its own position:relative), not against .dash-notif. */
+    .dash-topbar-actions {
+        position: relative;
+    }
+
+    .dash-notif {
+        position: static;
+    }
+
+    /* The topbar icon row (Feedback/Theme/Notifications/Profile) genuinely
+       does not fit next to the page title below ~380px wide, measured with
+       a headless-browser scrollWidth check — a pre-existing gap this
+       revision's audit caught, not something Revision 2 introduced. Tighten
+       the row rather than dropping a control: less gap between icons, a
+       touch less side padding, and the profile dropdown's decorative caret
+       (purely visual — .dash-profile-name next to it is already hidden
+       below 860px, see the 860px breakpoint above) hidden to reclaim its
+       width. */
+    .dash-topbar {
+        padding: 16px 14px;
+    }
+
+    .dash-topbar-actions {
+        gap: 6px;
+    }
+
+    .dash-caret {
+        display: none;
+    }
+
+    .dash-form-actions {
+        flex-wrap: wrap;
+    }
+
+    .dash-wizard-step-num {
+        width: 24px;
+        height: 24px;
+        font-size: 0.7rem;
+    }
+
+    .dash-wizard-steps {
+        gap: 4px;
     }
 }

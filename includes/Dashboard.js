@@ -1,19 +1,41 @@
 // IñigoSync — Customer Dashboard controller
 // Handles: sidebar/topbar panel switching, mobile sidebar toggle, profile
-// dropdown, the notifications dropdown, the feedback modal, court "Book Now"
-// hand-off into the Booking panel, the 3-step Book a Court wizard (with its
-// dynamic court preview image), time-slot and payment-option selection with
-// a live summary recalculation, the Overview panel's sport-grouped court
-// cards (each with a per-unit combo box + swappable photo, plus the
-// sortable real-time slot-peek widget from PR #1), My Bookings, the
-// Receipts panel's PNG download, Account Settings' name-part fields, and
-// the 2-step Change Password wizard.
+// dropdown, the notifications dropdown, the feedback modal, the Overview
+// panel's sport-grouped, sport-sorted court cards (marketing/showcase only —
+// each with a per-unit combo box + swappable photo, plus the read-only
+// real-time slot-peek widget from PR #1), the 3-step Book a Court wizard
+// (with its dynamic court preview image), time-slot and payment-option
+// selection with a live summary recalculation, My Bookings (no
+// cancellation), the Receipts panel's per-booking cards + PNG download,
+// Account Settings' name-part fields, and the 2-step Change Password
+// wizard.
 //
 // This file implements Phase 1 (§1 nav, §2 feedback, §3 notifications, §4
-// dashboard courts — implementation_plan.md decisions D1/D2/D6/D7) AND
-// Phase 2 (§5 booking wizard, §6 my-bookings chip removal, §7 receipts, §9
-// account settings — decisions D3/D4/D5/D8) of the redesign in
-// InigoSync_Dashboard_Feedback_v6.md.
+// dashboard courts — implementation_plan.md decisions D1/D2/D6/D7), Phase 2
+// (§5 booking wizard, §6 my-bookings chip removal, §7 receipts, §9 account
+// settings — decisions D3/D4/D5/D8) of the redesign in
+// InigoSync_Dashboard_Feedback_v6.md, AND "Revision 2" (implementation_plan.md,
+// decisions R1-R6 — post-feedback-v6 corrections):
+//   R1 — the Overview Courts section is re-scoped to marketing/showcase
+//        only: no "Book Now" button, no click-to-book hand-off from peek
+//        slots. Peek slots stays as a READ-ONLY availability display (the
+//        user explicitly praised it) — see renderOverviewSlotPill() and the
+//        Overview Courts widget's header comment further below.
+//   R2 — the courts sort <select> defaults to grouping-by-sport
+//        (overviewSortMode), with "Available first"/"Price: Low to High"
+//        retained as alternatives that sort *within* each sport group.
+//   R3 — My Bookings drops cancellation entirely (no Cancel control
+//        anywhere) in favor of the real no-cancellation/no-refund/
+//        30-minute-"Unattended" policy stated in
+//        Pages/user_dashboard.html's two policy notices.
+//   R4 — "Unattended" is DERIVED for display only, never written to the
+//        database — see displayStatusFor() further below for the full
+//        reasoning (booking.status's CHECK constraint, the 23514 error
+//        branch on the booking INSERT below, and why this can't safely be
+//        persisted from this repo).
+//   R5 — Receipts renders one real card per booking (every booking, not
+//        just ones with a payment_id) instead of a hardcoded empty state —
+//        see renderReceipts() further below.
 //
 // Booking (including its court dropdown), the Overview panel's court
 // widget, My Bookings, Receipts, Profile, and Settings talk to the real
@@ -28,9 +50,11 @@
 // customer's own `booking` rows (no `notification` table — D6). Feedback
 // writes to the new `feedback` table (database/schema/009_feedback.sql),
 // failing honestly with a toast if that migration hasn't been applied yet.
-// Receipts derive from the customer's own `booking` rows that carry a
-// payment_id (D8) — genuinely empty today, since nothing in this project
-// sets that column yet (no payment integration). Account Settings' three
+// Receipts (Revision 2, R5) render one card per booking, reusing
+// refreshMyBookings()'s own fetch rather than a second query — rate/amount
+// shows "Rate TBA" whenever a court's rate is unknown (every court today),
+// exactly like the rest of this page's honesty convention; no payment
+// table/method exists anywhere in this project yet. Account Settings' three
 // name boxes read/write profiles.first_name/middle_name/last_name
 // (database/schema/008_profile_name_parts.sql) while keeping full_name — the
 // column the owner/staff dashboards still read — in sync (D3). Everything
@@ -59,15 +83,16 @@ document.addEventListener('DOMContentLoaded', () => {
             panel.classList.toggle('is-active', panel.dataset.dashPanel === name);
         });
 
-        // Every plain navigation into the Booking panel (sidebar link, hero
-        // "Book this slot", the Overview card's quick action, etc.) starts
-        // the §5/D5 wizard fresh at Step 1 — a guided flow that silently
-        // resumed wherever a PREVIOUS visit left off would be confusing, not
-        // guided. The two hand-offs that deliberately need a different
-        // landing step (wireBookNowButtons()'s "Book Now", and
-        // jumpToBookingFromPeekSlot(), which must land on Step 3 per §5) both
-        // call setActivePanel('booking') THEN their own goToBookStep()
-        // afterward, so their explicit choice always wins over this default.
+        // Every navigation into the Booking panel (sidebar link, hero "Book
+        // this slot", the Overview card's quick action, etc.) starts the
+        // §5/D5 wizard fresh at Step 1 — a guided flow that silently resumed
+        // wherever a PREVIOUS visit left off would be confusing, not guided.
+        // Revision 2's R1 (implementation_plan.md) removed the two hand-offs
+        // that used to need a different landing step (the Overview court
+        // cards' "Book Now" button, and peek slots' click-to-book jump to
+        // Step 3): the Overview Courts section is marketing/showcase only
+        // now, so nothing outside this wizard pre-fills a court/date/time
+        // anymore — every entry point always starts here, at Step 1.
         if (name === 'booking') goToBookStep(1);
 
         document.querySelectorAll('[data-dash-nav]').forEach((btn) => {
@@ -849,12 +874,11 @@ document.addEventListener('DOMContentLoaded', () => {
             //    the "Bowling — Duckpin" court's sport is "Bowling".
             //    bookingState.sport is resolved from
             //    window.InigoCourtsData's court.sportName and carried
-            //    through here via data-sport / data-dash-book-sport
-            //    attributes (see populateBookSelect() and
-            //    wireBookNowButtons() above — same pattern already used to
-            //    carry rate/rateUnit), falling back to the court name if a
-            //    court ever has no linked sport row. It is never sent as
-            //    null.
+            //    through here via the Booking wizard's own <select>'s
+            //    data-sport attribute (see populateBookSelect() above —
+            //    same pattern already used to carry rate/rateUnit), falling
+            //    back to the court name if a court ever has no linked sport
+            //    row. It is never sent as null.
             //  - booking.status has a CHECK constraint: only 'pending',
             //    'confirmed', 'cancelled', or 'completed' are accepted;
             //    anything else (e.g. 'declined'/'no_show'/'expired') fails
@@ -941,46 +965,6 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // ------------------------------------------------------------------
-    // "Book Now" (Overview Courts cards, §4/D2) — jumps to the Booking panel
-    // and pre-fills the court + rate so the customer doesn't have to
-    // reselect it. Re-wired every time renderOverviewCourtList() (further
-    // below) (re-)renders the grouped court grid, since the cards don't
-    // exist yet at this point in the script — they're rendered once
-    // window.InigoCourtsData.getCourts() resolves. Same re-wire-after-render
-    // idiom includes/owner_dashboard.js uses for its dynamically rendered
-    // rows/cards.
-    // ------------------------------------------------------------------
-    function wireBookNowButtons(scope) {
-        scope.querySelectorAll('[data-dash-book-court]').forEach((btn) => {
-            btn.addEventListener('click', () => {
-                const court = btn.dataset.dashBookCourt;
-                const rateRaw = btn.dataset.dashBookRate;
-                const rate = rateRaw ? Number(rateRaw) : null;
-
-                if (bookSelect) bookSelect.value = court;
-                bookingState.court = court;
-                // Setting bookSelect.value above does NOT fire its `change`
-                // listener, so sport (like rate/rateUnit already did) has
-                // to be carried by this button's own data attribute too —
-                // see renderOverviewCourtCard()'s data-dash-book-sport
-                // further below.
-                bookingState.sport = btn.dataset.dashBookSport || court;
-                bookingState.rate = (rate !== null && !Number.isNaN(rate)) ? rate : null;
-                bookingState.rateUnit = btn.dataset.dashBookRateUnit || '/hr';
-
-                slots.forEach((s) => s.classList.remove('is-selected'));
-                bookingState.time = null;
-                syncBookPreviewFromState();
-                updateSummary();
-                // setActivePanel('booking') resets the wizard to Step 1
-                // (see its own comment) — correct here, since only the
-                // court is known; date/time still need picking.
-                setActivePanel('booking');
-            });
-        });
-    }
-
-    // ------------------------------------------------------------------
     // Court data — the Overview Courts cards (further below, §4/D2) and the
     // Booking Management court <select> are rendered from the SAME fetch
     // (window.InigoCourtsData.getCourts(), memoized), so the two can never
@@ -1051,20 +1035,27 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // ------------------------------------------------------------------
     // Overview — Courts widget (replaces the old, fully-static "Calendar"
-    // and "Live availability" cards). Lists the real courts
-    // (window.InigoCourtsData, the same source as Court Information/Booking
-    // above) grouped by sport (§4's "visual segregation" — a heading per
-    // sport, that sport's court card(s) beneath it) and sorted within that
-    // grouping by availability/price, and lets the customer "peek" a
-    // court's real hourly open/booked slots for TODAY without leaving the
-    // Overview tab. The open/booked computation reuses the exact overlap
-    // algorithm the Staff dashboard's Court Schedule already proved
+    // and "Live availability" cards). MARKETING/SHOWCASE ONLY as of
+    // Revision 2's R1 (implementation_plan.md) — booking has its own
+    // designated panel (Book a Court); this widget only shows the courts
+    // off. Lists the real courts (window.InigoCourtsData, the same source
+    // as Booking above) grouped by sport (§4's "visual segregation" — a
+    // heading per sport, that sport's court card(s) beneath it), grouping
+    // that stays on regardless of sort mode. The sort <select> defaults to
+    // ordering those sport groups alphabetically (R2); "Available first"
+    // and "Price: Low to High" remain selectable alternatives that instead
+    // order courts *within* each group — see sortOverviewCourts() above.
+    // The widget also lets the customer "peek" a court's real hourly
+    // open/booked slots for TODAY, read-only, without leaving the Overview
+    // tab. The open/booked computation reuses the exact overlap algorithm
+    // the Staff dashboard's Court Schedule already proved
     // (includes/staff_dashboard.js's bookingWindow/windowsOverlap/
     // todayRange), adapted to hourly granularity (matching this page's own
     // Booking-panel slot labels) instead of that file's 2-hour columns.
-    // Clicking an open peek slot hands off into the Booking panel using the
-    // same pattern as wireBookNowButtons() above, plus today's date and that
-    // slot's time (which "Book Now" alone doesn't set).
+    // Peek slots used to hand off a click into the Booking panel
+    // (jumpToBookingFromPeekSlot()) — R1 removed that entirely: an open
+    // slot pill is now purely informational (renderOverviewSlotPill()
+    // above), not a control.
     //
     // §4/D2 additionally gives each card a per-unit combo box
     // (window.InigoCourtsData.resolveCourtUnits()) whose selection swaps the
@@ -1072,9 +1063,10 @@ document.addEventListener('DOMContentLoaded', () => {
     // paintOverviewCourtMedia() and the [data-overview-unit-select] wiring
     // in wireOverviewCourtList() below. This REPLACES the old standalone
     // Courts dash-panel (deleted) and the compact avail-row list PR #1 put
-    // here; the peek-slot mechanism itself (toggle, hourly pills,
-    // click-to-book hand-off) is preserved byte-for-byte from PR #1 — only
-    // its container changed, from a one-line row to this richer card.
+    // here; the peek-slot DISPLAY mechanism itself (toggle, hourly pills)
+    // is preserved from PR #1 — the user explicitly praised it — only its
+    // container changed (a one-line row to this richer card) and, per R1,
+    // its former click-to-book hand-off is gone.
     //
     // RLS risk (implementation_plan.md's Context/"Open questions" —
     // documented, pre-existing, not introduced here): `booking` and
@@ -1100,12 +1092,18 @@ document.addEventListener('DOMContentLoaded', () => {
     // includes/staff_dashboard.js's own DEFAULT_DURATION_MINUTES.
     const OVERVIEW_DEFAULT_DURATION_MINUTES = 60;
 
-    // Matches the dropdown's first <option> (Pages/user_dashboard.html) —
-    // "Sport (A–Z)" was removed from that dropdown since grouping by sport
-    // is now always-on (§4), which made it a no-op duplicate of the default
-    // grouping order; sortOverviewCourts() below still supports a 'sport'
-    // mode as a defensive fallback, it's just no longer user-selectable.
-    let overviewSortMode = 'available';
+    // Default sort mode (Revision 2, R2 — implementation_plan.md): groups
+    // the per-sport headings alphabetically, matching the sort <select>'s
+    // own default option (Pages/user_dashboard.html, value="sport",
+    // selected). "Available first" and "Price: Low to High" remain
+    // selectable alternatives that instead sort courts *within* each sport
+    // group — grouping by sport (groupOverviewCourtsBySport() below) stays
+    // always-on no matter which mode is chosen, so the two concerns compose
+    // instead of conflicting. (Phase 1 had dropped this option, reasoning
+    // that always-on grouping made it a no-op duplicate of the default
+    // order; the user later asked for it back explicitly, overruling that
+    // call — see implementation_plan.md's Context section.)
+    let overviewSortMode = 'sport';
     let overviewCourts = [];
     let overviewBookings = [];
     let overviewWalkins = [];
@@ -1130,13 +1128,6 @@ document.addEventListener('DOMContentLoaded', () => {
         const start = new Date(now.getFullYear(), now.getMonth(), now.getDate());
         const end = new Date(start.getTime() + 24 * 60 * 60 * 1000);
         return { start, end };
-    }
-
-    function toDateInputValue(d) {
-        const y = d.getFullYear();
-        const m = String(d.getMonth() + 1).padStart(2, '0');
-        const day = String(d.getDate()).padStart(2, '0');
-        return `${y}-${m}-${day}`;
     }
 
     // "8:00 AM" / "6:00 PM" — matches the Booking panel's own [data-dash-slot]
@@ -1247,11 +1238,15 @@ document.addEventListener('DOMContentLoaded', () => {
                 return a.rate - b.rate;
             });
         } else {
-            // 'sport' — defensive fallback only; the dropdown no longer
-            // offers this as a choice (see overviewSortMode's declaration
-            // above). Groups by real sportName, courts within the same
-            // sport secondarily ordered by name (e.g. "Bowling — Duckpin"
-            // before "Bowling — Ten-Pin").
+            // 'sport' — the DEFAULT mode as of Revision 2's R2 (see
+            // overviewSortMode's declaration above); also the safe fallback
+            // for any unrecognized mode value. Grouping by sport
+            // (groupOverviewCourtsBySport() below) is always-on regardless
+            // of mode, so this sort only decides GROUP order; 'available'/
+            // 'price' above remain selectable alternatives that instead
+            // order courts *within* each group. Courts within the same
+            // sport are secondarily ordered by name (e.g. "Bowling —
+            // Duckpin" before "Bowling — Ten-Pin").
             copy.sort((a, b) => (a.sportName || '').localeCompare(b.sportName || '') || (a.name || '').localeCompare(b.name || ''));
         }
         return copy;
@@ -1277,18 +1272,26 @@ document.addEventListener('DOMContentLoaded', () => {
         return order.map((key) => groups.get(key));
     }
 
-    // Booked pills are rendered as disabled <button>s (not plain <span>s) to
-    // match the Booking panel's own is-unavailable [data-dash-slot] markup
-    // shape exactly (Pages/user_dashboard.html). Every interpolated value is
-    // escaped, same as renderOverviewCourtCard() below — court/sport names
-    // are admin-authored content that can contain HTML.
+    // Revision 2, R1 (implementation_plan.md) — these pills are a READ-ONLY
+    // availability display only now: the Overview Courts section is
+    // marketing/showcase, and booking has its own designated panel (the
+    // Book a Court wizard's own Step-1 court picker, unaffected by this
+    // change). Both open and booked pills render as plain, non-interactive
+    // <span>s — not <button>s — since there is nothing left to click, and a
+    // <button> would wrongly suggest there is; Style/Dashboard.css also
+    // neutralizes the shared .dash-slot class's pointer cursor/hover
+    // affordance specifically inside .dash-overview-peek-strip, so these
+    // don't visually invite a click they no longer respond to (the Booking
+    // panel's own [data-dash-slot] buttons in Step 2 keep their normal
+    // interactive styling — this is scoped to the peek strip only). Every
+    // interpolated value is escaped, same as renderOverviewCourtCard()
+    // below — court/sport names are admin-authored content that can
+    // contain HTML.
     function renderOverviewSlotPill(court, hour) {
         const label = formatOverviewHourLabel(hour);
         const occupied = isOverviewCourtHourOccupied(court, hour);
-        if (occupied) {
-            return `<button type="button" class="dash-slot dash-slot-mini is-unavailable" disabled>${window.escapeHtml(label)}</button>`;
-        }
-        return `<button type="button" class="dash-slot dash-slot-mini" data-overview-peek-slot data-overview-court-id="${window.escapeHtml(String(court.id))}" data-overview-hour="${hour}">${window.escapeHtml(label)}</button>`;
+        const unavailableClass = occupied ? ' is-unavailable' : '';
+        return `<span class="dash-slot dash-slot-mini${unavailableClass}">${window.escapeHtml(label)}</span>`;
     }
 
     function renderOverviewPeekContent(court) {
@@ -1345,13 +1348,17 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    // One sport-grouped Courts card (§4/D2) — combines what the old,
+    // One sport-grouped Courts card — marketing/showcase only as of
+    // Revision 2's R1 (implementation_plan.md). Combines what the old,
     // deleted standalone Courts panel's renderCourtCard() drew (photo,
-    // status badge, name, rating, rate, tags, Book Now) with the per-unit
-    // combo box (window.InigoCourtsData.resolveCourtUnits(), §4's "Combo Box
-    // Integration"/"Imagery") and the exact peek-slots toggle + strip PR #1
-    // shipped (§4's "Pixlot Integration — keep as-is"), preserved here
-    // unchanged from renderOverviewCourtRow's own peek markup/logic.
+    // status badge, name, rating, rate, tags) with the per-unit combo box
+    // (window.InigoCourtsData.resolveCourtUnits(), §4's "Combo Box
+    // Integration"/"Imagery") and the read-only peek-slots toggle + strip
+    // PR #1 shipped (§4's "Pixlot Integration", kept per R1 but with its
+    // click-to-book hand-off removed — see renderOverviewSlotPill() above).
+    // There is no "Book Now" button here any more (R1) — booking is
+    // entirely the Book a Court panel's job now; this card only shows off
+    // the court.
     function renderOverviewCourtCard(court) {
         const isAvailable = String(court.status || '').toLowerCase() === 'available';
         const statusClass = isAvailable ? 'confirmed' : 'cancelled';
@@ -1404,10 +1411,6 @@ document.addEventListener('DOMContentLoaded', () => {
             </div>
         ` : '';
 
-        const bookBtn = isAvailable
-            ? `<button type="button" class="dash-btn-primary" data-dash-book-court="${window.escapeHtml(court.name)}" data-dash-book-rate="${court.rate !== null ? window.escapeHtml(String(court.rate)) : ''}" data-dash-book-rate-unit="${window.escapeHtml(court.rateUnit)}" data-dash-book-sport="${window.escapeHtml(court.sportName || court.name)}">Book Now</button>`
-            : '<button type="button" class="dash-btn-primary" disabled>Book Now</button>';
-
         return `
             <article class="dash-court-card">
                 <div class="dash-court-media" data-overview-court-media>
@@ -1421,66 +1424,25 @@ document.addEventListener('DOMContentLoaded', () => {
                     <div class="dash-court-tags">${tagsHtml}</div>
                     ${unitPickerHtml}
                     <div class="dash-court-peek">
-                        <button type="button" class="dash-mini-btn" data-overview-peek-toggle data-overview-court-id="${courtIdAttr}" aria-expanded="${isExpanded ? 'true' : 'false'}">${isExpanded ? 'Hide slots' : 'Peek slots'}</button>
+                        <button type="button" class="dash-mini-btn" data-overview-peek-toggle data-overview-court-id="${courtIdAttr}" aria-expanded="${isExpanded ? 'true' : 'false'}">${isExpanded ? 'Hide availability' : 'Show availability'}</button>
                     </div>
                     <div class="dash-overview-peek-strip${isExpanded ? ' is-active' : ''}">${isExpanded ? renderOverviewPeekContent(court) : ''}</div>
-                    <div class="dash-court-actions">
-                        ${bookBtn}
-                    </div>
                 </div>
             </article>
         `;
     }
 
-    // Hands off to the Booking panel exactly like wireBookNowButtons()
-    // above, plus today's date and this slot's time (which "Book Now" alone
-    // never sets, since it has no specific slot to carry). Because this hand-
-    // off already supplies court + date + time, §5/D5 requires it to land
-    // directly on Step 3 (Confirm) instead of Step 1 — everything the
-    // customer needs to review is already filled in.
-    function jumpToBookingFromPeekSlot(court, timeLabel) {
-        if (bookSelect) bookSelect.value = court.name;
-        bookingState.court = court.name;
-        bookingState.sport = court.sportName || court.name;
-        bookingState.rate = (court.rate !== null && court.rate !== undefined) ? Number(court.rate) : null;
-        bookingState.rateUnit = court.rateUnit || '/hr';
-        // `court` here is already one of window.InigoCourtsData.getCourts()'s
-        // normalized rows (same shape bookCourtsCache holds), so the preview
-        // can be painted directly instead of round-tripping through
-        // findBookCourt().
-        bookSelectedUnitIndex = 0;
-        paintBookPreview(court, 0);
-
-        if (bookDate && overviewDateBase) bookDate.value = toDateInputValue(overviewDateBase);
-        bookingState.date = bookDate ? bookDate.value : bookingState.date;
-
-        // Marks the matching Booking-panel slot button is-selected when one
-        // exists. The Booking panel's static slot grid skips 12:00 PM
-        // (implementation_plan.md's "Open questions" — not real data either,
-        // reconciling the two slot lists is a later phase), so a peeked noon
-        // slot sets bookingState.time correctly but has no button to
-        // highlight; the summary and submission both still work correctly
-        // off bookingState alone.
-        slots.forEach((s) => s.classList.remove('is-selected'));
-        slots.forEach((s) => {
-            if (s.textContent.trim() === timeLabel) s.classList.add('is-selected');
-        });
-        bookingState.time = timeLabel;
-
-        updateSummary();
-        // setActivePanel('booking') resets the wizard to Step 1 by default
-        // (see its own comment) — goToBookStep(3) runs AFTER it on purpose,
-        // so this hand-off's explicit "land on Confirm" wins.
-        setActivePanel('booking');
-        goToBookStep(3);
-    }
-
     // Re-wired after every renderOverviewCourtList() call, same
-    // re-wire-after-render idiom wireBookNowButtons() above already uses for
-    // its own scope. [data-overview-peek-toggle]/[data-overview-peek-slot]
-    // wiring is unchanged from PR #1 (§4's "Pixlot Integration — keep as
-    // is"); [data-overview-unit-select] is new (§4/D2 — the per-unit combo
-    // box's image swap).
+    // re-wire-after-render idiom wireReceiptDownloads() below also uses for
+    // its own dynamically-rendered scope. [data-overview-peek-toggle]
+    // wiring is unchanged from PR #1 (§4's "Pixlot Integration") — it only
+    // shows/hides the read-only strip, nothing else. There is no
+    // [data-overview-peek-slot] click wiring any more: Revision 2's R1
+    // (implementation_plan.md) removed the peek-slot click-to-book hand-off
+    // (jumpToBookingFromPeekSlot(), deleted) — renderOverviewSlotPill()
+    // above now renders plain, non-interactive <span>s with nothing to wire
+    // a click to. [data-overview-unit-select] is unchanged (§4/D2 — the
+    // per-unit combo box's image swap).
     function wireOverviewCourtList() {
         if (!overviewCourtList) return;
 
@@ -1494,18 +1456,6 @@ document.addEventListener('DOMContentLoaded', () => {
                     overviewExpandedCourts.add(courtId);
                 }
                 renderOverviewCourtList();
-            });
-        });
-
-        overviewCourtList.querySelectorAll('[data-overview-peek-slot]').forEach((btn) => {
-            btn.addEventListener('click', () => {
-                const courtId = btn.dataset.overviewCourtId;
-                const court = overviewCourts.find((c) => String(c.id) === courtId);
-                if (!court) return;
-                // Derived from data-overview-hour (not btn.textContent) so
-                // the hand-off doesn't depend on the pill's exact rendered
-                // text ever staying trim()-safe.
-                jumpToBookingFromPeekSlot(court, formatOverviewHourLabel(Number(btn.dataset.overviewHour)));
             });
         });
 
@@ -1553,10 +1503,6 @@ document.addEventListener('DOMContentLoaded', () => {
             </div>
         `).join('');
         wireOverviewCourtList();
-        // Book Now buttons live inside these cards now (they used to be the
-        // deleted standalone Courts panel's) — same wiring function, new
-        // scope.
-        wireBookNowButtons(overviewCourtList);
     }
 
     if (overviewSortSelect) {
@@ -1636,6 +1582,57 @@ document.addEventListener('DOMContentLoaded', () => {
         return d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
     }
 
+    // ------------------------------------------------------------------
+    // Derived "Unattended" status (Revision 2, R4 — implementation_plan.md).
+    // A booking DISPLAYS as Unattended once ALL of: it is more than 30
+    // minutes past its start time (booking.time_date), nobody checked it in
+    // (booking.checked_in_at is null/absent —
+    // database/schema/004_staff_module.sql), and its stored status is still
+    // 'pending' or 'confirmed' (a booking already 'completed' or 'cancelled'
+    // keeps that real, later-stage status — Unattended never overrides one).
+    //
+    // This is NEVER written back to the database. booking.status has a CHECK
+    // constraint that only accepts 'pending' | 'confirmed' | 'cancelled' |
+    // 'completed' — see the big comment above the booking INSERT further up
+    // this file and its own 23514 error branch. Writing 'unattended' there
+    // would fail the exact same way. Nothing in this project runs a
+    // scheduled job either (no cron this repo can see, and no visibility
+    // into `booking`'s real triggers/RLS — database/schema/
+    // 004_staff_module.sql's header note), so a WRITTEN status would need
+    // server-side automation this repo cannot safely add blind. Deriving it
+    // here instead means the rule is visibly enforced the moment it becomes
+    // true, with zero migration risk and nothing fabricated — and it can
+    // never drift out of sync between panels, since both My Bookings
+    // (refreshMyBookings() below) and Receipts (normalizeReceipt() further
+    // below) call this SAME function rather than reading booking.status
+    // directly.
+    //
+    // database/schema/010_booking_unattended_status.sql (optional, NOT
+    // applied — no Supabase admin access here) extends that CHECK
+    // constraint so a later staff/automation feature COULD persist
+    // 'unattended' for real; this function behaves identically whether or
+    // not that migration has been run. Existing historical 'cancelled' rows
+    // still display exactly as stored — this function only ever touches a
+    // still-open pending/confirmed booking.
+    // ------------------------------------------------------------------
+    const UNATTENDED_GRACE_MINUTES = 30;
+
+    function displayStatusFor(booking) {
+        const rawStatus = String(booking.status || '').toLowerCase();
+        // Only a still-open booking can ever be "missed" — one that's
+        // already cancelled/completed keeps that real status.
+        if (rawStatus !== 'pending' && rawStatus !== 'confirmed') return rawStatus;
+        // Staff already timed this customer in — they showed up, however
+        // late; not Unattended.
+        if (booking.checked_in_at) return rawStatus;
+
+        const start = new Date(booking.time_date);
+        if (Number.isNaN(start.getTime())) return rawStatus; // defensive — time_date is required, never seen live
+
+        const graceDeadline = start.getTime() + UNATTENDED_GRACE_MINUTES * 60000;
+        return Date.now() > graceDeadline ? 'unattended' : rawStatus;
+    }
+
     // Profile panel's Total bookings / Completed / Cancelled tiles
     // ([3]/[4]/[5] of .dash-profile-meta-item — Member since is [2],
     // handled separately in renderProfile() via the auth session).
@@ -1665,6 +1662,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (error) {
             console.error('[dashboard] failed to load bookings', error);
+            // Receipts (R5, Revision 2) reuses this exact fetch rather than
+            // a second query — see renderReceipts()'s own header comment
+            // below — so a failure here means Receipts can't render either.
+            // Same fail-safe-not-fabrication convention this file already
+            // uses elsewhere (e.g. the Overview peek widget): show the
+            // honest empty state, never a stale or fabricated list.
+            if (receiptsGrid) receiptsGrid.innerHTML = RECEIPT_EMPTY_HTML;
             return;
         }
 
@@ -1673,6 +1677,9 @@ document.addEventListener('DOMContentLoaded', () => {
         // second query against `booking`; see renderNotifications()'s own
         // header comment near the notifications dropdown wiring above.
         renderNotifications(data || []);
+        // Receipts (§7/D8, Revision 2's R5) — same reuse, no second query;
+        // see renderReceipts()'s own header comment below.
+        renderReceipts(data || []);
 
         bookingsTableBody.innerHTML = '';
 
@@ -1687,15 +1694,27 @@ document.addEventListener('DOMContentLoaded', () => {
             const rate = getCourtRate(booking.courts);
             const amount = rate !== null ? `₱${rate.toFixed(2)}` : '—';
             const row = document.createElement('tr');
-            // courts/status are DB content (courts is free text on the
-            // booking row; status could in principle be a raw value if RLS
-            // were ever bypassed) — escaped before touching innerHTML so
-            // this renders as literal text in the customer's own session
-            // instead of running, same as the staff/admin tables.
-            const statusRaw = booking.status || '';
+            // courts is DB content (free text on the booking row) — escaped
+            // before touching innerHTML so this renders as literal text in
+            // the customer's own session instead of running, same as the
+            // staff/admin tables. Status shown is the DERIVED one
+            // (displayStatusFor(), R4/Revision 2) — never booking.status
+            // directly — so a booking more than 30 minutes past its start
+            // with no check-in reads "Unattended" here without ever writing
+            // that value to the database.
+            const displayStatus = displayStatusFor(booking);
             const courtLabel = window.escapeHtml(booking.courts || '');
-            const statusClass = window.escapeHtml(statusRaw);
-            const statusLabel = window.escapeHtml(statusRaw.charAt(0).toUpperCase() + statusRaw.slice(1));
+            const statusClass = window.escapeHtml(displayStatus);
+            const statusLabel = window.escapeHtml(displayStatus ? displayStatus.charAt(0).toUpperCase() + displayStatus.slice(1) : '—');
+            // R3/Revision 2 — no Cancel control anywhere (see the policy
+            // notices in Pages/user_dashboard.html): the real rule is no
+            // cancellation, no refunds/cashback, and 30+ minutes late
+            // automatically shows as Unattended above. This cell used to
+            // hold ONLY a conditional Cancel button (nothing for
+            // completed/cancelled rows) — a Receipt shortcut takes its
+            // place instead of leaving the Actions column permanently
+            // blank, matching what the static demo rows above it already
+            // show in this same column.
             row.innerHTML = `
                 <td class="dash-cell-main">${courtLabel}</td>
                 <td>${formatBookingDate(booking.time_date)}</td>
@@ -1704,74 +1723,88 @@ document.addEventListener('DOMContentLoaded', () => {
                 <td><span class="dash-status ${statusClass}">${statusLabel}</span></td>
                 <td>
                     <div class="dash-table-actions">
-                        ${['pending', 'confirmed'].includes(booking.status)
-                            ? `<button type="button" class="dash-mini-btn is-danger" data-dash-cancel-booking="${window.escapeHtml(booking.booking_id)}">Cancel</button>`
-                            : ''}
+                        <button type="button" class="dash-mini-btn" data-dash-nav="receipts">Receipt</button>
                     </div>
                 </td>
             `;
             bookingsTableBody.appendChild(row);
         });
 
-        bookingsTableBody.querySelectorAll('[data-dash-cancel-booking]').forEach((btn) => {
-            btn.addEventListener('click', async () => {
-                if (!window.confirm('Cancel this booking?')) return;
-                btn.disabled = true;
-                const { error: cancelError } = await window.sb
-                    .from('booking')
-                    .update({ status: 'cancelled' })
-                    .eq('booking_id', btn.dataset.dashCancelBooking);
-                if (cancelError) {
-                    window.InigoToast?.show(cancelError.message || 'Could not cancel this booking.', true);
-                    btn.disabled = false;
-                    return;
-                }
-                refreshMyBookings();
-            });
+        // Dynamically-created [data-dash-nav] buttons don't inherit the
+        // page's one-time navButtons.forEach() binding at the very top of
+        // this file (that querySelectorAll ran once, before these rows
+        // existed) — wired explicitly here instead, same re-wire-after-
+        // render idiom this file already uses elsewhere for its own
+        // dynamically rendered scopes (wireOverviewCourtList() above,
+        // wireReceiptDownloads() below).
+        bookingsTableBody.querySelectorAll('[data-dash-nav="receipts"]').forEach((btn) => {
+            btn.addEventListener('click', () => setActivePanel('receipts'));
         });
     }
 
     // ------------------------------------------------------------------
-    // Receipts (§7, D8) — a receipt is a `booking` row that carries a
-    // payment_id: the same column this file's own booking-insert comment
-    // above already documents ("payment_id ... deliberately OMITTED here
-    // ... no payment record exists yet for a brand-new booking"). Nothing in
-    // this project sets payment_id today (no PayMongo/e-wallet integration
-    // — see this file's header comment and implementation_plan.md's "Open
-    // questions"), so this query genuinely returns zero rows right now and
-    // RECEIPT_EMPTY_HTML below is the honest, non-fabricated result — never
-    // a fake card. The moment something starts setting payment_id (or a
-    // `payment` table this project can join against), renderReceiptCard()
-    // picks the row up automatically with no further change here.
+    // Receipts (Revision 2, R5 — implementation_plan.md). Renders one
+    // .dash-receipt-card per booking from the customer's own real `booking`
+    // rows — EVERY booking, not just ones that carry a payment_id (the old
+    // Phase 2 behavior, §7/D8, under which this panel could only ever show
+    // its hardcoded "No receipts yet" state, since nothing in this project
+    // sets payment_id yet — no PayMongo/e-wallet integration). The ask for
+    // this revision is explicit: every booking made should show a receipt
+    // here. renderReceipts() below is called from refreshMyBookings() with
+    // the SAME data that fetch already retrieved — no second query against
+    // `booking` (R5's explicit instruction).
+    //
+    // Amount is shown only where genuinely known: getCourtRate() returns
+    // null for every court today (court.rate is NULL in the live DB — see
+    // database/seed/002_seed_content.sql), so a card honestly reads
+    // "Rate TBA" rather than inventing a peso figure — same convention the
+    // booking wizard's own summary and My Bookings' Amount column already
+    // use. There is also no `payment` table anywhere in this project, so a
+    // receipt card has no payment method/reference to show.
+    //
+    // Status shown is the DERIVED one (displayStatusFor(), R4 above) — never
+    // booking.status directly — so a receipt for a booking more than 30
+    // minutes past its start with no check-in reads "Unattended" here too,
+    // exactly matching what My Bookings shows for that same booking; the two
+    // panels can never disagree, since both call the one shared function.
     //
     // Each card's Download button rasterizes THAT card (not the whole page)
     // to a PNG via html2canvas (CDN <script> in Pages/user_dashboard.html)
     // and canvas.toBlob() + a programmatic <a download> click — the one
     // path that also works on iOS Safari and Android, unlike an <a href>
-    // pointed at a data: URL for a large image.
+    // pointed at a data: URL for a large image. This mechanism is unchanged
+    // from Phase 2 — only the empty-forever data source above it changed.
     // ------------------------------------------------------------------
     const receiptsGrid = document.querySelector('.dash-receipt-grid');
-    const RECEIPT_EMPTY_HTML = '<p style="color: var(--color-ink-faint); padding: 24px 4px;">No receipts yet — receipts will appear here once online payments are available.</p>';
+    const RECEIPT_EMPTY_HTML = '<p style="color: var(--color-ink-faint); padding: 24px 4px;">No receipts yet — book a court to see your receipt here.</p>';
 
     if (receiptsGrid) {
         receiptsGrid.innerHTML = '<p style="color: var(--color-ink-faint); padding: 24px 4px;">Loading your receipts…</p>';
     }
 
     // booking row -> the small, honest subset of fields a receipt card can
-    // actually show today: nothing here is invented — rate comes from the
-    // same getCourtRate() lookup (with the same "Rate TBA" honesty) My
-    // Bookings already uses above, and there is no payment method/reference
-    // to show since no `payment` table exists anywhere in this repo.
+    // actually show today: nothing here is invented. `sport` is
+    // booking.sports (the court's REAL related sport, e.g. "Bowling" for a
+    // "Bowling — Duckpin" booking — see the big booking-insert comment
+    // further up this file), `rate` comes from the same getCourtRate()
+    // lookup (with the same "Rate TBA" honesty) My Bookings already uses
+    // above, and `status` is the DERIVED display status (R4), not the raw
+    // stored one.
     function normalizeReceipt(booking) {
         return {
             id: booking.booking_id,
             court: booking.courts || 'Booking',
+            sport: booking.sports || '',
             when: booking.time_date,
-            status: String(booking.status || ''),
+            status: displayStatusFor(booking),
             rate: getCourtRate(booking.courts),
         };
     }
 
+    // Kept deliberately simple/non-exotic (flexbox, solid backgrounds, no
+    // gradients/backdrop-filter/transforms) so html2canvas — which does not
+    // reliably support every modern CSS feature — captures it correctly and
+    // completely; see downloadReceiptAsPng() below.
     function renderReceiptCard(receipt) {
         const amount = receipt.rate !== null ? `₱${receipt.rate.toFixed(2)}` : 'Rate TBA';
         const statusClass = window.escapeHtml(receipt.status);
@@ -1787,6 +1820,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     <span class="dash-status ${statusClass}">${statusLabel}</span>
                 </div>
                 <div class="dash-receipt-rows">
+                    <div class="dash-summary-row"><span>Sport</span><strong>${window.escapeHtml(receipt.sport || '—')}</strong></div>
                     <div class="dash-summary-row"><span>Date</span><strong>${window.escapeHtml(formatBookingDate(receipt.when))}</strong></div>
                     <div class="dash-summary-row"><span>Time</span><strong>${window.escapeHtml(formatBookingTime(receipt.when))}</strong></div>
                     <div class="dash-summary-row"><span>Amount</span><strong>${window.escapeHtml(amount)}</strong></div>
@@ -1860,9 +1894,9 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    // Re-wired after every refreshReceipts() render, same re-wire-after-
-    // render idiom wireBookNowButtons()/wireOverviewCourtList() already use
-    // for their own dynamically rendered scopes.
+    // Re-wired after every renderReceipts() render, same re-wire-after-
+    // render idiom wireOverviewCourtList() above already uses for its own
+    // dynamically rendered scope.
     function wireReceiptDownloads() {
         if (!receiptsGrid) return;
         receiptsGrid.querySelectorAll('[data-dash-receipt-download]').forEach((btn) => {
@@ -1880,33 +1914,23 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    async function refreshReceipts() {
-        if (!receiptsGrid || !window.sb || !window.inigosyncProfile) return;
+    // Renders every booking's receipt card at once — called from
+    // refreshMyBookings() with the data it already fetched (R5's explicit
+    // "no redundant query" instruction), not a fetcher of its own. Genuinely
+    // empty only when the customer has zero bookings at all; a fetch error
+    // is handled by the caller (refreshMyBookings() falls back to
+    // RECEIPT_EMPTY_HTML itself when its shared query fails, same fail-safe
+    // convention Phase 2's refreshReceipts() used to use on its own error
+    // branch).
+    function renderReceipts(bookings) {
+        if (!receiptsGrid) return;
 
-        const { data, error } = await window.sb
-            .from('booking')
-            .select('*')
-            .eq('customer_id', window.inigosyncProfile.id)
-            .not('payment_id', 'is', null)
-            .order('time_date', { ascending: false });
-
-        if (error) {
-            // Fail safe, not fabrication — same "never claim data that
-            // couldn't be verified" rule as the Overview peek widget's own
-            // isOverviewSchemaMismatch()-guarded queries. Either way, the
-            // customer sees the same honest empty state, never a stale or
-            // partial list.
-            console.error('[dashboard] failed to load receipts', error);
+        if (!bookings || bookings.length === 0) {
             receiptsGrid.innerHTML = RECEIPT_EMPTY_HTML;
             return;
         }
 
-        if (!data || data.length === 0) {
-            receiptsGrid.innerHTML = RECEIPT_EMPTY_HTML;
-            return;
-        }
-
-        receiptsGrid.innerHTML = data.map(normalizeReceipt).map(renderReceiptCard).join('');
+        receiptsGrid.innerHTML = bookings.map(normalizeReceipt).map(renderReceiptCard).join('');
         wireReceiptDownloads();
     }
 
@@ -2088,15 +2112,17 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
+    // refreshMyBookings() renders Receipts itself now (renderReceipts(),
+    // R5/Revision 2 above) — no separate refreshReceipts() call needed
+    // here, since it would otherwise re-fetch the same `booking` rows a
+    // second time.
     document.addEventListener('inigosync:profile-ready', (e) => {
         renderProfile(e.detail);
         refreshMyBookings();
-        refreshReceipts();
     });
     if (window.inigosyncProfile) {
         renderProfile(window.inigosyncProfile);
         refreshMyBookings();
-        refreshReceipts();
     }
 
     // ------------------------------------------------------------------

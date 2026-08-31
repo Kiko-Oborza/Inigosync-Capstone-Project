@@ -333,17 +333,21 @@
 
                     <!-- ========================================================
                          Courts — §4 of the feedback doc, D2 in
-                         implementation_plan.md. This REPLACES both the old
-                         compact court list PR #1 put here AND the standalone
-                         "Courts / Court Information" dash-panel that used to
-                         follow this section (data-dash-panel="courts" —
-                         deleted outright; its data-dash-nav="courts" deep
-                         links go with it, since there is no longer a
-                         separate "all courts" screen to view). Rendered by
-                         includes/Dashboard.js from the real `court`/`sport`
-                         tables (window.InigoCourtsData) plus today's
-                         `booking`/`walk_in_booking` rows for each card's peek
-                         strip — see refreshOverviewCourtWidget() /
+                         implementation_plan.md; MARKETING/SHOWCASE ONLY as of
+                         Revision 2's R1 (same file, "Revision 2" section) —
+                         booking has its own designated panel (Book a Court
+                         below); this section only shows the courts off. This
+                         REPLACES both the old compact court list PR #1 put
+                         here AND the standalone "Courts / Court Information"
+                         dash-panel that used to follow this section
+                         (data-dash-panel="courts" — deleted outright; its
+                         data-dash-nav="courts" deep links go with it, since
+                         there is no longer a separate "all courts" screen to
+                         view). Rendered by includes/Dashboard.js from the
+                         real `court`/`sport` tables (window.InigoCourtsData)
+                         plus today's `booking`/`walk_in_booking` rows for
+                         each card's peek strip — see
+                         refreshOverviewCourtWidget() /
                          renderOverviewCourtList() there.
 
                          Requirements this satisfies:
@@ -363,20 +367,34 @@
                              an invented URL.
                            • "Pixlot Integration" (read as "peek slot" — the
                              PR #1 feature the user explicitly praised) is
-                             KEPT AS-IS inside each card: same Peek slots
-                             toggle, same hourly open/booked pills, same
-                             click-to-book hand-off into the Booking panel.
+                             KEPT inside each card as a READ-ONLY display:
+                             same Peek slots toggle, same hourly open/booked
+                             pills — but per R1, no click-to-book hand-off
+                             into the Booking panel any more. There is also
+                             no "Book Now" button on these cards (R1) — the
+                             Book a Court panel below is the only place to
+                             actually book.
 
-                         The sort <select> keeps "Available first" and
-                         "Price: Low to High" — "Sport (A–Z)" was dropped
-                         since grouping by sport is now always-on, which made
-                         that option a no-op duplicate of the default
-                         grouping order. -->
+                         The sort <select> DEFAULTS to "Sport (A–Z)" as of
+                         R2, ordering the per-sport groups alphabetically —
+                         restored after Phase 1 had dropped it, reasoning
+                         that always-on grouping made it a no-op duplicate of
+                         the default order; the user later asked for it back
+                         explicitly. "Available first" and "Price: Low to
+                         High" remain as alternatives that instead sort
+                         courts *within* each sport group — grouping stays
+                         always-on regardless of mode, so the two concerns
+                         compose rather than conflict (see
+                         includes/Dashboard.js's sortOverviewCourts()). The
+                         default option here MUST match the JS's own default
+                         overviewSortMode ('sport') — see that file's
+                         declaration comment. -->
                     <div class="dash-card">
                         <div class="dash-card-head">
                             <h3>Courts</h3>
                             <label for="dash-overview-sort" class="sr-only">Sort courts</label>
                             <select id="dash-overview-sort" class="dash-select" data-dash-overview-sort>
+                                <option value="sport" selected>Sport (A–Z)</option>
                                 <option value="available">Available first</option>
                                 <option value="price">Price: Low to High</option>
                             </select>
@@ -537,9 +555,21 @@
                                 </div>
                             </div>
 
+                            <!-- Revision 2, R3 (implementation_plan.md) — the
+                                 real policy: no cancellation, no refunds or
+                                 cashback, and arriving more than 30 minutes
+                                 late automatically marks the booking
+                                 "Unattended" (computed on-screen — see
+                                 includes/Dashboard.js's displayStatusFor(),
+                                 R4). This replaces a stale notice that
+                                 contradicted that rule by claiming a missed
+                                 booking gets auto-cancelled and its payment
+                                 forfeited. Written in plain language for the
+                                 "older, non-tech-savvy users" this redesign
+                                 targets. -->
                             <div class="dash-notice">
                                 <svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.7"/><path d="M12 8v5M12 16h.01" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/></svg>
-                                <span>Cancellation policy: arrive within 30 minutes of your slot's start time. Bookings not honored within that window are cancelled and the slot is reopened for other customers — payments for cancelled bookings are non-refundable.</span>
+                                <span>Please note: once a booking is made, it cannot be cancelled, and payments cannot be refunded or converted to cashback. If you arrive more than 30 minutes after your booked time, your reservation will automatically show as "Unattended" and the court may be given to someone else — so please try to arrive on time.</span>
                             </div>
 
                             <div class="dash-wizard-summary">
@@ -595,9 +625,17 @@
                         </div>
                     </div>
 
+                    <!-- Revision 2, R3 (implementation_plan.md) — the real
+                         policy: no cancellation, no refunds or cashback, and
+                         arriving more than 30 minutes late automatically
+                         marks the booking "Unattended" (computed on-screen
+                         per row below — see includes/Dashboard.js's
+                         displayStatusFor(), R4). Replaces a stale notice
+                         that contradicted this by claiming a missed booking
+                         gets auto-cancelled and its payment forfeited. -->
                     <div class="dash-notice">
                         <svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.7"/><path d="M12 8v5M12 16h.01" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/></svg>
-                        <span>Cancellation policy: bookings not honored within 30 minutes of the start time are cancelled and marked non-refundable.</span>
+                        <span>Please note: your bookings cannot be cancelled, and payments are not refunded or given as cashback. Arriving more than 30 minutes after your booked time will automatically mark that booking "Unattended."</span>
                     </div>
 
                     <div class="dash-card">
@@ -613,6 +651,14 @@
                                         <th>Actions</th>
                                     </tr>
                                 </thead>
+                                <!-- No Cancel button anywhere in this table any
+                                     more (R3 — see the notice above and
+                                     includes/Dashboard.js's refreshMyBookings(),
+                                     which replaces it in the live renderer with
+                                     this same Receipt shortcut). These 5 rows
+                                     are a design-preview fallback only — real
+                                     rows replace them the moment the signed-in
+                                     customer's profile is ready. -->
                                 <tbody>
                                     <tr>
                                         <td class="dash-cell-main">Basketball — Full Court</td>
@@ -623,7 +669,6 @@
                                         <td>
                                             <div class="dash-table-actions">
                                                 <button type="button" class="dash-mini-btn" data-dash-nav="receipts">Receipt</button>
-                                                <button type="button" class="dash-mini-btn is-danger">Cancel</button>
                                             </div>
                                         </td>
                                     </tr>
@@ -636,7 +681,6 @@
                                         <td>
                                             <div class="dash-table-actions">
                                                 <button type="button" class="dash-mini-btn" data-dash-nav="receipts">Receipt</button>
-                                                <button type="button" class="dash-mini-btn is-danger">Cancel</button>
                                             </div>
                                         </td>
                                     </tr>
@@ -649,7 +693,6 @@
                                         <td>
                                             <div class="dash-table-actions">
                                                 <button type="button" class="dash-mini-btn" data-dash-nav="receipts">Receipt</button>
-                                                <button type="button" class="dash-mini-btn is-danger">Cancel</button>
                                             </div>
                                         </td>
                                     </tr>
@@ -690,22 +733,30 @@
                     <div class="dash-panel-head">
                         <div>
                             <h2>Receipts</h2>
-                            <p>Payment records and invoices for your completed bookings.</p>
+                            <p>A receipt for every booking you've made, ready to download.</p>
                         </div>
                     </div>
 
-                    <!-- §7 of the feedback doc, D8 in implementation_plan.md.
-                         includes/Dashboard.js's refreshReceipts() renders one
-                         .dash-receipt-card (with a Download-as-PNG button,
-                         powered by the html2canvas CDN <script> below) per
-                         real `booking` row that carries a payment_id — the
-                         signal a receipt exists for it. No payment
-                         integration exists yet (no PayMongo), so payment_id
-                         is NULL on every booking today and this honestly
-                         renders "No receipts yet" — nothing is hardcoded
-                         here, so there's no fake card to leave dead if that
-                         script fails to load. The exact same renderer lights
-                         up automatically once real payment rows exist. -->
+                    <!-- §7 of the feedback doc, D8 in implementation_plan.md;
+                         rewritten for Revision 2's R5 (implementation_plan.md,
+                         "Revision 2" section). includes/Dashboard.js's
+                         renderReceipts() renders one .dash-receipt-card (with
+                         a Download-as-PNG button, powered by the html2canvas
+                         CDN <script> below) per real `booking` row belonging
+                         to the signed-in customer — EVERY booking, not only
+                         ones that carry a payment_id (Phase 2's rule, which
+                         meant this panel could only ever show "No receipts
+                         yet", since nothing in this project sets payment_id
+                         yet — no PayMongo integration exists). Amount reads
+                         "Rate TBA" rather than an invented peso figure
+                         whenever a court's rate isn't known (every court
+                         today) — no `payment` table exists anywhere in this
+                         repo either, so there's no payment method/reference
+                         to show. renderReceipts() reuses the exact fetch
+                         refreshMyBookings() already makes — no second query
+                         against `booking`. The empty state above only
+                         appears for a customer with genuinely zero
+                         bookings. -->
                     <div class="dash-receipt-grid"></div>
                 </section>
 
