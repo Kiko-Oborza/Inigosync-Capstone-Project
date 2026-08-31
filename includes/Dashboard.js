@@ -2,14 +2,16 @@
 // Handles: sidebar/topbar panel switching, mobile sidebar toggle, profile
 // dropdown, court "Book Now" hand-off into the Booking panel, time-slot and
 // payment-option selection with a live summary recalculation, filter chips,
-// calendar month label cycling, and password show/hide toggles.
+// the Overview panel's sortable court + real-time slot-peek widget, and
+// password show/hide toggles.
 //
-// Court Information, Booking (including its court dropdown), My Bookings,
-// Receipts, Profile, and Settings talk to the real Supabase database —
-// Court Information and Booking's court options both read the same
-// `court`/`sport` tables via window.InigoCourtsData (includes/courtsData.js;
-// see docs/QA_AUDIT_REPORT.md P0#8). Everything else here (panel switching,
-// hero carousel, filter chips, mini calendar) is UI-only, same as before.
+// Court Information, Booking (including its court dropdown), the Overview
+// panel's court widget, My Bookings, Receipts, Profile, and Settings talk to
+// the real Supabase database — Court Information, Booking's court options,
+// and the Overview widget all read the same `court`/`sport` tables via
+// window.InigoCourtsData (includes/courtsData.js; see
+// docs/QA_AUDIT_REPORT.md P0#8). Everything else here (panel switching, hero
+// carousel, filter chips) is UI-only, same as before.
 
 document.addEventListener('DOMContentLoaded', () => {
     const panels = document.querySelectorAll('[data-dash-panel]');
@@ -208,36 +210,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 chip.classList.add('is-active');
                 // TODO: filter the court/booking list once real data exists.
             });
-        });
-    });
-
-    // ------------------------------------------------------------------
-    // Mini calendar — month label cycling only (no real date logic yet).
-    // ------------------------------------------------------------------
-    const calLabel = document.querySelector('[data-dash-cal-label]');
-    const calPrev = document.querySelector('[data-dash-cal-prev]');
-    const calNext = document.querySelector('[data-dash-cal-next]');
-    const months = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
-    let calMonthIndex = 6; // July
-
-    function renderCalLabel() {
-        if (calLabel) calLabel.textContent = `${months[calMonthIndex]} 2026`;
-    }
-
-    if (calPrev) calPrev.addEventListener('click', () => {
-        calMonthIndex = (calMonthIndex + 11) % 12;
-        renderCalLabel();
-    });
-    if (calNext) calNext.addEventListener('click', () => {
-        calMonthIndex = (calMonthIndex + 1) % 12;
-        renderCalLabel();
-    });
-
-    document.querySelectorAll('.dash-cal-day').forEach((day) => {
-        day.addEventListener('click', () => {
-            if (day.classList.contains('is-muted')) return;
-            document.querySelectorAll('.dash-cal-day').forEach((d) => d.classList.remove('is-selected'));
-            day.classList.add('is-selected');
         });
     });
 
@@ -641,6 +613,369 @@ document.addEventListener('DOMContentLoaded', () => {
         // this file (see the <script> order in Pages/user_dashboard.html).
         console.error('[dashboard] window.InigoCourtsData is missing — check that includes/courtsData.js loads before includes/Dashboard.js.');
     }
+
+    // ------------------------------------------------------------------
+    // Overview — Courts widget (replaces the old, fully-static "Calendar"
+    // and "Live availability" cards). Lists the real courts
+    // (window.InigoCourtsData, the same source as Court Information/Booking
+    // above) sorted by sport/availability/price, and lets the customer
+    // "peek" a court's real hourly open/booked slots for TODAY without
+    // leaving the Overview tab. The open/booked computation reuses the exact
+    // overlap algorithm the Staff dashboard's Court Schedule already proved
+    // (includes/staff_dashboard.js's bookingWindow/windowsOverlap/
+    // todayRange), adapted to hourly granularity (matching this page's own
+    // Booking-panel slot labels) instead of that file's 2-hour columns.
+    // Clicking an open peek slot hands off into the Booking panel using the
+    // same pattern as wireBookNowButtons() above, plus today's date and that
+    // slot's time (which "Book Now" alone doesn't set).
+    //
+    // RLS risk (implementation_plan.md's Context/"Open questions" —
+    // documented, pre-existing, not introduced here): `booking` and
+    // `walk_in_booking`'s row-level security policies predate this repo's
+    // schema tracking and are not visible to it (see
+    // database/schema/004_staff_module.sql's header note), so it is
+    // unconfirmed whether the `customer` role can read every row of either
+    // table or only its own. This widget therefore (a) selects only the
+    // minimal columns needed to compute open/booked — never a customer's
+    // name/contact, unlike the staff version's `profiles` join — and (b)
+    // fails safe: if either query errors, every court's peek shows an
+    // honest "unavailable" note instead of ever claiming a slot is open
+    // when that couldn't be verified. Court rows themselves (name/rate/
+    // status dot) still render either way, since those come from
+    // window.InigoCourtsData independently of the booking queries below.
+    // ------------------------------------------------------------------
+    const overviewCourtList = document.querySelector('[data-dash-overview-court-list]');
+    const overviewSortSelect = document.querySelector('[data-dash-overview-sort]');
+
+    const OVERVIEW_SLOT_HOURS = [8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20]; // hourly, 8 AM–8 PM
+    // Kept equal to database/schema/004_staff_module.sql's
+    // booking.duration_minutes DEFAULT, same reasoning as
+    // includes/staff_dashboard.js's own DEFAULT_DURATION_MINUTES.
+    const OVERVIEW_DEFAULT_DURATION_MINUTES = 60;
+
+    let overviewSortMode = 'sport';
+    let overviewCourts = [];
+    let overviewBookings = [];
+    let overviewWalkins = [];
+    let overviewDataOk = true;
+    let overviewDateBase = null;
+    // Court ids (always compared as strings — see courtId below) currently
+    // expanded — a Set so re-rendering after a sort change or a toggle
+    // click preserves whichever peeks were already open instead of
+    // collapsing everything.
+    const overviewExpandedCourts = new Set();
+
+    // "Today" in the browser's local timezone — same 2-line pattern as
+    // includes/staff_dashboard.js's todayRange().
+    function todayRange() {
+        const now = new Date();
+        const start = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        const end = new Date(start.getTime() + 24 * 60 * 60 * 1000);
+        return { start, end };
+    }
+
+    function toDateInputValue(d) {
+        const y = d.getFullYear();
+        const m = String(d.getMonth() + 1).padStart(2, '0');
+        const day = String(d.getDate()).padStart(2, '0');
+        return `${y}-${m}-${day}`;
+    }
+
+    // "8:00 AM" / "6:00 PM" — matches the Booking panel's own [data-dash-slot]
+    // label format exactly (not includes/staff_dashboard.js's shorter
+    // "8 AM"), because a clicked pill's label is carried straight into
+    // bookingState.time and parsed by this file's own slotTo24h() above.
+    function formatOverviewHourLabel(hour) {
+        const period = hour >= 12 ? 'PM' : 'AM';
+        const hour12 = ((hour + 11) % 12) + 1;
+        return `${hour12}:00 ${period}`;
+    }
+
+    function overviewSlotWindow(hour) {
+        const start = new Date(overviewDateBase);
+        start.setHours(hour, 0, 0, 0);
+        return { start, end: new Date(start.getTime() + 60 * 60 * 1000) };
+    }
+
+    // Same shape as includes/staff_dashboard.js's bookingWindow() — a
+    // missing/invalid duration_minutes falls back to
+    // OVERVIEW_DEFAULT_DURATION_MINUTES, never a fabricated guess.
+    function overviewBookingWindow(row) {
+        const start = new Date(row.time_date);
+        const minutesRaw = Number(row.duration_minutes);
+        const minutes = Number.isFinite(minutesRaw) && minutesRaw > 0 ? minutesRaw : OVERVIEW_DEFAULT_DURATION_MINUTES;
+        return { start, end: new Date(start.getTime() + minutes * 60000) };
+    }
+
+    function overviewWindowsOverlap(a, b) {
+        return a.start < b.end && b.start < a.end;
+    }
+
+    // A court's hour is occupied if a non-cancelled booking OR a walk-in
+    // today overlaps that hour's [start, start+1h) window — identical
+    // semantics to includes/staff_dashboard.js's scheduleCellContent(),
+    // just without that function's staff-only customer-name lookup.
+    function isOverviewCourtHourOccupied(court, hour) {
+        const slot = overviewSlotWindow(hour);
+
+        const bookingMatch = overviewBookings.some((b) => {
+            if (String(b.status || '').toLowerCase() === 'cancelled') return false;
+            if (String(b.courts || '') !== court.name) return false;
+            return overviewWindowsOverlap(overviewBookingWindow(b), slot);
+        });
+        if (bookingMatch) return true;
+
+        return overviewWalkins.some((w) => {
+            if (String(w.courts || '') !== court.name) return false;
+            return overviewWindowsOverlap(overviewBookingWindow(w), slot);
+        });
+    }
+
+    // True when a Supabase/PostgREST error means "this column/table doesn't
+    // exist" — same check includes/staff_dashboard.js's own
+    // isSchemaMismatchError() uses. Duplicated locally (this project ships
+    // plain <script> files with no shared module system — see
+    // includes/courtsData.js's own header note on why todayRange()-style
+    // helpers are copied per file rather than imported).
+    function isOverviewSchemaMismatch(error) {
+        if (!error) return false;
+        const code = error.code || '';
+        const message = String(error.message || '').toLowerCase();
+        return code === 'PGRST204' || code === 'PGRST205' || code === '42703' || code === '42P01'
+            || message.includes('could not find') || message.includes('does not exist')
+            || message.includes('schema cache');
+    }
+
+    // walk_in_booking.duration_minutes is NOT confirmed to exist —
+    // database/schema/004_staff_module.sql only adds duration_minutes to
+    // `booking`; no migration in this repo adds it to walk_in_booking, and
+    // no other code reads/writes it there (includes/staff_dashboard.js's own
+    // Court Schedule selects '*' for walk-ins, which tolerates either case).
+    // Try the precise column list first — if that specific column is what's
+    // missing, retry without it rather than treating an ordinary schema
+    // mismatch the same as the RLS risk this widget otherwise guards
+    // against; overviewBookingWindow() above already treats a missing
+    // duration_minutes as 60 minutes, so the retry changes nothing about how
+    // a walk-in's window is computed.
+    async function fetchOverviewWalkins(start, end) {
+        let res = await window.sb.from('walk_in_booking')
+            .select('courts, time_date, duration_minutes')
+            .gte('time_date', start.toISOString())
+            .lt('time_date', end.toISOString());
+        if (res.error && isOverviewSchemaMismatch(res.error)) {
+            res = await window.sb.from('walk_in_booking')
+                .select('courts, time_date')
+                .gte('time_date', start.toISOString())
+                .lt('time_date', end.toISOString());
+        }
+        return res;
+    }
+
+    // "Bowling — Duckpin" (sportName "Bowling" already inside the name) ->
+    // just the name; a hypothetical court whose name doesn't already say its
+    // sport -> "name — sport". Avoids a redundant "Basketball — Basketball"
+    // for the common case where a court's name already IS its sport name.
+    function overviewCourtLabel(court) {
+        const name = court.name || '';
+        const sport = court.sportName || '';
+        if (!sport || name.toLowerCase().includes(sport.toLowerCase())) return name;
+        return `${name} — ${sport}`;
+    }
+
+    function sortOverviewCourts(courts, mode) {
+        const copy = courts.slice(); // never mutate window.InigoCourtsData's memoized array
+        if (mode === 'available') {
+            copy.sort((a, b) => {
+                const aAvail = String(a.status || '').toLowerCase() === 'available';
+                const bAvail = String(b.status || '').toLowerCase() === 'available';
+                if (aAvail !== bAvail) return aAvail ? -1 : 1;
+                return (a.sportName || '').localeCompare(b.sportName || '') || (a.name || '').localeCompare(b.name || '');
+            });
+        } else if (mode === 'price') {
+            copy.sort((a, b) => {
+                const aNull = a.rate === null || a.rate === undefined;
+                const bNull = b.rate === null || b.rate === undefined;
+                if (aNull && bNull) return (a.name || '').localeCompare(b.name || '');
+                if (aNull !== bNull) return aNull ? 1 : -1; // unknown rate always sorts last, never treated as 0
+                return a.rate - b.rate;
+            });
+        } else {
+            // 'sport' — default. Groups by real sportName, courts within the
+            // same sport secondarily ordered by name (e.g. "Bowling —
+            // Duckpin" before "Bowling — Ten-Pin").
+            copy.sort((a, b) => (a.sportName || '').localeCompare(b.sportName || '') || (a.name || '').localeCompare(b.name || ''));
+        }
+        return copy;
+    }
+
+    // Booked pills are rendered as disabled <button>s (not plain <span>s) to
+    // match the Booking panel's own is-unavailable [data-dash-slot] markup
+    // shape exactly (Pages/user_dashboard.html). Every interpolated value is
+    // escaped, same as renderCourtCard() above — court/sport names are
+    // admin-authored content that can contain HTML.
+    function renderOverviewSlotPill(court, hour) {
+        const label = formatOverviewHourLabel(hour);
+        const occupied = isOverviewCourtHourOccupied(court, hour);
+        if (occupied) {
+            return `<button type="button" class="dash-slot dash-slot-mini is-unavailable" disabled>${window.escapeHtml(label)}</button>`;
+        }
+        return `<button type="button" class="dash-slot dash-slot-mini" data-overview-peek-slot data-overview-court-id="${window.escapeHtml(String(court.id))}" data-overview-hour="${hour}">${window.escapeHtml(label)}</button>`;
+    }
+
+    function renderOverviewPeekContent(court) {
+        if (!overviewDataOk) {
+            return '<p style="color: var(--color-ink-faint); font-size: 0.78rem; margin: 0; padding: 4px 0;">Live slot status unavailable right now.</p>';
+        }
+        return OVERVIEW_SLOT_HOURS.map((hour) => renderOverviewSlotPill(court, hour)).join('');
+    }
+
+    function renderOverviewCourtRow(court) {
+        const isAvailable = String(court.status || '').toLowerCase() === 'available';
+        // Reuses .dot.available/.booked (Style/Dashboard.css) — repurposed
+        // from the old "Live availability" card rather than adding a third
+        // dot color for a court-level (not slot-level) status.
+        const dotClass = isAvailable ? 'available' : 'booked';
+        const rateLabel = (court.rate !== null && court.rate !== undefined)
+            ? `₱${court.rate}${court.rateUnit || '/hr'}`
+            : 'Rate TBA';
+        const courtId = String(court.id);
+        const isExpanded = overviewExpandedCourts.has(courtId);
+        const courtIdAttr = window.escapeHtml(courtId);
+
+        return `
+            <div class="dash-avail-row">
+                <span class="dash-avail-name"><span class="dot ${dotClass}"></span>${window.escapeHtml(overviewCourtLabel(court))}</span>
+                <span class="dash-avail-actions">
+                    <span class="dash-avail-time">${window.escapeHtml(rateLabel)}</span>
+                    <button type="button" class="dash-mini-btn" data-overview-peek-toggle data-overview-court-id="${courtIdAttr}" aria-expanded="${isExpanded ? 'true' : 'false'}">${isExpanded ? 'Hide slots' : 'Peek slots'}</button>
+                </span>
+            </div>
+            <div class="dash-overview-peek-strip${isExpanded ? ' is-active' : ''}">${isExpanded ? renderOverviewPeekContent(court) : ''}</div>
+        `;
+    }
+
+    // Hands off to the Booking panel exactly like wireBookNowButtons()
+    // above, plus today's date and this slot's time (which "Book Now" alone
+    // never sets, since it has no specific slot to carry).
+    function jumpToBookingFromPeekSlot(court, timeLabel) {
+        if (bookSelect) bookSelect.value = court.name;
+        bookingState.court = court.name;
+        bookingState.sport = court.sportName || court.name;
+        bookingState.rate = (court.rate !== null && court.rate !== undefined) ? Number(court.rate) : null;
+        bookingState.rateUnit = court.rateUnit || '/hr';
+
+        if (bookDate && overviewDateBase) bookDate.value = toDateInputValue(overviewDateBase);
+        bookingState.date = bookDate ? bookDate.value : bookingState.date;
+
+        // Marks the matching Booking-panel slot button is-selected when one
+        // exists. The Booking panel's static slot grid skips 12:00 PM
+        // (implementation_plan.md's "Open questions" — not real data either,
+        // reconciling the two slot lists is a later phase), so a peeked noon
+        // slot sets bookingState.time correctly but has no button to
+        // highlight; the summary and submission both still work correctly
+        // off bookingState alone.
+        slots.forEach((s) => s.classList.remove('is-selected'));
+        slots.forEach((s) => {
+            if (s.textContent.trim() === timeLabel) s.classList.add('is-selected');
+        });
+        bookingState.time = timeLabel;
+
+        updateSummary();
+        setActivePanel('booking');
+    }
+
+    // Re-wired after every renderOverviewCourtList() call, same
+    // re-wire-after-render idiom wireBookNowButtons() above already uses for
+    // renderCourtGrid()'s cards.
+    function wireOverviewCourtList() {
+        if (!overviewCourtList) return;
+
+        overviewCourtList.querySelectorAll('[data-overview-peek-toggle]').forEach((btn) => {
+            btn.addEventListener('click', () => {
+                const courtId = btn.dataset.overviewCourtId;
+                if (!courtId) return;
+                if (overviewExpandedCourts.has(courtId)) {
+                    overviewExpandedCourts.delete(courtId);
+                } else {
+                    overviewExpandedCourts.add(courtId);
+                }
+                renderOverviewCourtList();
+            });
+        });
+
+        overviewCourtList.querySelectorAll('[data-overview-peek-slot]').forEach((btn) => {
+            btn.addEventListener('click', () => {
+                const courtId = btn.dataset.overviewCourtId;
+                const court = overviewCourts.find((c) => String(c.id) === courtId);
+                if (!court) return;
+                // Derived from data-overview-hour (not btn.textContent) so
+                // the hand-off doesn't depend on the pill's exact rendered
+                // text ever staying trim()-safe.
+                jumpToBookingFromPeekSlot(court, formatOverviewHourLabel(Number(btn.dataset.overviewHour)));
+            });
+        });
+    }
+
+    // Sort-select changes only re-render (sorting already-fetched data), not
+    // re-fetch — implementation_plan.md's explicit instruction, since
+    // nothing about the underlying court/booking data changes with sort
+    // order.
+    function renderOverviewCourtList() {
+        if (!overviewCourtList) return;
+        if (!overviewCourts.length) {
+            overviewCourtList.innerHTML = '<p style="color: var(--color-ink-faint); padding: 8px 4px;">No courts available right now.</p>';
+            return;
+        }
+        const sorted = sortOverviewCourts(overviewCourts, overviewSortMode);
+        overviewCourtList.innerHTML = sorted.map(renderOverviewCourtRow).join('');
+        wireOverviewCourtList();
+    }
+
+    if (overviewSortSelect) {
+        overviewSortSelect.addEventListener('change', () => {
+            overviewSortMode = overviewSortSelect.value;
+            renderOverviewCourtList();
+        });
+    }
+
+    async function refreshOverviewCourtWidget() {
+        if (!overviewCourtList || !window.InigoCourtsData) return;
+
+        const { start, end } = todayRange();
+        overviewDateBase = start;
+
+        const courtsPromise = window.InigoCourtsData.getCourts();
+        const bookingPromise = window.sb
+            ? window.sb.from('booking')
+                .select('courts, time_date, duration_minutes, status')
+                .gte('time_date', start.toISOString())
+                .lt('time_date', end.toISOString())
+            : Promise.resolve({ data: null, error: new Error('Supabase client unavailable') });
+        const walkinPromise = window.sb
+            ? fetchOverviewWalkins(start, end)
+            : Promise.resolve({ data: null, error: new Error('Supabase client unavailable') });
+
+        const [courts, bookingRes, walkinRes] = await Promise.all([courtsPromise, bookingPromise, walkinPromise]);
+
+        overviewCourts = courts || [];
+
+        if (bookingRes.error) console.error("[dashboard] failed to load today's bookings for the court peek", bookingRes.error);
+        if (walkinRes.error) console.error("[dashboard] failed to load today's walk-ins for the court peek", walkinRes.error);
+
+        // Fail-safe, not fabrication (see this block's header comment on the
+        // RLS risk): if EITHER query errors, every court's peek renders the
+        // honest "unavailable" note instead of pills. Court rows themselves
+        // still render regardless, since overviewCourts came from
+        // window.InigoCourtsData independently of these two queries.
+        overviewDataOk = !bookingRes.error && !walkinRes.error;
+        overviewBookings = overviewDataOk ? (bookingRes.data || []) : [];
+        overviewWalkins = overviewDataOk ? (walkinRes.data || []) : [];
+
+        renderOverviewCourtList();
+    }
+
+    refreshOverviewCourtWidget();
+    document.addEventListener('inigosync:profile-ready', refreshOverviewCourtWidget);
 
     // ------------------------------------------------------------------
     // My Bookings — real data, fetched once the signed-in profile is ready

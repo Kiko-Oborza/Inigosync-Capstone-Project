@@ -574,6 +574,18 @@ body.dash-body {
     text-decoration: underline;
 }
 
+/* Sort <select> sitting inline in a .dash-card-head (Overview's Courts
+   card). .dash-select's base width:100% would otherwise stretch it to fill
+   the whole card-head row; constrained here by ancestor context instead of
+   on .dash-select itself, so the Booking panel's own court <select>
+   (inside .dash-form-group, not .dash-card-head) is unaffected. */
+.dash-card-head .dash-select {
+    width: auto;
+    min-width: 150px;
+    padding: 8px 10px;
+    font-size: 0.82rem;
+}
+
 /* Two column layout */
 .dash-grid-2 {
     display: grid;
@@ -582,103 +594,40 @@ body.dash-body {
     align-items: start;
 }
 
-/* Mini calendar */
-.dash-cal {
-    width: 100%;
-}
-
-.dash-cal-nav {
+/* Overview — Courts widget (replaces the old Calendar + Live availability
+   cards). Rows still use .dash-avail-row/-name/-time and .dot.available/
+   .booked directly below — this block only adds what those didn't already
+   cover: the row's right-side rate+toggle cluster, the compact peek-strip
+   slot pills, and the peek strip container itself. */
+.dash-avail-actions {
     display: flex;
     align-items: center;
-    justify-content: space-between;
-    margin-bottom: 14px;
+    gap: 10px;
 }
 
-.dash-cal-nav span {
-    font-family: var(--font-display);
-    font-weight: 600;
-    font-size: 0.98rem;
-}
-
-.dash-cal-nav-btn {
-    width: 30px;
-    height: 30px;
+/* Compact modifier for .dash-slot, used inside the peek strip
+   (class="dash-slot dash-slot-mini") — same open/booked color logic as the
+   Booking panel's own slots, just smaller. */
+.dash-slot-mini {
+    padding: 5px 8px;
     border-radius: 8px;
-    border: 1px solid var(--color-line);
-    background: transparent;
-    color: var(--color-ink-dim);
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-}
-
-.dash-cal-nav-btn:hover {
-    color: var(--color-ink);
-    border-color: var(--color-primary);
-}
-
-.dash-cal-grid {
-    display: grid;
-    grid-template-columns: repeat(7, 1fr);
-    gap: 6px;
-    text-align: center;
-}
-
-.dash-cal-grid .dash-cal-dow {
-    font-family: var(--font-mono);
     font-size: 0.68rem;
-    color: var(--color-ink-faint);
-    padding-bottom: 4px;
 }
 
-.dash-cal-day {
-    aspect-ratio: 1;
+/* Expanded per-court peek strip. Hidden/shown via .is-active (same idiom as
+   .dash-panel.is-active elsewhere on this page) rather than the `hidden`
+   attribute — an unconditional `display` rule here would otherwise silently
+   override `hidden`, since author rules beat the UA stylesheet regardless
+   of source order. */
+.dash-overview-peek-strip {
+    display: none;
+    flex-wrap: wrap;
+    gap: 6px;
+    padding: 10px 14px 2px;
+}
+
+.dash-overview-peek-strip.is-active {
     display: flex;
-    align-items: center;
-    justify-content: center;
-    border-radius: 8px;
-    font-size: 0.85rem;
-    color: var(--color-ink-dim);
-    background: transparent;
-    border: none;
-    cursor: pointer;
-    position: relative;
-}
-
-.dash-cal-day:hover {
-    background: rgba(244, 239, 230, 0.06);
-}
-
-.dash-cal-day.is-muted {
-    color: var(--color-ink-faint);
-    opacity: 0.4;
-}
-
-.dash-cal-day.is-today {
-    border: 1px solid var(--color-primary);
-    color: var(--color-primary);
-    font-weight: 700;
-}
-
-.dash-cal-day.is-selected {
-    background: var(--color-primary);
-    color: #14110d;
-    font-weight: 700;
-}
-
-.dash-cal-day.has-booking::after {
-    content: '';
-    position: absolute;
-    bottom: 5px;
-    width: 4px;
-    height: 4px;
-    border-radius: 50%;
-    background: var(--color-court-green);
-}
-
-.dash-cal-day.is-selected.has-booking::after {
-    background: #14110d;
 }
 
 /* Availability list */
