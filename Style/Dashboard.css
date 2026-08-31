@@ -987,9 +987,30 @@ body.dash-body {
    includes/Dashboard.js's now-deleted click handler referenced them), so
    there is nothing left to keep styled.
    ========================================================================== */
+/* Revision 3, Change 1 (implementation_plan.md's "Revision 3" section) —
+   FLUID instead of a fixed 3-column grid. The real data (see
+   includes/courtsData.js's fallback, which mirrors the live `court` table)
+   is 9 courts under 8 sport headings and only Bowling has 2 rows (Duckpin
+   + Ten-Pin) — every OTHER sport has exactly 1. A fixed `repeat(3, 1fr)`
+   therefore rendered 7 of 8 groups as a single card in a 3-column row,
+   leaving two-thirds of that row permanently empty — the "too much empty
+   space on the right side" the user reported.
+   Flex-wrap, not CSS Grid's own `repeat(auto-fit, minmax(...))`, is
+   deliberate: auto-fit only collapses a column that is empty across the
+   WHOLE grid, so an UNEVEN last row (e.g. a hypothetical future 3-card
+   group landing in a viewport only wide enough for 2 columns) would still
+   leave a hole in that specific row — the exact bug this change exists to
+   remove, just relocated. A wrapped flex row instead redistributes each
+   ROW's own leftover space across whatever cards actually landed in it
+   (browsers do this per-line for a wrapped flex container), so there is
+   never a dead track regardless of card count or viewport width. See
+   .dash-court-card's flex-basis just below for the per-card sizing this
+   relies on, and further down (after .dash-court-body) for the solo-card
+   "landscape" treatment this enables — the actual fix for the 1-card case,
+   which is 7 of the 8 real sport groups today. */
 .dash-court-grid {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
+    display: flex;
+    flex-wrap: wrap;
     gap: 20px;
 }
 
@@ -1023,6 +1044,18 @@ body.dash-body {
     transition: transform 0.25s ease, border-color 0.25s ease;
     display: flex;
     flex-direction: column;
+    /* Revision 3, Change 1 — the flex ITEM sizing that makes
+       .dash-court-grid's own flex-wrap (above) actually fluid: grow AND
+       shrink from a 300px basis, so a lone card in its row grows to fill
+       the full width, two cards (Bowling) split it evenly, and enough
+       cards wrap to a new row instead of ever squeezing below ~300px.
+       min-width: 0 overrides the flex default of `auto`, which otherwise
+       refuses to shrink a flex item below its content's own min-content
+       width — defensive here (nothing in a card is long enough to hit
+       this today) so a future long court/sport name can wrap instead of
+       forcing this card, and potentially the page, wider than intended. */
+    flex: 1 1 300px;
+    min-width: 0;
 }
 
 .dash-court-card:hover {
@@ -1213,6 +1246,65 @@ body.dash-body {
 .dash-btn-secondary:hover {
     border-color: var(--color-primary);
     color: var(--color-ink);
+}
+
+/* Revision 3, Change 1 — a SOLO card (the ONLY card under its sport
+   heading; true for 7 of the 8 real sports today — every sport except
+   Bowling has exactly one court row) gets a LANDSCAPE layout instead of
+   simply stretching the normal portrait card to the full row width via
+   the flex-basis above. A full-width but still-portrait card would just
+   be a very short, very wide banner strip with a tiny fixed-height photo
+   on top and a much narrower body under it — "a stretched portrait card",
+   per the user's own framing of what to avoid — so the whole card is
+   rotated instead: the photo fills the card's full height on the left,
+   everything else (name, rating, rate, tags, the per-unit combo box, the
+   read-only peek-availability toggle/strip) sits in a normal-width column
+   on the right, which is what actually makes a lone card read as
+   deliberately designed rather than padded out.
+   Pure CSS, no JS needed: `:only-child` here inspects .dash-court-grid's
+   REAL children, which are always .dash-court-card elements and nothing
+   else (see includes/Dashboard.js's renderOverviewCourtList() — each
+   group's grid is built from exactly one <article class="dash-court-card">
+   per court, no other markup in between), so this can never drift out of
+   sync with however many courts a sport actually has.
+   Bowling's 2-card group is deliberately NOT included here: at the
+   narrower end of the width range this still has to support (see the
+   640px override further down), a card that's already sharing its row
+   with a sibling would only have roughly half the width a solo card gets,
+   which isn't enough room for a landscape split's body column to hold the
+   per-unit <select> and the "Show availability" toggle without wrapping
+   or clipping. Two cards filling the row evenly (the flex-basis above
+   already does this) already reads as "full width, deliberate" on its
+   own — see this file's end-of-file Revision 3 audit note for the widths
+   this was checked at. */
+.dash-court-grid > .dash-court-card:only-child {
+    flex-direction: row;
+    align-items: stretch;
+}
+
+.dash-court-grid > .dash-court-card:only-child .dash-court-media {
+    flex: 0 0 38%;
+    height: auto;
+    min-height: 220px;
+    border-bottom: none;
+    border-right: 1px solid var(--color-line);
+}
+
+.dash-court-grid > .dash-court-card:only-child .dash-court-media svg {
+    width: 64px;
+    height: 64px;
+}
+
+.dash-court-grid > .dash-court-card:only-child .dash-court-monogram {
+    font-size: 2.2rem;
+}
+
+/* Same min-width: 0 reasoning as .dash-court-card's own rule above, one
+   flex context further in: without it, this column would refuse to
+   shrink below its content's min-content width inside the now-horizontal
+   card, risking overflow from a long court name or the unit <select>. */
+.dash-court-grid > .dash-court-card:only-child .dash-court-body {
+    min-width: 0;
 }
 
 /* ==========================================================================
@@ -1517,15 +1609,89 @@ body.dash-body {
     margin-right: auto;
 }
 
-/* Step 1's larger, standalone court preview (§5, D5) — .dash-court-media is
-   normally clipped to rounded corners by its parent .dash-court-card's own
-   `overflow: hidden`; this variant isn't nested in a card, so it gets its
-   own border + radius, plus extra height since it's this step's sole
-   focus. */
+/* Step 1's larger, standalone court preview (§5, D5; enlarged again in
+   Revision 3, Change 2 — implementation_plan.md — per the user's explicit
+   "in Book a court, the Preview make it more larger" request). Now the
+   dominant element of the .dash-book-step1-layout side-by-side split
+   below, substantially taller than the old 220px/170px so the photo (or
+   the honest "Photo coming soon" placeholder — see courtPhotoMarkup() in
+   includes/Dashboard.js) actually reads as Step 1's clear visual focus,
+   in service of the "know exactly what you're booking" goal for the
+   non-tech-savvy users this redesign targets.
+   .dash-court-media is normally clipped to rounded corners by its parent
+   .dash-court-card's own `overflow: hidden`; this variant isn't nested in
+   a card, so it gets its own border + radius AND its own `overflow:
+   hidden` (a gap the old, smaller version also had — its <img> is
+   `position: absolute; inset: 0`, which fills this box edge-to-edge with
+   square corners regardless of the box's own border-radius — just never
+   visible before now because no court in the live DB has an image_url
+   yet; worth closing here since a real photo would overhang the rounded
+   border far more obviously at this size). */
 .dash-court-media-lg {
-    height: 220px;
+    height: 400px;
     border: 1px solid var(--color-line);
     border-radius: 14px;
+    overflow: hidden;
+}
+
+/* The placeholder monogram/icon get a matching size bump so they don't
+   look lost in the middle of the much taller box above — same idea as the
+   Overview Courts section's own solo-card landscape treatment further up
+   this file. */
+.dash-court-media-lg .dash-court-monogram {
+    font-size: 2.4rem;
+}
+
+.dash-court-media-lg svg {
+    width: 64px;
+    height: 64px;
+}
+
+/* Revision 3, Change 2 — Step 1's preview gets its own side-by-side slot
+   next to the court/unit pickers on wide screens, rather than just
+   growing .dash-court-media-lg's height in place underneath them (a
+   bigger box stacked below the form would still leave the preview
+   fighting the form controls for the step's limited vertical rhythm; a
+   side-by-side split lets the preview be genuinely large without pushing
+   the Back/Next row far down the page). DOM order stays [fields, preview]
+   — the Court <select>, the thing a customer actually interacts with
+   first, always reads/tab-orders before the preview, including on wide
+   screens where CSS visually reorders it to the right — only the VISUAL
+   position moves, via named grid-template-areas (chosen over the `order`
+   property so the wide-vs-narrow swap is a single readable area map
+   instead of tracking separate integer order values across two rules and
+   a media query). Below 640px — the same tier .dash-court-media-lg's own
+   height already stepped down at before this revision — this collapses
+   to one column in natural DOM order, so a phone always sees "pick a
+   court" before the (possibly still-empty) preview: the more usable order
+   for the "older, non-tech-savvy users" this redesign targets when there
+   isn't room to show both at once. See this file's end-of-file Revision 3
+   audit note for the widths this split was checked at. */
+.dash-book-step1-layout {
+    display: grid;
+    grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr);
+    grid-template-areas: "preview fields";
+    gap: 24px;
+    align-items: start;
+}
+
+.dash-book-step1-preview {
+    grid-area: preview;
+}
+
+.dash-book-step1-fields {
+    grid-area: fields;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+
+/* .dash-form-group's own margin-bottom (meant for stacked, non-flex-gapped
+   form rows elsewhere on this page) would otherwise double up with the
+   gap above — same override .dash-court-body already applies to a nested
+   .dash-court-unit-picker, for the same reason. */
+.dash-book-step1-fields .dash-form-group {
+    margin-bottom: 0;
 }
 
 /* Step 3's booking summary (§5) — same rows/divider/total classes the old
@@ -2001,9 +2167,12 @@ body.dash-body {
         grid-template-columns: repeat(2, 1fr);
     }
 
-    .dash-court-grid {
-        grid-template-columns: repeat(2, 1fr);
-    }
+    /* .dash-court-grid needs no override here any more — Revision 3,
+       Change 1 replaced its fixed grid-template-columns with a fluid
+       flex-wrap (see that rule's own comment near the top of this file),
+       which already arrives at 2 columns around this width on its own,
+       computed from the actual available space rather than a hardcoded
+       breakpoint. */
 
     .dash-grid-2 {
         grid-template-columns: 1fr;
@@ -2138,8 +2307,41 @@ body.dash-body {
         grid-template-columns: 1fr 1fr;
     }
 
-    .dash-court-grid {
-        grid-template-columns: 1fr;
+    /* Revision 3, Change 1 — below this width every card, solo-landscape
+       or not, goes back to one full-width PORTRAIT column: flex-basis:
+       100% forces exactly one card per row (the fluid flex-wrap above
+       would technically already land on 1 column around here on its own,
+       but stating it outright keeps this guaranteed rather than
+       incidental if that basis value ever changes), and the solo-card
+       landscape rules further up this file are reverted below — a
+       side-by-side split needs real width for its body column (the
+       per-unit <select> plus the "Show availability" toggle) that a
+       narrow phone card sharing this space with the sidebar/content
+       padding doesn't reliably have; see this file's end-of-file
+       Revision 3 audit note for the widths this was actually checked at. */
+    .dash-court-grid > .dash-court-card {
+        flex-basis: 100%;
+    }
+
+    .dash-court-grid > .dash-court-card:only-child {
+        flex-direction: column;
+    }
+
+    .dash-court-grid > .dash-court-card:only-child .dash-court-media {
+        flex: none;
+        height: 130px;
+        min-height: 0;
+        border-right: none;
+        border-bottom: 1px solid var(--color-line);
+    }
+
+    .dash-court-grid > .dash-court-card:only-child .dash-court-media svg {
+        width: 46px;
+        height: 46px;
+    }
+
+    .dash-court-grid > .dash-court-card:only-child .dash-court-monogram {
+        font-size: 1.6rem;
     }
 
     .dash-slot-grid {
@@ -2172,8 +2374,23 @@ body.dash-body {
         margin: 0;
     }
 
+    /* Revision 3, Change 2 — still meaningfully bigger than the pre-
+       Revision-3 170px here, just sized for this tier's narrower, one-
+       column card width instead of the wide side-by-side layout's 400px. */
     .dash-court-media-lg {
-        height: 170px;
+        height: 240px;
+    }
+
+    /* Revision 3, Change 2 — collapses .dash-book-step1-layout's side-by-
+       side split back to one column, in natural DOM order (Court <select>
+       above the preview) — see that rule's own comment further up this
+       file for why. */
+    .dash-book-step1-layout {
+        grid-template-columns: 1fr;
+        grid-template-areas:
+            "fields"
+            "preview";
+        gap: 20px;
     }
 
     .dash-wizard-nav {
@@ -2185,8 +2402,13 @@ body.dash-body {
    Revision 2, R6 — responsive audit (implementation_plan.md). Audited at
    1280/1024/768/480/360px. 1280, 1024, and 768 all already fit within the
    existing 1080px/860px rules above (verified — nothing new needed there:
-   .dash-court-grid is already 2 columns by 1080px and the sidebar is
-   already off-canvas by 860px, well before 768px is reached). 480 and 360
+   the sidebar is already off-canvas by 860px, well before 768px is
+   reached). [Updated by Revision 3 — the ".dash-court-grid is already 2
+   columns by 1080px" fixed-grid behavior this bullet originally described
+   no longer exists as its own breakpoint rule; Change 1 replaced it with a
+   fluid flex-wrap that reaches an equivalent column count at this width
+   without a hardcoded rule — see that section's own comment and the
+   Revision 3 audit note at the end of this file.] 480 and 360
    both needed a genuinely NEW breakpoint below the existing 640px one —
    added here rather than widening the 640px block, so nothing that already
    renders correctly between 481-640px shifts. Fixes below:
@@ -2208,10 +2430,12 @@ body.dash-body {
    unit combo boxes, the wide .dash-table, Account Settings' name fields)
    was already safe: .dash-table-wrap's overflow-x: auto already turns the
    table into a horizontal-scroll region instead of stretching the page,
-   .dash-name-fields/.dash-settings-grid already collapse to 1 column by
-   1080px, and the court/receipt grids already collapse to 1 column by
-   1080px/640px respectively with flexbox content that wraps rather than
-   overflows.
+   .dash-name-fields/.dash-settings-grid and the receipt grid already
+   collapse to 1 column by 1080px, and the court grid already collapsed to
+   1 column by 640px (now handled by Revision 3, Change 1's fluid
+   flex-wrap instead of that fixed breakpoint — see the Revision 3 audit
+   note at the end of this file) — all three with content that wraps
+   rather than overflows.
    ========================================================================== */
 @media (max-width: 480px) {
     /* Re-anchors the notifications dropdown to .dash-topbar-actions (flush
@@ -2265,3 +2489,49 @@ body.dash-body {
         gap: 4px;
     }
 }
+
+/* ==========================================================================
+   Revision 3 — Dashboard courts redesign + larger booking preview
+   (implementation_plan.md's "Revision 3" section). Two changes, both
+   requested directly by the user:
+     1. The Overview Courts section's per-sport grid no longer leaves 2 of
+        3 grid columns permanently empty for a sport with only one court
+        (7 of the real 8 sports) — see .dash-court-grid's flex-wrap
+        conversion and .dash-court-card's flex-basis near the top of the
+        Courts section above, and the solo-card landscape rules right
+        before this file's "Booking panel" section header for the actual
+        fix to the 1-card case.
+     2. Book a Court Step 1's preview is substantially larger and, on wide
+        screens, sits beside the court/unit pickers instead of stacked
+        below them — see .dash-court-media-lg and .dash-book-step1-layout
+        in the Booking panel section above.
+   Re-audited at the same 1280/1024/768/480/360px this file's Revision 2,
+   R6 pass used (same method — a headless-browser scrollWidth check,
+   plus the arithmetic below cross-checked against .dash-content's and
+   .dash-card's own padding). No NEW breakpoint was needed for either
+   change — both reuse the existing 640px tier as their one "things get
+   tight, simplify" cutoff, same as .dash-court-media-lg's own height
+   already did before this revision:
+     • .dash-court-grid is fluid above 640px, so 1280/1024/768 each
+       resolve to a different, correct column count computed from the
+       actual available width rather than a fixed breakpoint list — a
+       solo card always gets the full row (and the landscape treatment),
+       Bowling's 2 cards always split it evenly, and nothing is ever left
+       empty. Verified at all three widths for both the 1-card case (7 of
+       8 sports) and Bowling's 2-card case. Below 640px every card stacks
+       to one full-width portrait column exactly as it did before this
+       revision (flex-basis: 100%, landscape rules reverted).
+     • .dash-book-step1-layout's side-by-side split was checked comfortable
+       at 768/1024/1280px — the Court <select>'s own column never drops
+       below roughly 210px at the narrow end of that range (641px), well
+       short of causing a native <select> to overflow its column (unlike a
+       `white-space: nowrap` button, a <select> never forces its container
+       wider — it just lays out at whatever width it's given). It's
+       deliberately turned off at/below 640px, where a half-width form
+       column would start crowding the per-unit <select>, and stacks to
+       one full-width column (Court picker first, preview below — see that
+       rule's own comment on why that order, not the reverse, is correct
+       for a narrow/one-column phone view) instead.
+   No other panel changed in this revision, so the rest of Revision 2 R6's
+   audit above still stands unchanged.
+   ========================================================================== */

@@ -463,38 +463,57 @@
                         <div class="dash-wizard-panel is-active" data-dash-book-step="1">
                             <h3 class="dash-wizard-panel-title">Select your sport &amp; court</h3>
 
-                            <div class="dash-form-group">
-                                <span class="dash-form-label">Court</span>
-                                <!-- Options rendered by includes/Dashboard.js
-                                     from window.InigoCourtsData.getCourts()
-                                     (the real `court` table) — no hardcoded
-                                     court list here anymore, see
-                                     docs/QA_AUDIT_REPORT.md P0#8. -->
-                                <select class="dash-select" data-dash-book-select>
-                                    <option value="" data-rate="">Loading courts…</option>
-                                </select>
-                            </div>
+                            <!-- Revision 3, Change 2 (implementation_plan.md's
+                                 "Revision 3" section) — the court/unit pickers
+                                 and the preview now sit SIDE BY SIDE on wide
+                                 screens (preview dominant, per the user's "make
+                                 it more larger" request) instead of stacked in
+                                 one column; see .dash-book-step1-layout in
+                                 Style/Dashboard.css for the full reasoning,
+                                 including why this wrapper's DOM order (fields
+                                 first, preview second) intentionally differs
+                                 from the WIDE-screen visual order (preview
+                                 left/dominant, fields right) and why that's
+                                 safe. Collapses back to one column (fields
+                                 above preview) below 640px. -->
+                            <div class="dash-book-step1-layout">
+                                <div class="dash-book-step1-fields">
+                                    <div class="dash-form-group">
+                                        <span class="dash-form-label">Court</span>
+                                        <!-- Options rendered by includes/Dashboard.js
+                                             from window.InigoCourtsData.getCourts()
+                                             (the real `court` table) — no hardcoded
+                                             court list here anymore, see
+                                             docs/QA_AUDIT_REPORT.md P0#8. -->
+                                        <select class="dash-select" data-dash-book-select>
+                                            <option value="" data-rate="">Loading courts…</option>
+                                        </select>
+                                    </div>
 
-                            <!-- Dynamic court preview (§5) — same img-vs-
-                                 "Photo coming soon" placeholder rendering as
-                                 the Overview panel's court cards
-                                 (courtPhotoMarkup() in includes/Dashboard.js),
-                                 just larger since it's this step's focus. -->
-                            <div class="dash-form-group">
-                                <span class="dash-form-label">Preview</span>
-                                <div class="dash-court-media dash-court-media-lg" data-dash-book-preview-media></div>
-                            </div>
+                                    <!-- Per-unit combo box (§4/D2's resolveCourtUnits(),
+                                         reused here per §5) — hidden entirely when the
+                                         selected court resolves to a single unit
+                                         (nothing to choose between). Selecting a unit
+                                         only swaps the preview photo alongside it; see
+                                         this section's header comment on why it never
+                                         changes what gets submitted. -->
+                                    <div class="dash-form-group dash-court-unit-picker" data-dash-book-unit-wrap hidden>
+                                        <span class="dash-form-label" data-dash-book-unit-label>Choose a unit</span>
+                                        <select class="dash-select" data-dash-book-unit-select></select>
+                                    </div>
+                                </div>
 
-                            <!-- Per-unit combo box (§4/D2's resolveCourtUnits(),
-                                 reused here per §5) — hidden entirely when the
-                                 selected court resolves to a single unit
-                                 (nothing to choose between). Selecting a unit
-                                 only swaps the preview photo above; see this
-                                 section's header comment on why it never
-                                 changes what gets submitted. -->
-                            <div class="dash-form-group dash-court-unit-picker" data-dash-book-unit-wrap hidden>
-                                <span class="dash-form-label" data-dash-book-unit-label>Choose a unit</span>
-                                <select class="dash-select" data-dash-book-unit-select></select>
+                                <!-- Dynamic court preview (§5) — same img-vs-
+                                     "Photo coming soon" placeholder rendering as
+                                     the Overview panel's court cards
+                                     (courtPhotoMarkup() in includes/Dashboard.js),
+                                     now substantially larger since it's this
+                                     step's clear visual focus (Revision 3,
+                                     Change 2). -->
+                                <div class="dash-form-group dash-book-step1-preview">
+                                    <span class="dash-form-label">Preview</span>
+                                    <div class="dash-court-media dash-court-media-lg" data-dash-book-preview-media></div>
+                                </div>
                             </div>
                         </div>
 
