@@ -26,6 +26,13 @@ body.dash-body {
     position: sticky;
     top: 0;
     height: 100vh;
+    /* R4-1 (implementation_plan.md, "Revision 4") — the sidebar's own
+       content (nav + the feedback card, now shown at every width — see
+       .dash-feedback-card's comment below) can exceed 100vh on a short
+       viewport; without this the overflow would simply be clipped and the
+       feedback card unreachable there. Scrolls independently of the page
+       itself, same idea as the off-canvas drawer below 860px. */
+    overflow-y: auto;
 }
 
 .dash-sidebar-brand {
@@ -100,6 +107,46 @@ body.dash-body {
 .dash-logout:hover {
     background: rgba(214, 72, 47, 0.12);
     color: var(--color-alert);
+}
+
+/* Feedback (§2 of the feedback doc, D7) — sidebar card trigger, shown at
+   EVERY width as of R4-1 (implementation_plan.md, "Revision 4"). Used to be
+   hidden below 860px in favor of a separate .dash-feedback-btn-mobile
+   button in the topbar (removed — see this file's Responsive section and
+   .dash-sidebar's own overflow-y comment above for the full reasoning). */
+.dash-feedback-card {
+    background: var(--color-bg-card);
+    border: 1px solid var(--color-line);
+    border-radius: 14px;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.dash-feedback-card p {
+    font-size: 0.85rem;
+    color: var(--color-ink-dim);
+    line-height: 1.4;
+    margin: 0;
+}
+
+.dash-feedback-btn {
+    padding: 10px 16px;
+    border-radius: 999px;
+    border: none;
+    background: var(--color-primary);
+    color: #14110d;
+    font-family: var(--font-body);
+    font-weight: 700;
+    font-size: 0.84rem;
+    cursor: pointer;
+    transition: background 0.2s, transform 0.2s;
+}
+
+.dash-feedback-btn:hover {
+    background: var(--color-primary-dim);
+    transform: translateY(-1px);
 }
 
 /* ==========================================================================
@@ -191,6 +238,132 @@ body.dash-body {
     border: 1.5px solid var(--color-bg-elevated);
 }
 
+/* .dash-feedback-btn-mobile (the standalone topbar Feedback button shown
+   only below 860px) and its svg rule were removed outright by R4-1
+   (implementation_plan.md, "Revision 4") — the sidebar's .dash-feedback-card
+   above is now the ONE feedback trigger at every width; see its own comment
+   for why. Pages/user_dashboard.html's markup for this button is gone too. */
+
+/* Notifications dropdown (§3, D6) — same open/close idiom + visual shape as
+   .dash-profile-menu below (toggled via the same [data-open] attribute
+   pattern from includes/Dashboard.js), positioned relative to its own
+   trigger via this wrapper. */
+.dash-notif {
+    position: relative;
+}
+
+.dash-notif-menu {
+    position: absolute;
+    top: calc(100% + 10px);
+    right: 0;
+    width: 320px;
+    max-width: calc(100vw - 32px);
+    max-height: 380px;
+    overflow-y: auto;
+    background: var(--color-bg-card);
+    border: 1px solid var(--color-line);
+    border-radius: 12px;
+    padding: 8px;
+    box-shadow: 0 18px 40px rgba(0, 0, 0, 0.4);
+    opacity: 0;
+    transform: translateY(-6px);
+    pointer-events: none;
+    transition: opacity 0.18s ease, transform 0.18s ease;
+    z-index: 6;
+}
+
+.dash-notif[data-open] .dash-notif-menu {
+    opacity: 1;
+    transform: translateY(0);
+    pointer-events: auto;
+}
+
+.dash-notif-menu-head {
+    font-family: var(--font-display);
+    font-weight: 600;
+    font-size: 0.88rem;
+    padding: 8px 10px 10px;
+    color: var(--color-ink);
+}
+
+/* R4-3 (implementation_plan.md, "Revision 4") — .dash-notif-item is now a
+   real <button> (renderNotificationItem(), includes/Dashboard.js), not the
+   inert <div> it used to be, so clicking a notification can jump to its
+   booking's receipt. UA button resets (background/border/width/text-align/
+   font) below keep the exact same flex/gap/padding look it already had;
+   hover + :focus-visible are new — there was nothing to highlight on a
+   non-interactive <div>. */
+.dash-notif-item {
+    display: flex;
+    align-items: flex-start;
+    width: 100%;
+    gap: 10px;
+    padding: 10px;
+    border-radius: 8px;
+    background: none;
+    border: 0;
+    text-align: left;
+    font: inherit;
+    color: inherit;
+    cursor: pointer;
+    transition: background 0.15s ease;
+}
+
+.dash-notif-item:hover,
+.dash-notif-item:focus-visible {
+    background: rgba(244, 239, 230, 0.06);
+}
+
+.dash-notif-item:focus-visible {
+    outline: 2px solid var(--color-primary);
+    outline-offset: -2px;
+}
+
+.dash-notif-item + .dash-notif-item {
+    border-top: 1px solid var(--color-line);
+}
+
+.dash-notif-item-body {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+}
+
+.dash-notif-item-body strong {
+    font-size: 0.85rem;
+    color: var(--color-ink);
+}
+
+.dash-notif-item-body span {
+    font-size: 0.78rem;
+    color: var(--color-ink-faint);
+}
+
+/* Per-item status dot — separate from .dash-badge-dot (the bell's own
+   always-red unread marker) since each notification's dot is colored by
+   THAT booking's status. */
+.dash-notif-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    margin-top: 5px;
+    flex-shrink: 0;
+    background: var(--color-ink-faint);
+}
+
+.dash-notif-dot.pending { background: var(--color-primary); }
+.dash-notif-dot.confirmed { background: var(--color-court-green); }
+.dash-notif-dot.completed { background: var(--color-ink-faint); }
+.dash-notif-dot.cancelled { background: var(--color-alert); }
+
+.dash-notif-empty {
+    color: var(--color-ink-faint);
+    font-size: 0.85rem;
+    padding: 16px 10px;
+    text-align: center;
+}
+
 /* Profile menu */
 .dash-profile {
     position: relative;
@@ -220,6 +393,24 @@ body.dash-body {
     font-weight: 700;
     font-size: 0.95rem;
     flex-shrink: 0;
+}
+
+/* R4-4 (implementation_plan.md, "Revision 4") — renderProfile()
+   (includes/Dashboard.js) inserts this <img> inside a .dash-avatar
+   whenever profiles.avatar_url is set, at whatever size THAT .dash-avatar
+   already renders at (38px topbar, 76px Profile panel, the Account
+   Settings preview below) — .dash-avatar's own rule above is completely
+   untouched, so the no-image initials avatar looks and behaves exactly as
+   it always has. object-fit: cover center-crops a non-square photo instead
+   of squashing it (belt-and-suspenders — the upload pipeline already
+   center-crops to a square before it's ever saved); border-radius: inherit
+   clips the image into the same circle regardless of which .dash-avatar
+   context painted it. */
+.dash-avatar-img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    border-radius: inherit;
 }
 
 .dash-profile-trigger .dash-caret {
@@ -574,6 +765,18 @@ body.dash-body {
     text-decoration: underline;
 }
 
+/* Sort <select> sitting inline in a .dash-card-head (Overview's Courts
+   card). .dash-select's base width:100% would otherwise stretch it to fill
+   the whole card-head row; constrained here by ancestor context instead of
+   on .dash-select itself, so the Booking panel's own court <select>
+   (inside .dash-form-group, not .dash-card-head) is unaffected. */
+.dash-card-head .dash-select {
+    width: auto;
+    min-width: 150px;
+    padding: 8px 10px;
+    font-size: 0.82rem;
+}
+
 /* Two column layout */
 .dash-grid-2 {
     display: grid;
@@ -582,103 +785,57 @@ body.dash-body {
     align-items: start;
 }
 
-/* Mini calendar */
-.dash-cal {
-    width: 100%;
-}
-
-.dash-cal-nav {
+/* Overview — Courts widget (replaces the old Calendar + Live availability
+   cards). Rows still use .dash-avail-row/-name/-time and .dot.available/
+   .booked directly below — this block only adds what those didn't already
+   cover: the row's right-side rate+toggle cluster, the compact peek-strip
+   slot pills, and the peek strip container itself. */
+.dash-avail-actions {
     display: flex;
     align-items: center;
-    justify-content: space-between;
-    margin-bottom: 14px;
+    gap: 10px;
 }
 
-.dash-cal-nav span {
-    font-family: var(--font-display);
-    font-weight: 600;
-    font-size: 0.98rem;
-}
-
-.dash-cal-nav-btn {
-    width: 30px;
-    height: 30px;
+/* Compact modifier for .dash-slot, used inside the peek strip
+   (class="dash-slot dash-slot-mini") — same open/booked color logic as the
+   Booking panel's own slots, just smaller. */
+.dash-slot-mini {
+    padding: 5px 8px;
     border-radius: 8px;
-    border: 1px solid var(--color-line);
-    background: transparent;
-    color: var(--color-ink-dim);
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-}
-
-.dash-cal-nav-btn:hover {
-    color: var(--color-ink);
-    border-color: var(--color-primary);
-}
-
-.dash-cal-grid {
-    display: grid;
-    grid-template-columns: repeat(7, 1fr);
-    gap: 6px;
-    text-align: center;
-}
-
-.dash-cal-grid .dash-cal-dow {
-    font-family: var(--font-mono);
     font-size: 0.68rem;
-    color: var(--color-ink-faint);
-    padding-bottom: 4px;
 }
 
-.dash-cal-day {
-    aspect-ratio: 1;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    border-radius: 8px;
-    font-size: 0.85rem;
+/* Revision 2, R1 (implementation_plan.md) — peek-strip pills are a
+   READ-ONLY availability display now (includes/Dashboard.js's
+   renderOverviewSlotPill() renders plain <span>s, not <button>s), but they
+   still share the base .dash-slot class for their open/booked coloring, so
+   its pointer cursor + hover "you can click this" affordance need
+   overriding HERE, scoped to this strip only — the Booking panel's own
+   [data-dash-slot] step-2 buttons (which ARE clickable) must keep their
+   normal interactive styling. */
+.dash-overview-peek-strip .dash-slot {
+    cursor: default;
+}
+
+.dash-overview-peek-strip .dash-slot:hover {
+    border-color: var(--color-line);
     color: var(--color-ink-dim);
-    background: transparent;
-    border: none;
-    cursor: pointer;
-    position: relative;
 }
 
-.dash-cal-day:hover {
-    background: rgba(244, 239, 230, 0.06);
+/* Expanded per-court peek strip. Hidden/shown via .is-active (same idiom as
+   .dash-panel.is-active elsewhere on this page) rather than the `hidden`
+   attribute — an unconditional `display` rule here would otherwise silently
+   override `hidden`, since author rules beat the UA stylesheet regardless
+   of source order. */
+.dash-overview-peek-strip {
+    display: none;
+    flex-wrap: wrap;
+    gap: 6px;
+    padding: 10px 14px 2px;
 }
 
-.dash-cal-day.is-muted {
-    color: var(--color-ink-faint);
-    opacity: 0.4;
-}
-
-.dash-cal-day.is-today {
-    border: 1px solid var(--color-primary);
-    color: var(--color-primary);
-    font-weight: 700;
-}
-
-.dash-cal-day.is-selected {
-    background: var(--color-primary);
-    color: #14110d;
-    font-weight: 700;
-}
-
-.dash-cal-day.has-booking::after {
-    content: '';
-    position: absolute;
-    bottom: 5px;
-    width: 4px;
-    height: 4px;
-    border-radius: 50%;
-    background: var(--color-court-green);
-}
-
-.dash-cal-day.is-selected.has-booking::after {
-    background: #14110d;
+.dash-overview-peek-strip.is-active {
+    display: flex;
 }
 
 /* Availability list */
@@ -810,6 +967,19 @@ body.dash-body {
     color: var(--color-alert);
 }
 
+/* Revision 2, R4 (implementation_plan.md) — DISPLAY-only status for a
+   booking more than 30 minutes past its start with no check-in (see
+   includes/Dashboard.js's displayStatusFor(); never written to the
+   database). Uses --color-alert-text rather than --color-alert/.cancelled's
+   own rgba tint — both read as "this didn't go as planned", but an
+   automatically-missed booking and a genuinely cancelled one are different
+   facts, so they get a related-but-distinguishable red rather than an
+   identical one. */
+.dash-status.unattended {
+    background: rgba(238, 111, 102, 0.16);
+    color: var(--color-alert-text);
+}
+
 /* Quick actions */
 .dash-quick-actions {
     display: flex;
@@ -844,42 +1014,60 @@ body.dash-body {
 }
 
 /* ==========================================================================
-   Courts panel
+   Courts (§4/D2 — the Overview panel's sport-grouped court cards).
+   .dash-filter-row/.dash-chip (the My Bookings status filter chips) were
+   removed from here in §6 — they had no other consumer on this page (only
+   Pages/user_dashboard.html's now-deleted markup and
+   includes/Dashboard.js's now-deleted click handler referenced them), so
+   there is nothing left to keep styled.
    ========================================================================== */
-.dash-filter-row {
-    display: flex;
-    gap: 10px;
-    flex-wrap: wrap;
-}
-
-.dash-chip {
-    padding: 8px 16px;
-    border-radius: 999px;
-    border: 1px solid var(--color-line);
-    background: var(--color-bg-card);
-    color: var(--color-ink-dim);
-    font-family: var(--font-body);
-    font-weight: 600;
-    font-size: 0.82rem;
-    cursor: pointer;
-    transition: background 0.2s, color 0.2s, border-color 0.2s;
-}
-
-.dash-chip.is-active {
-    background: var(--color-primary);
-    border-color: var(--color-primary);
-    color: #14110d;
-}
-
-.dash-chip:not(.is-active):hover {
-    border-color: var(--color-primary);
-    color: var(--color-ink);
-}
-
+/* Revision 3, Change 1 (implementation_plan.md's "Revision 3" section) —
+   FLUID instead of a fixed 3-column grid. The real data (see
+   includes/courtsData.js's fallback, which mirrors the live `court` table)
+   is 9 courts under 8 sport headings and only Bowling has 2 rows (Duckpin
+   + Ten-Pin) — every OTHER sport has exactly 1. A fixed `repeat(3, 1fr)`
+   therefore rendered 7 of 8 groups as a single card in a 3-column row,
+   leaving two-thirds of that row permanently empty — the "too much empty
+   space on the right side" the user reported.
+   Flex-wrap, not CSS Grid's own `repeat(auto-fit, minmax(...))`, is
+   deliberate: auto-fit only collapses a column that is empty across the
+   WHOLE grid, so an UNEVEN last row (e.g. a hypothetical future 3-card
+   group landing in a viewport only wide enough for 2 columns) would still
+   leave a hole in that specific row — the exact bug this change exists to
+   remove, just relocated. A wrapped flex row instead redistributes each
+   ROW's own leftover space across whatever cards actually landed in it
+   (browsers do this per-line for a wrapped flex container), so there is
+   never a dead track regardless of card count or viewport width. See
+   .dash-court-card's flex-basis just below for the per-card sizing this
+   relies on, and further down (after .dash-court-body) for the solo-card
+   "landscape" treatment this enables — the actual fix for the 1-card case,
+   which is 7 of the 8 real sport groups today. */
 .dash-court-grid {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
+    display: flex;
+    flex-wrap: wrap;
     gap: 20px;
+}
+
+/* Sport-grouped wrapper for the Overview panel's Courts card (§4 "visual
+   segregation", D2) — one heading + one .dash-court-grid per sport, stacked
+   with room to breathe between groups. Replaces the old .dash-avail-list
+   (still defined further below, unused here but left in place — it's not
+   worth pruning a still-harmless rule for a class nothing currently
+   renders). */
+.dash-court-groups {
+    display: flex;
+    flex-direction: column;
+    gap: 26px;
+}
+
+.dash-court-group-title {
+    font-family: var(--font-display);
+    font-weight: 600;
+    font-size: 1rem;
+    color: var(--color-ink);
+    margin-bottom: 14px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--color-line);
 }
 
 .dash-court-card {
@@ -890,6 +1078,18 @@ body.dash-body {
     transition: transform 0.25s ease, border-color 0.25s ease;
     display: flex;
     flex-direction: column;
+    /* Revision 3, Change 1 — the flex ITEM sizing that makes
+       .dash-court-grid's own flex-wrap (above) actually fluid: grow AND
+       shrink from a 300px basis, so a lone card in its row grows to fill
+       the full width, two cards (Bowling) split it evenly, and enough
+       cards wrap to a new row instead of ever squeezing below ~300px.
+       min-width: 0 overrides the flex default of `auto`, which otherwise
+       refuses to shrink a flex item below its content's own min-content
+       width — defensive here (nothing in a card is long enough to hit
+       this today) so a future long court/sport name can wrap instead of
+       forcing this card, and potentially the page, wider than intended. */
+    flex: 1 1 300px;
+    min-width: 0;
 }
 
 .dash-court-card:hover {
@@ -913,8 +1113,8 @@ body.dash-body {
     height: 46px;
 }
 
-/* Real court photo (image_url set) vs. the placeholder monogram (null) —
-   see includes/Dashboard.js's renderCourtCard, same pattern as
+/* Real court/unit photo (image_url set) vs. the placeholder monogram (null)
+   — see includes/Dashboard.js's courtPhotoMarkup(), same pattern as
    includes/landingPage.js's .media-slot / .media-slot-monogram. */
 .dash-court-media img {
     position: absolute;
@@ -926,12 +1126,29 @@ body.dash-body {
 
 .dash-court-monogram {
     position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
     font-family: var(--font-display);
     font-weight: 700;
     font-size: 1.6rem;
     letter-spacing: 0.02em;
     color: var(--color-primary);
     opacity: 0.55;
+}
+
+/* "Photo coming soon" caption under the monogram — the honest placeholder
+   this page and includes/landingPage.js's court viewer both use when a
+   court/unit has no image_url yet. Never a broken-image icon, never an
+   invented photo. */
+.dash-court-photo-soon {
+    font-family: var(--font-body);
+    font-weight: 600;
+    font-size: 0.62rem;
+    letter-spacing: 0.02em;
+    text-transform: none;
+    opacity: 0.85;
 }
 
 .dash-court-media .dash-status {
@@ -998,6 +1215,26 @@ body.dash-body {
     border-radius: 999px;
 }
 
+/* Per-unit combo box (§4 "Combo Box Integration", D2) — reuses
+   .dash-form-group/.dash-form-label/.dash-select as-is; this only tightens
+   the spacing for that trio when nested inside a .dash-court-body, whose
+   own `gap` already spaces siblings (the shared .dash-form-group's
+   margin-bottom is meant for stacked form rows, not a flex-gapped card). */
+.dash-court-body .dash-court-unit-picker {
+    margin-bottom: 0;
+    gap: 6px;
+}
+
+/* Peek slots toggle row (§4 "Pixlot Integration") — same .dash-mini-btn the
+   button already used in the old compact avail-row; this just right-aligns
+   it inside the card body. The toggle itself still shows/hides the strip
+   exactly as before; only the strip's CONTENTS changed (Revision 2, R1 —
+   read-only now, see .dash-overview-peek-strip .dash-slot above). */
+.dash-court-peek {
+    display: flex;
+    justify-content: flex-end;
+}
+
 .dash-court-actions {
     display: flex;
     gap: 10px;
@@ -1043,6 +1280,65 @@ body.dash-body {
 .dash-btn-secondary:hover {
     border-color: var(--color-primary);
     color: var(--color-ink);
+}
+
+/* Revision 3, Change 1 — a SOLO card (the ONLY card under its sport
+   heading; true for 7 of the 8 real sports today — every sport except
+   Bowling has exactly one court row) gets a LANDSCAPE layout instead of
+   simply stretching the normal portrait card to the full row width via
+   the flex-basis above. A full-width but still-portrait card would just
+   be a very short, very wide banner strip with a tiny fixed-height photo
+   on top and a much narrower body under it — "a stretched portrait card",
+   per the user's own framing of what to avoid — so the whole card is
+   rotated instead: the photo fills the card's full height on the left,
+   everything else (name, rating, rate, tags, the per-unit combo box, the
+   read-only peek-availability toggle/strip) sits in a normal-width column
+   on the right, which is what actually makes a lone card read as
+   deliberately designed rather than padded out.
+   Pure CSS, no JS needed: `:only-child` here inspects .dash-court-grid's
+   REAL children, which are always .dash-court-card elements and nothing
+   else (see includes/Dashboard.js's renderOverviewCourtList() — each
+   group's grid is built from exactly one <article class="dash-court-card">
+   per court, no other markup in between), so this can never drift out of
+   sync with however many courts a sport actually has.
+   Bowling's 2-card group is deliberately NOT included here: at the
+   narrower end of the width range this still has to support (see the
+   640px override further down), a card that's already sharing its row
+   with a sibling would only have roughly half the width a solo card gets,
+   which isn't enough room for a landscape split's body column to hold the
+   per-unit <select> and the "Show availability" toggle without wrapping
+   or clipping. Two cards filling the row evenly (the flex-basis above
+   already does this) already reads as "full width, deliberate" on its
+   own — see this file's end-of-file Revision 3 audit note for the widths
+   this was checked at. */
+.dash-court-grid > .dash-court-card:only-child {
+    flex-direction: row;
+    align-items: stretch;
+}
+
+.dash-court-grid > .dash-court-card:only-child .dash-court-media {
+    flex: 0 0 38%;
+    height: auto;
+    min-height: 220px;
+    border-bottom: none;
+    border-right: 1px solid var(--color-line);
+}
+
+.dash-court-grid > .dash-court-card:only-child .dash-court-media svg {
+    width: 64px;
+    height: 64px;
+}
+
+.dash-court-grid > .dash-court-card:only-child .dash-court-monogram {
+    font-size: 2.2rem;
+}
+
+/* Same min-width: 0 reasoning as .dash-court-card's own rule above, one
+   flex context further in: without it, this column would refuse to
+   shrink below its content's min-content width inside the now-horizontal
+   card, risking overflow from a long court name or the unit <select>. */
+.dash-court-grid > .dash-court-card:only-child .dash-court-body {
+    min-width: 0;
 }
 
 /* ==========================================================================
@@ -1239,6 +1535,214 @@ body.dash-body {
 }
 
 /* ==========================================================================
+   Generic step wizard shell (§5 Book a Court, §9 Change Password —
+   implementation_plan.md D4/D5). One step indicator + Back/Next nav row,
+   shared by both wizards this phase adds rather than styled twice — same
+   "one shared shell, multiple consumers" idea as this file's own generic
+   dialog/Feedback modal further below.
+   ========================================================================== */
+.dash-wizard-steps {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 4px;
+}
+
+.dash-wizard-step {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+/* The connecting line between step circles — skipped after the last step
+   so the row doesn't trail off with a dangling line. */
+.dash-wizard-step:not(:last-child)::after {
+    content: '';
+    flex: 1 1 auto;
+    height: 1px;
+    background: var(--color-line);
+    margin: 0 2px;
+}
+
+.dash-wizard-step-num {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--color-bg-elevated);
+    border: 1px solid var(--color-line);
+    color: var(--color-ink-faint);
+    font-family: var(--font-mono);
+    font-weight: 700;
+    font-size: 0.82rem;
+    flex-shrink: 0;
+    transition: background 0.2s, border-color 0.2s, color 0.2s;
+}
+
+.dash-wizard-step-label {
+    font-family: var(--font-body);
+    font-weight: 600;
+    font-size: 0.82rem;
+    color: var(--color-ink-faint);
+    min-width: 0;
+}
+
+.dash-wizard-step.is-current .dash-wizard-step-num {
+    background: var(--color-primary);
+    border-color: var(--color-primary);
+    color: #14110d;
+}
+
+.dash-wizard-step.is-current .dash-wizard-step-label,
+.dash-wizard-step.is-done .dash-wizard-step-label {
+    color: var(--color-ink);
+}
+
+.dash-wizard-step.is-done .dash-wizard-step-num {
+    background: rgba(255, 106, 44, 0.16);
+    border-color: var(--color-primary);
+    color: var(--color-primary);
+}
+
+/* One step's content, shown/hidden the same way .dash-panel.is-active
+   toggles between top-level panels — only one .dash-wizard-panel inside a
+   given .dash-wizard-card is ever visible at a time. */
+.dash-wizard-panel {
+    display: none;
+    flex-direction: column;
+}
+
+.dash-wizard-panel.is-active {
+    display: flex;
+}
+
+.dash-wizard-panel-title {
+    font-family: var(--font-display);
+    font-weight: 600;
+    font-size: 1.05rem;
+    margin-bottom: 18px;
+}
+
+.dash-wizard-nav {
+    display: flex;
+    justify-content: flex-end;
+    gap: 12px;
+    margin-top: 24px;
+    padding-top: 20px;
+    border-top: 1px solid var(--color-line);
+}
+
+/* Pushes Back/Go Back to the left edge of the nav row while Next/Save stays
+   right-aligned — simpler than swapping justify-content depending on which
+   buttons happen to be hidden on a given step. */
+.dash-wizard-nav .dash-wizard-back {
+    margin-right: auto;
+}
+
+/* Step 1's larger, standalone court preview (§5, D5; enlarged again in
+   Revision 3, Change 2 — implementation_plan.md — per the user's explicit
+   "in Book a court, the Preview make it more larger" request). Now the
+   dominant element of the .dash-book-step1-layout side-by-side split
+   below, substantially taller than the old 220px/170px so the photo (or
+   the honest "Photo coming soon" placeholder — see courtPhotoMarkup() in
+   includes/Dashboard.js) actually reads as Step 1's clear visual focus,
+   in service of the "know exactly what you're booking" goal for the
+   non-tech-savvy users this redesign targets.
+   .dash-court-media is normally clipped to rounded corners by its parent
+   .dash-court-card's own `overflow: hidden`; this variant isn't nested in
+   a card, so it gets its own border + radius AND its own `overflow:
+   hidden` (a gap the old, smaller version also had — its <img> is
+   `position: absolute; inset: 0`, which fills this box edge-to-edge with
+   square corners regardless of the box's own border-radius — just never
+   visible before now because no court in the live DB has an image_url
+   yet; worth closing here since a real photo would overhang the rounded
+   border far more obviously at this size). */
+.dash-court-media-lg {
+    height: 400px;
+    border: 1px solid var(--color-line);
+    border-radius: 14px;
+    overflow: hidden;
+}
+
+/* The placeholder monogram/icon get a matching size bump so they don't
+   look lost in the middle of the much taller box above — same idea as the
+   Overview Courts section's own solo-card landscape treatment further up
+   this file. */
+.dash-court-media-lg .dash-court-monogram {
+    font-size: 2.4rem;
+}
+
+.dash-court-media-lg svg {
+    width: 64px;
+    height: 64px;
+}
+
+/* Revision 3, Change 2 — Step 1's preview gets its own side-by-side slot
+   next to the court/unit pickers on wide screens, rather than just
+   growing .dash-court-media-lg's height in place underneath them (a
+   bigger box stacked below the form would still leave the preview
+   fighting the form controls for the step's limited vertical rhythm; a
+   side-by-side split lets the preview be genuinely large without pushing
+   the Back/Next row far down the page). DOM order stays [fields, preview]
+   — the Court <select>, the thing a customer actually interacts with
+   first, always reads/tab-orders before the preview, including on wide
+   screens where CSS visually reorders it to the right — only the VISUAL
+   position moves, via named grid-template-areas (chosen over the `order`
+   property so the wide-vs-narrow swap is a single readable area map
+   instead of tracking separate integer order values across two rules and
+   a media query). Below 640px — the same tier .dash-court-media-lg's own
+   height already stepped down at before this revision — this collapses
+   to one column in natural DOM order, so a phone always sees "pick a
+   court" before the (possibly still-empty) preview: the more usable order
+   for the "older, non-tech-savvy users" this redesign targets when there
+   isn't room to show both at once. See this file's end-of-file Revision 3
+   audit note for the widths this split was checked at. */
+.dash-book-step1-layout {
+    display: grid;
+    grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr);
+    grid-template-areas: "preview fields";
+    gap: 24px;
+    align-items: start;
+}
+
+.dash-book-step1-preview {
+    grid-area: preview;
+}
+
+.dash-book-step1-fields {
+    grid-area: fields;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+
+/* .dash-form-group's own margin-bottom (meant for stacked, non-flex-gapped
+   form rows elsewhere on this page) would otherwise double up with the
+   gap above — same override .dash-court-body already applies to a nested
+   .dash-court-unit-picker, for the same reason. */
+.dash-book-step1-fields .dash-form-group {
+    margin-bottom: 0;
+}
+
+/* Step 3's booking summary (§5) — same rows/divider/total classes the old
+   .dash-summary sidebar card used, just without that class's sticky
+   positioning (there's nothing to scroll past inside a single wizard step),
+   separated from the payment options/notice above it with a rule instead of
+   a second card. */
+.dash-wizard-summary {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    margin-top: 22px;
+    padding-top: 20px;
+    border-top: 1px solid var(--color-line);
+}
+
+/* ==========================================================================
    Table / list panels (Bookings, Receipts)
    ========================================================================== */
 .dash-table-wrap {
@@ -1323,12 +1827,29 @@ body.dash-body {
     display: flex;
     flex-direction: column;
     gap: 12px;
+    transition: outline-color 0.3s ease;
+}
+
+/* R4-3 (implementation_plan.md, "Revision 4") — brief highlight flashed by
+   a notification click (includes/Dashboard.js's notifList click delegate)
+   so the customer can actually tell which card the Receipts panel just
+   scrolled to. Added for ~2s, then removed by that same JS — the
+   transition above is only what makes ITS removal fade rather than snap. */
+.dash-receipt-card.is-highlighted {
+    outline: 2px solid var(--color-primary);
+    outline-offset: 3px;
 }
 
 .dash-receipt-top {
     display: flex;
     align-items: flex-start;
     justify-content: space-between;
+    /* R6 (Revision 2) — the status badge (.dash-status) never shrinks below
+       its own text width (white-space: nowrap); wrapping it below a long
+       court name on a narrow card, instead of squeezing both onto one row,
+       is what actually keeps this row from ever overflowing. */
+    flex-wrap: wrap;
+    gap: 8px 12px;
 }
 
 .dash-receipt-top h4 {
@@ -1358,6 +1879,14 @@ body.dash-body {
     display: flex;
     gap: 10px;
     margin-top: 4px;
+}
+
+/* While downloadReceiptAsPng() (includes/Dashboard.js) rasterizes a card
+   (§7, D8), its own Download button is hidden so the button doesn't bake
+   itself into its own screenshot. visibility (not display) keeps the card's
+   height stable during the capture instead of reflowing it. */
+.dash-receipt-card.is-capturing .dash-receipt-actions {
+    visibility: hidden;
 }
 
 /* ==========================================================================
@@ -1418,6 +1947,65 @@ body.dash-body {
 /* ==========================================================================
    Account settings
    ========================================================================== */
+/* Profile Photo — R4-4 (implementation_plan.md, "Revision 4"). Markup lives
+   in Pages/user_dashboard.html (the FIRST card in this panel), wiring in
+   includes/Dashboard.js; .dash-avatar/.dash-avatar-img above do the actual
+   image-vs-initials rendering — these rules are only this card's own
+   layout (preview + buttons row, hint text). */
+.dash-avatar-upload-row {
+    display: flex;
+    align-items: center;
+    gap: 22px;
+    flex-wrap: wrap;
+}
+
+.dash-avatar-upload-preview {
+    width: 88px;
+    height: 88px;
+    font-size: 1.8rem;
+}
+
+.dash-avatar-upload-controls {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    min-width: 0;
+}
+
+.dash-avatar-upload-actions {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+.dash-avatar-upload-hint {
+    font-size: 0.8rem;
+    color: var(--color-ink-faint);
+    margin: 0;
+}
+
+/* First/Middle/Surname (§9, D3) — a 3-column row above the existing
+   .dash-settings-grid (Email/Mobile). Same 20px gap as that grid for visual
+   consistency; collapses to 1 column at the same 1080px breakpoint
+   .dash-settings-grid already does (see this file's Responsive section). */
+.dash-name-fields {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 20px;
+    margin-bottom: 20px;
+}
+
+/* "(optional)" next to the Middle name label — .dash-form-label is
+   uppercase/letter-spaced for the label itself; this inner span opts back
+   out of both so the hint reads as a normal aside, not shouted. */
+.dash-form-label-hint {
+    text-transform: none;
+    letter-spacing: normal;
+    font-weight: 400;
+    opacity: 0.75;
+}
+
 .dash-settings-grid {
     display: grid;
     grid-template-columns: 1fr 1fr;
@@ -1497,11 +2085,169 @@ body.dash-body {
     transform: translateY(-1px);
 }
 
+/* .dash-btn-save never had a disabled STATE before this phase's wizard
+   Next/Save Password buttons (data-dash-book-next, data-dash-pw-next,
+   data-dash-settings-save="password") started toggling .disabled on it —
+   every previous use (Save Changes, Save Password, Give Feedback) was
+   always clickable, validating on click via a toast instead. Without this
+   rule a disabled .dash-btn-save is functionally blocked (the click
+   handler and the native `disabled` attribute both no-op it) but LOOKS
+   identical to an enabled one, which defeats the whole point of a gated
+   Next button for the "older, non-tech-savvy users" this redesign targets
+   — same opacity/cursor treatment .dash-btn-primary:disabled already uses
+   elsewhere on this page. */
+.dash-btn-save:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+    transform: none;
+}
+
+/* ==========================================================================
+   Generic dialog + Feedback modal (§2, D7). One overlay/dialog pair, reused
+   for the one feedback form this phase adds — a shared .dash-modal-* prefix
+   rather than a feedback-specific one so a later phase can reuse the same
+   shell for another simple dialog without new CSS.
+   ========================================================================== */
+.dash-modal-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 50;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+    background: rgba(10, 8, 6, 0.6);
+    opacity: 0;
+    transition: opacity 0.25s ease;
+}
+
+.dash-modal-overlay[data-open] {
+    opacity: 1;
+}
+
+.dash-modal-overlay[hidden] {
+    display: none;
+}
+
+.dash-modal {
+    position: relative;
+    width: 100%;
+    max-width: 420px;
+    max-height: calc(100vh - 48px);
+    overflow-y: auto;
+    background: var(--color-bg-card);
+    border: 1px solid var(--color-line);
+    border-radius: 18px;
+    padding: 28px;
+    box-shadow: 0 24px 60px rgba(0, 0, 0, 0.45);
+    transform: translateY(12px);
+    transition: transform 0.25s ease;
+}
+
+.dash-modal-overlay[data-open] .dash-modal {
+    transform: translateY(0);
+}
+
+.dash-modal h3 {
+    font-family: var(--font-display);
+    font-weight: 600;
+    font-size: 1.2rem;
+    margin-bottom: 6px;
+    padding-right: 34px; /* clears the absolutely-positioned close button */
+}
+
+.dash-modal-sub {
+    color: var(--color-ink-faint);
+    font-size: 0.88rem;
+    margin-bottom: 20px;
+}
+
+.dash-modal-close {
+    position: absolute;
+    top: 18px;
+    right: 18px;
+    width: 34px;
+    height: 34px;
+    border-radius: 50%;
+    border: 1px solid var(--color-line);
+    background: transparent;
+    color: var(--color-ink-dim);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: color 0.2s, border-color 0.2s;
+}
+
+.dash-modal-close svg {
+    width: 16px;
+    height: 16px;
+}
+
+.dash-modal-close:hover {
+    color: var(--color-ink);
+    border-color: var(--color-primary);
+}
+
+.dash-textarea {
+    resize: vertical;
+    min-height: 110px;
+    font-family: var(--font-body);
+    line-height: 1.5;
+}
+
+.dash-feedback-rating {
+    display: flex;
+    gap: 6px;
+}
+
+.dash-feedback-rating button {
+    width: 40px;
+    height: 40px;
+    border-radius: 10px;
+    border: 1px solid var(--color-line);
+    background: var(--color-bg-elevated);
+    color: var(--color-ink-faint);
+    font-size: 1.2rem;
+    line-height: 1;
+    cursor: pointer;
+    transition: color 0.15s, border-color 0.15s, background 0.15s;
+}
+
+.dash-feedback-rating button:hover {
+    border-color: var(--color-primary);
+}
+
+.dash-feedback-rating button.is-selected {
+    color: var(--color-primary);
+    border-color: var(--color-primary);
+    background: rgba(255, 106, 44, 0.12);
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .dash-modal-overlay,
+    .dash-modal {
+        transition: none;
+    }
+}
+
 /* ==========================================================================
    Mobile sidebar overlay
    ========================================================================== */
 .dash-sidebar-scrim {
     display: none;
+}
+
+/* R4-2 (implementation_plan.md, "Revision 4") — while the off-canvas drawer
+   is open below 860px (body.dash-sidebar-open, toggled in
+   includes/Dashboard.js), the page behind it must not also scroll — without
+   this, a touch-drag or wheel event over the scrim/drawer could scroll
+   .dash-body underneath both of them at once. Not scoped inside the 860px
+   media query below: the class is only ever added while the hamburger
+   toggle is visible/usable (also gated to that width), so this has no
+   effect at wider viewports on its own. */
+body.dash-sidebar-open {
+    overflow: hidden;
 }
 
 /* ==========================================================================
@@ -1516,9 +2262,12 @@ body.dash-body {
         grid-template-columns: repeat(2, 1fr);
     }
 
-    .dash-court-grid {
-        grid-template-columns: repeat(2, 1fr);
-    }
+    /* .dash-court-grid needs no override here any more — Revision 3,
+       Change 1 replaced its fixed grid-template-columns with a fluid
+       flex-wrap (see that rule's own comment near the top of this file),
+       which already arrives at 2 columns around this width on its own,
+       computed from the actual available space rather than a hardcoded
+       breakpoint. */
 
     .dash-grid-2 {
         grid-template-columns: 1fr;
@@ -1528,7 +2277,8 @@ body.dash-body {
         position: static;
     }
 
-    .dash-settings-grid {
+    .dash-settings-grid,
+    .dash-name-fields {
         grid-template-columns: 1fr;
     }
 
@@ -1571,11 +2321,21 @@ body.dash-body {
     .dash-profile-name {
         display: none !important;
     }
+
+    /* R4-1 (implementation_plan.md, "Revision 4") removed the rule that used
+       to hide .dash-feedback-card here (plus the topbar's now-deleted
+       .dash-feedback-btn-mobile that took over in its place) — the sidebar
+       card stays visible inside the off-canvas drawer at this width, same
+       as every other nav item, reachable via the hamburger toggle. */
 }
 
 @media (max-width: 640px) {
     .dash-topbar {
         padding: 16px 18px;
+    }
+
+    .dash-topbar-actions {
+        gap: 10px;
     }
 
     .dash-content {
@@ -1622,8 +2382,41 @@ body.dash-body {
         grid-template-columns: 1fr 1fr;
     }
 
-    .dash-court-grid {
-        grid-template-columns: 1fr;
+    /* Revision 3, Change 1 — below this width every card, solo-landscape
+       or not, goes back to one full-width PORTRAIT column: flex-basis:
+       100% forces exactly one card per row (the fluid flex-wrap above
+       would technically already land on 1 column around here on its own,
+       but stating it outright keeps this guaranteed rather than
+       incidental if that basis value ever changes), and the solo-card
+       landscape rules further up this file are reverted below — a
+       side-by-side split needs real width for its body column (the
+       per-unit <select> plus the "Show availability" toggle) that a
+       narrow phone card sharing this space with the sidebar/content
+       padding doesn't reliably have; see this file's end-of-file
+       Revision 3 audit note for the widths this was actually checked at. */
+    .dash-court-grid > .dash-court-card {
+        flex-basis: 100%;
+    }
+
+    .dash-court-grid > .dash-court-card:only-child {
+        flex-direction: column;
+    }
+
+    .dash-court-grid > .dash-court-card:only-child .dash-court-media {
+        flex: none;
+        height: 130px;
+        min-height: 0;
+        border-right: none;
+        border-bottom: 1px solid var(--color-line);
+    }
+
+    .dash-court-grid > .dash-court-card:only-child .dash-court-media svg {
+        width: 46px;
+        height: 46px;
+    }
+
+    .dash-court-grid > .dash-court-card:only-child .dash-court-monogram {
+        font-size: 1.6rem;
     }
 
     .dash-slot-grid {
@@ -1642,4 +2435,178 @@ body.dash-body {
     .dash-profile-meta {
         grid-template-columns: 1fr;
     }
+
+    /* Booking/Change Password wizards (§5/§9) — the step labels stay
+       visible (an icon-only stepper would be less accessible for the
+       "older, non-tech-savvy users" this redesign targets) but shrink
+       slightly and wrap if needed so 3 steps still fit a narrow phone
+       screen without overflowing. */
+    .dash-wizard-step-label {
+        font-size: 0.74rem;
+    }
+
+    .dash-wizard-step:not(:last-child)::after {
+        margin: 0;
+    }
+
+    /* Revision 3, Change 2 — still meaningfully bigger than the pre-
+       Revision-3 170px here, just sized for this tier's narrower, one-
+       column card width instead of the wide side-by-side layout's 400px. */
+    .dash-court-media-lg {
+        height: 240px;
+    }
+
+    /* Revision 3, Change 2 — collapses .dash-book-step1-layout's side-by-
+       side split back to one column, in natural DOM order (Court <select>
+       above the preview) — see that rule's own comment further up this
+       file for why. */
+    .dash-book-step1-layout {
+        grid-template-columns: 1fr;
+        grid-template-areas:
+            "fields"
+            "preview";
+        gap: 20px;
+    }
+
+    .dash-wizard-nav {
+        flex-wrap: wrap;
+    }
 }
+
+/* ==========================================================================
+   Revision 2, R6 — responsive audit (implementation_plan.md). Audited at
+   1280/1024/768/480/360px. 1280, 1024, and 768 all already fit within the
+   existing 1080px/860px rules above (verified — nothing new needed there:
+   the sidebar is already off-canvas by 860px, well before 768px is
+   reached). [Updated by Revision 3 — the ".dash-court-grid is already 2
+   columns by 1080px" fixed-grid behavior this bullet originally described
+   no longer exists as its own breakpoint rule; Change 1 replaced it with a
+   fluid flex-wrap that reaches an equivalent column count at this width
+   without a hardcoded rule — see that section's own comment and the
+   Revision 3 audit note at the end of this file.] 480 and 360
+   both needed a genuinely NEW breakpoint below the existing 640px one —
+   added here rather than widening the 640px block, so nothing that already
+   renders correctly between 481-640px shifts. Fixes below:
+     • Notifications dropdown (§3, D6) could spill off the LEFT edge of the
+       viewport below ~386px — the profile avatar sitting to its right meant
+       .dash-notif-menu's `right: 0` was resolving against the tiny bell
+       icon's own wrapper, not the space actually available.
+     • The topbar's own icon row (Feedback/Theme/Notifications/Profile)
+       genuinely doesn't fit next to the page title below ~380px wide — a
+       real, measured horizontal-overflow bug (checked with a headless-
+       browser scrollWidth comparison at 360px), not merely a cosmetic
+       squeeze. Tightened rather than dropping a control.
+     • .dash-form-actions (Feedback modal's Cancel/Submit, also reused by
+       Profile's Log Out/Edit Profile and Account Settings' Cancel/Save
+       Changes) wraps instead of squeezing two buttons onto one line.
+     • The booking/change-password wizard's step circles shrink a touch
+       further, giving the 3 step labels a little more breathing room.
+   Everything else audited at these 2 widths (receipt cards, court cards +
+   unit combo boxes, the wide .dash-table, Account Settings' name fields)
+   was already safe: .dash-table-wrap's overflow-x: auto already turns the
+   table into a horizontal-scroll region instead of stretching the page,
+   .dash-name-fields/.dash-settings-grid and the receipt grid already
+   collapse to 1 column by 1080px, and the court grid already collapsed to
+   1 column by 640px (now handled by Revision 3, Change 1's fluid
+   flex-wrap instead of that fixed breakpoint — see the Revision 3 audit
+   note at the end of this file) — all three with content that wraps
+   rather than overflows.
+   ========================================================================== */
+@media (max-width: 480px) {
+    /* Re-anchors the notifications dropdown to .dash-topbar-actions (flush
+       with the topbar's own right padding edge) instead of .dash-notif
+       (basically just the bell icon's own ~38px width) — matching where
+       .dash-profile-menu already sits safely, since Profile is the actual
+       last/rightmost icon in that row. Removing position:relative from
+       .dash-notif doesn't affect anything else inside it: .dash-badge-dot
+       is positioned against .dash-icon-btn (its own direct parent, which
+       keeps its own position:relative), not against .dash-notif. */
+    .dash-topbar-actions {
+        position: relative;
+    }
+
+    .dash-notif {
+        position: static;
+    }
+
+    /* The topbar icon row (Feedback/Theme/Notifications/Profile) genuinely
+       does not fit next to the page title below ~380px wide, measured with
+       a headless-browser scrollWidth check — a pre-existing gap this
+       revision's audit caught, not something Revision 2 introduced. Tighten
+       the row rather than dropping a control: less gap between icons, a
+       touch less side padding, and the profile dropdown's decorative caret
+       (purely visual — .dash-profile-name next to it is already hidden
+       below 860px, see the 860px breakpoint above) hidden to reclaim its
+       width. */
+    .dash-topbar {
+        padding: 16px 14px;
+    }
+
+    .dash-topbar-actions {
+        gap: 6px;
+    }
+
+    .dash-caret {
+        display: none;
+    }
+
+    .dash-form-actions {
+        flex-wrap: wrap;
+    }
+
+    .dash-wizard-step-num {
+        width: 24px;
+        height: 24px;
+        font-size: 0.7rem;
+    }
+
+    .dash-wizard-steps {
+        gap: 4px;
+    }
+}
+
+/* ==========================================================================
+   Revision 3 — Dashboard courts redesign + larger booking preview
+   (implementation_plan.md's "Revision 3" section). Two changes, both
+   requested directly by the user:
+     1. The Overview Courts section's per-sport grid no longer leaves 2 of
+        3 grid columns permanently empty for a sport with only one court
+        (7 of the real 8 sports) — see .dash-court-grid's flex-wrap
+        conversion and .dash-court-card's flex-basis near the top of the
+        Courts section above, and the solo-card landscape rules right
+        before this file's "Booking panel" section header for the actual
+        fix to the 1-card case.
+     2. Book a Court Step 1's preview is substantially larger and, on wide
+        screens, sits beside the court/unit pickers instead of stacked
+        below them — see .dash-court-media-lg and .dash-book-step1-layout
+        in the Booking panel section above.
+   Re-audited at the same 1280/1024/768/480/360px this file's Revision 2,
+   R6 pass used (same method — a headless-browser scrollWidth check,
+   plus the arithmetic below cross-checked against .dash-content's and
+   .dash-card's own padding). No NEW breakpoint was needed for either
+   change — both reuse the existing 640px tier as their one "things get
+   tight, simplify" cutoff, same as .dash-court-media-lg's own height
+   already did before this revision:
+     • .dash-court-grid is fluid above 640px, so 1280/1024/768 each
+       resolve to a different, correct column count computed from the
+       actual available width rather than a fixed breakpoint list — a
+       solo card always gets the full row (and the landscape treatment),
+       Bowling's 2 cards always split it evenly, and nothing is ever left
+       empty. Verified at all three widths for both the 1-card case (7 of
+       8 sports) and Bowling's 2-card case. Below 640px every card stacks
+       to one full-width portrait column exactly as it did before this
+       revision (flex-basis: 100%, landscape rules reverted).
+     • .dash-book-step1-layout's side-by-side split was checked comfortable
+       at 768/1024/1280px — the Court <select>'s own column never drops
+       below roughly 210px at the narrow end of that range (641px), well
+       short of causing a native <select> to overflow its column (unlike a
+       `white-space: nowrap` button, a <select> never forces its container
+       wider — it just lays out at whatever width it's given). It's
+       deliberately turned off at/below 640px, where a half-width form
+       column would start crowding the per-unit <select>, and stacks to
+       one full-width column (Court picker first, preview below — see that
+       rule's own comment on why that order, not the reverse, is correct
+       for a narrow/one-column phone view) instead.
+   No other panel changed in this revision, so the rest of Revision 2 R6's
+   audit above still stands unchanged.
+   ========================================================================== */

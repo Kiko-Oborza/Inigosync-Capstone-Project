@@ -126,7 +126,7 @@
 
 /* ==========================================================================
    Dashboard reveal — content stays hidden behind the overlay until the real
-   session + profile check (authGuard.js) resolves, then fades/rises in.
+   session + profile check (authGuard.js) resolves, then fades in.
    The `inigo-auth-pending` class is set synchronously in <head> (before
    paint) and removed by authGuard.js once the real data is ready.
 
@@ -135,6 +135,23 @@
    selector would also match unrelated fixed-position elements on other
    pages (e.g. the login modal's overlay on the landing page) and force
    their opacity open regardless of their own hidden/closed state.
+
+   R4-2 (implementation_plan.md, "Revision 4") — this rule USED to also
+   transition/set a `transform: translateY(0)`. That value was a pure
+   visual no-op (nothing anywhere ever set a non-zero translate on
+   .inigo-reveal to animate FROM), but any transform value other than
+   `none` — even a resolved-to-identity one — makes its element the
+   containing block for `position: fixed` descendants. .dash-shell (the
+   customer dashboard's own .inigo-reveal element) contains .dash-sidebar,
+   which becomes `position: fixed` below 860px (Style/Dashboard.css) to act
+   as an off-canvas drawer — with that containing block in place, the
+   drawer (and its scrim) positioned themselves relative to .dash-shell's
+   own box instead of the viewport, so both silently scrolled away with the
+   page instead of staying pinned. Removing the transform fixes that while
+   changing nothing visible: the fade-in animation below is unaffected,
+   since it never depended on the transform to begin with. Applies to
+   owner_dashboard.html/staff_dashboard.html too (same .inigo-reveal class)
+   — a benign fix there as well, not a behavior change either.
    ========================================================================== */
 
 html.inigo-auth-pending .inigo-reveal {
@@ -142,10 +159,9 @@ html.inigo-auth-pending .inigo-reveal {
 }
 
 .inigo-reveal {
-    transition: opacity 0.45s ease, transform 0.45s ease;
+    transition: opacity 0.45s ease;
 }
 
 html:not(.inigo-auth-pending) .inigo-reveal {
     opacity: 1;
-    transform: translateY(0);
 }
