@@ -310,15 +310,25 @@ document.addEventListener('DOMContentLoaded', () => {
         cancelled: 'Booking cancelled',
     };
 
+    // R4-3 (implementation_plan.md, "Revision 4") — each item is a real
+    // <button>, not the inert <div> it used to be, carrying the booking's
+    // own booking_id in data-dash-notif-booking so a click can find and jump
+    // to that exact booking's receipt card (data-dash-receipt-card, keyed by
+    // the SAME id — see renderReceiptCard() further below). The inner
+    // .dash-notif-item-body wrapper is a <span>, not a <div>, so this stays
+    // valid phrasing content inside a <button> — display:flex below (see
+    // Style/Dashboard.css) lays it out identically to the old <div> either
+    // way, so nothing about how this actually looks changes.
     function renderNotificationItem(item) {
+        const bookingIdAttr = window.escapeHtml(String(item.bookingId));
         return `
-            <div class="dash-notif-item">
+            <button type="button" class="dash-notif-item" data-dash-notif-booking="${bookingIdAttr}">
                 <span class="dash-notif-dot ${window.escapeHtml(item.statusClass)}"></span>
-                <div class="dash-notif-item-body">
+                <span class="dash-notif-item-body">
                     <strong>${window.escapeHtml(item.title)}</strong>
                     <span>${window.escapeHtml(item.body)}</span>
-                </div>
-            </div>
+                </span>
+            </button>
         `;
     }
 
@@ -330,6 +340,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const court = booking.courts || 'Court';
             const when = `${formatBookingDate(booking.time_date)} · ${formatBookingTime(booking.time_date)}`;
             return {
+                bookingId: booking.booking_id,
                 title: NOTIF_STATUS_TITLES[status] || 'Booking update',
                 body: `${court} — ${when}`,
                 statusClass: status,
@@ -344,6 +355,57 @@ document.addEventListener('DOMContentLoaded', () => {
         // there's ≥1 notification" (§3) — starts `hidden` in the markup, so
         // it never flashes on before we actually know the count.
         if (notifDot) notifDot.hidden = items.length === 0;
+    }
+
+    // R4-3 (implementation_plan.md, "Revision 4") — clicking a notification
+    // closes the dropdown, opens Receipts, and scrolls to/briefly highlights
+    // the matching receipt card. Delegated on notifList itself rather than
+    // wired per-item: renderNotifications() above replaces notifList's whole
+    // innerHTML on every refresh (a new booking, a status change, etc.), so a
+    // per-button listener would need re-wiring after every render — the same
+    // pattern wireReceiptDownloads()/wireOverviewCourtList() use further
+    // below for their own dynamically rendered scopes. Listening on the one
+    // container that is never itself replaced avoids that entirely, and only
+    // needs to be attached once, here, at setup time.
+    const NOTIF_RECEIPT_SCROLL_DELAY_MS = 60;
+    const NOTIF_RECEIPT_HIGHLIGHT_MS = 2000;
+
+    if (notifList) {
+        notifList.addEventListener('click', (e) => {
+            const item = e.target.closest('[data-dash-notif-booking]');
+            if (!item) return;
+
+            const bookingId = item.dataset.dashNotifBooking;
+            closeNotifMenu();
+            // setActivePanel() (declared at the very top of this file) is a
+            // hoisted function declaration — safe to call from here
+            // regardless of source order, same reasoning this file already
+            // documents for closeNotifMenu's own forward reference above.
+            setActivePanel('receipts');
+
+            // setActivePanel() itself just ran window.scrollTo({top:0, ...})
+            // as part of every panel switch — deferred by a beat so THIS
+            // scroll (to the actual receipt) is the one the page settles on,
+            // instead of racing it back to the top of the page.
+            window.setTimeout(() => {
+                // Matched by reading each card's dataset directly (not by
+                // interpolating bookingId into a CSS attribute-selector
+                // string) — same reasoning wireReceiptDownloads() already
+                // reads btn.dataset.dashReceiptDownload directly rather than
+                // building a selector out of it.
+                const card = Array.from(document.querySelectorAll('[data-dash-receipt-card]'))
+                    .find((el) => el.dataset.dashReceiptCard === bookingId);
+                // Receipts hasn't rendered this card yet (e.g. still
+                // loading) — the panel is already open regardless, so this
+                // is never a dead click; there's just nothing to scroll to
+                // or highlight on top of it.
+                if (!card) return;
+
+                card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                card.classList.add('is-highlighted');
+                window.setTimeout(() => card.classList.remove('is-highlighted'), NOTIF_RECEIPT_HIGHLIGHT_MS);
+            }, NOTIF_RECEIPT_SCROLL_DELAY_MS);
+        });
     }
 
     // ------------------------------------------------------------------
@@ -1810,8 +1872,16 @@ document.addEventListener('DOMContentLoaded', () => {
         const statusClass = window.escapeHtml(receipt.status);
         const statusLabel = window.escapeHtml(receipt.status ? receipt.status.charAt(0).toUpperCase() + receipt.status.slice(1) : '—');
         const idAttr = window.escapeHtml(String(receipt.id));
+        // R4-3 (implementation_plan.md, "Revision 4") — carries the same
+        // booking_id a notification's data-dash-notif-booking carries (see
+        // renderNotificationItem() above), so a notification click can find
+        // THIS exact card via document.querySelectorAll('[data-dash-receipt-card]')
+        // + a dataset match. wireReceiptDownloads()'s own
+        // closest('[data-dash-receipt-card]') below is a presence selector
+        // (matches regardless of the attribute's value), so giving it a real
+        // value here doesn't affect that at all.
         return `
-            <div class="dash-receipt-card" data-dash-receipt-card>
+            <div class="dash-receipt-card" data-dash-receipt-card="${idAttr}">
                 <div class="dash-receipt-top">
                     <div>
                         <h4>${window.escapeHtml(receipt.court)}</h4>
@@ -2064,11 +2134,182 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
+    // ------------------------------------------------------------------
+    // Account Settings — Profile Photo (R4-4, implementation_plan.md
+    // "Revision 4"). profiles.avatar_url already existed and was already
+    // selected by includes/authGuard.js's login-gate query — nothing on any
+    // dashboard read or wrote it until now. No Supabase Storage bucket
+    // exists anywhere in this project (see the two notes in
+    // Pages/owner_dashboard.html) and provisioning one is out of this
+    // repo's tracked scope, so the picked photo never leaves the browser as
+    // a file upload: it is downscaled through a <canvas> into a small,
+    // fixed-size (256x256, center-cropped) JPEG data URL and written
+    // straight into that existing text column via the SAME self-
+    // update().eq('id', window.inigosyncProfile.id) path Personal
+    // Information's Save uses below. Unlike that save, avatar_url is
+    // already confirmed to exist (authGuard.js selects it today, live), so
+    // there is no schema-mismatch column-fallback retry needed here — a
+    // failure here is a real error, not a "hasn't been migrated yet" one.
+    // ------------------------------------------------------------------
+    const AVATAR_MAX_RAW_BYTES = 5 * 1024 * 1024; // 5 MB raw file ceiling, checked before downscaling
+    const AVATAR_OUTPUT_SIZE = 256;               // px, square — the final stored image
+    const AVATAR_JPEG_QUALITY = 0.82;             // ~20-50KB per image at 256x256
+
+    const avatarFileInput = document.querySelector('[data-dash-avatar-file]');
+    const avatarUploadBtn = document.querySelector('[data-dash-avatar-upload-trigger]');
+    const avatarRemoveBtn = document.querySelector('[data-dash-avatar-remove]');
+
+    // Center-crops `file` (already validated as an image under the size
+    // ceiling by the `change` handler below) into an AVATAR_OUTPUT_SIZE
+    // square and resolves a JPEG data URL. The crop SOURCE square is the
+    // smaller of the image's own width/height, centered, so a portrait or
+    // landscape photo both crop to their visual center instead of being
+    // squashed to fit — the "CENTER-CROPPED" half of the spec, not just the
+    // "256x256" half.
+    function downscaleImageToAvatarDataUrl(file) {
+        return new Promise((resolve, reject) => {
+            const img = new Image();
+            const objectUrl = URL.createObjectURL(file);
+
+            img.onload = () => {
+                URL.revokeObjectURL(objectUrl);
+                try {
+                    const size = AVATAR_OUTPUT_SIZE;
+                    const canvas = document.createElement('canvas');
+                    canvas.width = size;
+                    canvas.height = size;
+                    const ctx = canvas.getContext('2d');
+
+                    const cropSize = Math.min(img.naturalWidth, img.naturalHeight);
+                    const sx = (img.naturalWidth - cropSize) / 2;
+                    const sy = (img.naturalHeight - cropSize) / 2;
+                    ctx.drawImage(img, sx, sy, cropSize, cropSize, 0, 0, size, size);
+
+                    resolve(canvas.toDataURL('image/jpeg', AVATAR_JPEG_QUALITY));
+                } catch (err) {
+                    reject(err);
+                }
+            };
+            img.onerror = () => {
+                URL.revokeObjectURL(objectUrl);
+                reject(new Error('Could not read the selected image.'));
+            };
+            img.src = objectUrl;
+        });
+    }
+
+    // Shared by the upload flow below AND Remove Photo — `avatarUrl` is
+    // either a fresh data URL or null (Remove Photo writes null, exactly
+    // like every other "not set" value on this profile). On success, keeps
+    // window.inigosyncProfile and every .dash-avatar on the page (topbar,
+    // Profile panel, this card's own live preview — all painted by the one
+    // renderProfile() below) in sync via the same re-render call Personal
+    // Information's own Save uses after ITS update succeeds.
+    async function saveAvatarUrl(avatarUrl) {
+        if (!window.sb || !window.inigosyncProfile) {
+            window.InigoToast?.show('Unable to reach the server right now. Please try again shortly.', true);
+            return false;
+        }
+
+        const { error } = await window.sb
+            .from('profiles')
+            .update({ avatar_url: avatarUrl })
+            .eq('id', window.inigosyncProfile.id);
+
+        if (error) {
+            console.error('[dashboard] avatar_url update failed', error);
+            window.InigoToast?.show(error.message || 'Could not save your photo. Please try again.', true);
+            return false;
+        }
+
+        window.inigosyncProfile.avatar_url = avatarUrl;
+        renderProfile(window.inigosyncProfile);
+        return true;
+    }
+
+    // "Upload Photo" is a styled button, not the (unstyleable) native file
+    // input itself — clicking it just forwards to the real, hidden picker,
+    // same indirection Pages/user_dashboard.html's own comment on that
+    // input describes.
+    if (avatarUploadBtn && avatarFileInput) {
+        avatarUploadBtn.addEventListener('click', () => avatarFileInput.click());
+    }
+
+    if (avatarFileInput) {
+        avatarFileInput.addEventListener('change', async () => {
+            const file = avatarFileInput.files && avatarFileInput.files[0];
+            // Reset immediately (not only on success) so picking the SAME
+            // file again right after a validation error still fires a fresh
+            // `change` event — a browser will not re-fire `change` for an
+            // unchanged file list otherwise.
+            avatarFileInput.value = '';
+            if (!file) return;
+
+            if (!file.type || !file.type.startsWith('image/')) {
+                window.InigoToast?.show('Please choose an image file.', true);
+                return;
+            }
+            if (file.size > AVATAR_MAX_RAW_BYTES) {
+                window.InigoToast?.show('That image is too large — please choose one under 5 MB.', true);
+                return;
+            }
+
+            const originalLabel = avatarUploadBtn ? avatarUploadBtn.textContent : '';
+            if (avatarUploadBtn) {
+                avatarUploadBtn.disabled = true;
+                avatarUploadBtn.textContent = 'Uploading…';
+            }
+
+            try {
+                const dataUrl = await downscaleImageToAvatarDataUrl(file);
+                const ok = await saveAvatarUrl(dataUrl);
+                if (ok) window.InigoToast?.show('Profile photo updated.');
+            } catch (err) {
+                console.error('[dashboard] avatar downscale failed', err);
+                window.InigoToast?.show('Could not process that image. Please try a different file.', true);
+            } finally {
+                if (avatarUploadBtn) {
+                    avatarUploadBtn.disabled = false;
+                    avatarUploadBtn.textContent = originalLabel;
+                }
+            }
+        });
+    }
+
+    if (avatarRemoveBtn) {
+        avatarRemoveBtn.addEventListener('click', async () => {
+            avatarRemoveBtn.disabled = true;
+            const ok = await saveAvatarUrl(null);
+            avatarRemoveBtn.disabled = false;
+            if (ok) window.InigoToast?.show('Profile photo removed.');
+        });
+    }
+
     function renderProfile(profile) {
         const initials = (profile.full_name || profile.email || '?')
             .split(' ').map((p) => p[0]).slice(0, 2).join('').toUpperCase();
 
-        document.querySelectorAll('.dash-avatar').forEach((el) => { el.textContent = initials; });
+        // R4-4 (implementation_plan.md, "Revision 4") — the ONE place that
+        // paints every .dash-avatar on this page (topbar, Profile panel,
+        // Account Settings' own preview above). avatar_url unset takes the
+        // EXACT SAME textContent-initials path this always used — the
+        // default avatar's look/behaviour is unchanged. avatar_url set
+        // swaps in an <img class="dash-avatar-img"> instead (see that
+        // class in Style/Dashboard.css); escapeHtml on the data URL is the
+        // same "everything interpolated into innerHTML is escaped" rule
+        // this file applies everywhere else, even though a data URL this
+        // code itself generated never actually contains &<>"'.
+        const avatarUrl = profile.avatar_url || null;
+        document.querySelectorAll('.dash-avatar').forEach((el) => {
+            if (avatarUrl) {
+                el.innerHTML = `<img class="dash-avatar-img" src="${window.escapeHtml(avatarUrl)}" alt="Profile photo">`;
+            } else {
+                el.textContent = initials;
+            }
+        });
+        // Remove Photo only makes sense once there IS a photo.
+        if (avatarRemoveBtn) avatarRemoveBtn.hidden = !avatarUrl;
+
         document.querySelectorAll('[data-dash-profile-name]').forEach((el) => { el.textContent = profile.full_name || 'Customer'; });
 
         const profileCardInfo = document.querySelector('[data-dash-panel="profile"] .dash-profile-card-info h3');

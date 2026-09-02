@@ -1,0 +1,69 @@
+-- ============================================================================
+-- IñigoSync — Schema: profile avatar (customer profile photo)
+-- ============================================================================
+-- Run this in the Supabase SQL editor (Project → SQL Editor) any time — its
+-- order relative to every other file in database/schema/ doesn't matter,
+-- since this only asserts a column on the EXISTING `profiles` table.
+-- `profiles` has no schema file of its own in this repo (same standing,
+-- documented risk database/schema/008_profile_name_parts.sql's header
+-- already carries) — its confirmed columns are only the ones the app
+-- already reads/writes: id, role, full_name, email, status, contact_num,
+-- position, avatar_url.
+--
+-- THIS MIGRATION IS DOCUMENTATION-ONLY. `avatar_url` already exists live —
+-- includes/authGuard.js's login-gate `profiles` select (every dashboard's
+-- own query, run before a session is even allowed in) already lists it
+-- today: `.select('id, role, full_name, email, status, contact_num,
+-- position, avatar_url')`. Nothing before this phase ever READ or WROTE
+-- that column, though — the customer dashboard's Profile/topbar avatars
+-- only ever rendered initials. This file exists purely to (a) make the
+-- column's existence something this repo's own schema history tracks,
+-- same as every other confirmed `profiles` column, and (b) record its new
+-- contract in a `comment on column`, exactly like 008/009/010 already do
+-- for the columns/constraints/tables THEY introduce. `add column if not
+-- exists` below is a no-op against the live database; it only matters as a
+-- safety net for a fresh/differently-provisioned Supabase project that
+-- doesn't already have this column.
+--
+-- Why this exists: R4-4 (implementation_plan.md, "Revision 4") adds a
+-- "Profile Photo" card to the customer dashboard's Account Settings panel
+-- — an Upload Photo / Remove Photo pair that is the first UI anywhere in
+-- this project to actually read or write avatar_url. No Supabase Storage
+-- bucket exists anywhere in this project (see the two notes in
+-- Pages/owner_dashboard.html) and provisioning one is out of this repo's
+-- tracked scope, so the picked photo never leaves the browser as a file
+-- upload: includes/Dashboard.js downscales it client-side through a
+-- <canvas> to a small, fixed-size, CENTER-CROPPED 256x256 JPEG (quality
+-- ~0.82, roughly 20-50KB before base64) and writes the resulting `data:`
+-- URL directly into this text column via the same self-
+-- update().eq('id', ...) path Personal Information's own Save already
+-- uses. Remove Photo writes NULL, which restores the initials avatar this
+-- page has always shown by default — renderProfile() (includes/
+-- Dashboard.js) is the one place that paints every .dash-avatar, and takes
+-- the exact same textContent-initials path as before whenever avatar_url
+-- is NULL/unset, so the no-photo default is visually and behaviourally
+-- unchanged by this feature.
+-- ============================================================================
+
+alter table public.profiles
+    add column if not exists avatar_url text;
+
+comment on column public.profiles.avatar_url is 'Customer profile photo. As of R4-4 (implementation_plan.md, "Revision 4"), a downscaled, CENTER-CROPPED 256x256 JPEG stored as a data: URL, written by the customer dashboard''s Account Settings "Profile Photo" card (includes/Dashboard.js) — there is no Supabase Storage bucket in this project, so the image is never uploaded as a file. NULL means no photo has been set (or Remove Photo was used); every avatar on the customer dashboard falls back to initials in that case — see renderProfile() in includes/Dashboard.js.';
+
+-- ----------------------------------------------------------------------------
+-- Row Level Security — deliberately UNCHANGED here.
+-- ----------------------------------------------------------------------------
+-- Same reasoning as database/schema/008_profile_name_parts.sql's own header
+-- note: `profiles` isn't tracked by a schema file in this repo, so its
+-- existing policies predate this repo's schema tracking and aren't visible
+-- to it. Row-level security in Postgres is evaluated per ROW, not per
+-- column, and this project has no column-level GRANT/REVOKE anywhere
+-- restricting specific `profiles` columns — whatever policy already lets a
+-- signed-in customer read/update their OWN profiles row (full_name/
+-- contact_num/first_name/middle_name/last_name already prove this works
+-- today, in this same Account Settings panel) covers avatar_url on that
+-- same row automatically, with nothing further to add. avatar_url is also
+-- already being SELECTed today by includes/authGuard.js without any RLS
+-- complaint, which confirms read access already exists; this migration
+-- does not attempt to touch policies it cannot see or recreate blind.
+-- ============================================================================

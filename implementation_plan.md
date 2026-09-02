@@ -311,3 +311,155 @@ rendering JS changed; no fabricated data; no unrelated refactors.
 4. Console/exception check while exercising court/unit `<select>` changes,
    the peek-availability toggle, and the sort `<select>`, confirming no new
    errors.
+
+---
+
+# Customer Page — Revision 4 (mobile feedback placement, fixed drawer, clickable notifications, profile photo)
+
+## Goal
+
+Four changes to the customer dashboard (`Pages/user_dashboard.html`): (1) show
+the Feedback card inside the side menu on mobile exactly as on desktop, (2) make
+the mobile sidebar drawer truly fixed so it does not move when the page scrolls,
+(3) make each notification clickable so it opens that booking's receipt, and
+(4) add a profile-image upload to Account Settings that persists to the database,
+keeping the existing initials avatar as the no-image default.
+
+## Context and current state
+
+- `.dash-feedback-card` (sidebar, `Pages/user_dashboard.html` ~line 106) is
+  `display: none` below 860px; `.dash-feedback-btn-mobile` (topbar, ~line 139)
+  takes over instead. Both open the same modal via `[data-dash-feedback-open]`.
+- `.dash-sidebar` is `position: fixed` below 860px (`Style/Dashboard.css`
+  ~line 2200) — but `.dash-shell` carries `.inigo-reveal`, and
+  `Style/Loading.css` sets `transform: translateY(0)` on it. A transform on an
+  ancestor makes it the containing block for `position: fixed` descendants, so
+  the drawer and the scrim are positioned relative to `.dash-shell` (the whole
+  page) rather than the viewport, and they scroll away with the page. That is
+  the reported "menu bar moves when I scroll" bug. The `translateY(0)` is a
+  visual no-op — nothing anywhere sets a non-zero translate on `.inigo-reveal`.
+- Notifications (`includes/Dashboard.js`, `renderNotifications()` ~line 325) are
+  derived from the customer's own `booking` rows (no `notification` table — D6).
+  Items render as non-interactive `<div class="dash-notif-item">`.
+- Receipts (`renderReceiptCard()` ~line 1808) render one card per booking, keyed
+  by `booking.booking_id` (`normalizeReceipt()`), but the card's
+  `data-dash-receipt-card` attribute carries no value, so there is nothing to
+  target a specific receipt by.
+- `profiles.avatar_url` already exists and is already selected by
+  `includes/authGuard.js` (line 87) — it is simply never read or written by the
+  UI. `renderProfile()` sets `.dash-avatar` `textContent` to initials.
+- No Supabase Storage bucket exists anywhere in this project (see
+  `includes/owner_dashboard.js` ~line 1035 and the two notes in
+  `Pages/owner_dashboard.html`), and provisioning one is out of this repo's
+  tracked scope.
+
+## Approach and architectural decisions
+
+R4-1 — Feedback lives in the sidebar at every width. Delete the
+`@media (max-width: 860px)` rule that hides `.dash-feedback-card`, and remove
+the `.dash-feedback-btn-mobile` markup + all of its CSS (base rule, the 860px
+`display: inline-flex`, and the 640px icon-only overrides). One entry point, one
+location, identical on mobile and desktop — which is what was asked, and it also
+de-crowds a mobile topbar that already holds hamburger + title + theme + bell +
+avatar. The sidebar gains `overflow-y: auto` so the card is always reachable on
+short viewports.
+
+R4-2 — Fix the drawer by removing the transform containing block. In
+`Style/Loading.css`, drop `transform` from the `.inigo-reveal` transition and
+drop `transform: translateY(0)` from the resolved state. Because that translate
+is a no-op, this changes nothing visually on any dashboard but restores
+viewport-relative `position: fixed` for the drawer and scrim. Also add
+`body.dash-sidebar-open { overflow: hidden; }` so the page behind the open
+drawer does not scroll. Applies to owner/staff dashboards too (same class) —
+strictly a fix there as well, no behavioural change.
+
+R4-3 — Clickable notifications open that booking's receipt. Carry
+`booking.booking_id` through `renderNotifications()`; render each item as a
+`<button class="dash-notif-item" data-dash-notif-booking="ID">` instead of a
+`<div>`. Give receipt cards their id: `data-dash-receipt-card="${idAttr}"`
+(`wireReceiptDownloads()`'s `closest('[data-dash-receipt-card]')` is unaffected).
+Clicking a notification: close the dropdown, `setActivePanel('receipts')`, then
+`scrollIntoView()` the matching card and flash a temporary `.is-highlighted`
+outline. If the card is not found (receipts still loading), fall back to just
+opening the Receipts panel — never a dead click, never a fabricated target.
+Existing `.dash-notif-item` CSS gains button resets (background/border/width/
+text-align/cursor) plus hover and `:focus-visible` states.
+
+R4-4 — Profile photo stored as a data URL in `profiles.avatar_url`.
+New "Profile Photo" card at the top of the Account Settings panel: live preview
+(the existing `.dash-avatar` when empty, an `<img>` when set), an "Upload Photo"
+button driving a hidden `<input type="file" accept="image/*">`, and a "Remove
+Photo" button shown only when an image exists. On pick: validate type + a 5 MB
+raw ceiling, then downscale through a `<canvas>` to a 256x256 center-cropped
+JPEG (quality 0.82, roughly 20-50 KB) and store that data URL in
+`profiles.avatar_url` via the same self-`update()` path the Personal Information
+save already uses. `renderProfile()` becomes the single place that paints every
+`.dash-avatar`: `avatar_url` present renders `<img class="dash-avatar-img">`,
+absent renders today's initials, unchanged.
+
+Decision needing confirmation: data URL in the existing `avatar_url` column
+vs. a real Supabase Storage bucket. Storage is the "proper" answer but needs
+new provisioned infrastructure (bucket + `storage.objects` RLS policies) that
+this repo has explicitly kept out of scope everywhere else, and the column
+already exists and is already fetched. The downscale keeps rows small. If the
+bucket is preferred instead, that changes R4-4's write path only, not its UI.
+
+## Files to change (with intent)
+
+- `Style/Loading.css` — remove the no-op `transform` from `.inigo-reveal` (R4-2).
+- `Style/Dashboard.css` — un-hide the sidebar feedback card at <=860px, delete
+  `.dash-feedback-btn-mobile` rules, sidebar `overflow-y`, body scroll lock,
+  `.dash-notif-item` button/hover/focus states, `.dash-receipt-card.is-highlighted`,
+  `.dash-avatar-img` + Profile Photo card styles (R4-1/2/3/4).
+- `Pages/user_dashboard.html` — remove the mobile topbar feedback button; add the
+  Profile Photo card to the Account Settings panel (R4-1, R4-4).
+- `includes/Dashboard.js` — notification ids + click-to-receipt, receipt card id
+  attribute, avatar rendering, upload/downscale/save/remove wiring (R4-3, R4-4).
+- `database/schema/011_profile_avatar.sql` — documentation-only migration: assert
+  `avatar_url` exists (`add column if not exists`) and comment it to record that
+  it now holds a downscaled data URL (R4-4).
+
+## Constraints and non-goals
+
+- Do not change the default (initials) avatar in any way — it stays exactly as-is
+  whenever no image is set.
+- No new Supabase Storage bucket, no new RLS policies, no `notification` table.
+- No fabricated data: notifications stay derived from real `booking` rows.
+- Owner and staff dashboards are not otherwise touched (the `.inigo-reveal` fix
+  is shared and benign).
+- Keep the existing plain `<script src>` architecture — no bundler, no new deps.
+- Preserve the file's heavy explanatory-comment convention.
+
+## Success criteria
+
+1. At <=860px the Feedback card appears in the sidebar drawer, in the same place
+   and form as desktop; no Feedback button remains in the topbar.
+2. At <=860px, opening the drawer and scrolling the page leaves the drawer and
+   scrim visually fixed to the viewport; the background does not scroll.
+3. Clicking any notification opens the Receipts panel and scrolls to and
+   highlights that booking's receipt card; the dropdown closes.
+4. Account Settings can upload a profile image; it appears in the topbar avatar,
+   the Profile panel avatar, and the settings preview; it survives a reload
+   (round-trips from `profiles.avatar_url`); Remove Photo restores the initials.
+5. No console errors; desktop layout at >=1080px is unchanged.
+
+## Verification steps
+
+1. CSS brace balance and HTML tag balance checked programmatically.
+2. Headless-browser pass at 1280 / 860 / 640 / 360px: drawer fixed-position check
+   (`getBoundingClientRect().top === 0` after scrolling), feedback card visible in
+   the drawer, no topbar feedback button, no horizontal overflow.
+3. Notification click: assert active panel is `receipts` and the highlighted
+   card's id matches the clicked notification's booking id.
+4. Upload a small test image, confirm the `profiles` row's `avatar_url` is
+   written, reload, confirm the image renders; then Remove and confirm initials.
+5. Console/exception check across all four flows.
+
+## Open questions and risks
+
+- The storage decision above — the one item that needs the user's call.
+- Data URLs make the `profiles` row larger; the 256x256 JPEG cap keeps this at
+  tens of KB, but many users with photos will grow `authGuard`'s profile fetch
+  slightly.
+- Removing `transform` from `.inigo-reveal` touches all three dashboards; risk is
+  low (no-op value) but is worth a visual smoke test of the reveal animation.

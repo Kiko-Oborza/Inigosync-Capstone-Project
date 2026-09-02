@@ -26,6 +26,13 @@ body.dash-body {
     position: sticky;
     top: 0;
     height: 100vh;
+    /* R4-1 (implementation_plan.md, "Revision 4") — the sidebar's own
+       content (nav + the feedback card, now shown at every width — see
+       .dash-feedback-card's comment below) can exceed 100vh on a short
+       viewport; without this the overflow would simply be clipped and the
+       feedback card unreachable there. Scrolls independently of the page
+       itself, same idea as the off-canvas drawer below 860px. */
+    overflow-y: auto;
 }
 
 .dash-sidebar-brand {
@@ -102,9 +109,11 @@ body.dash-body {
     color: var(--color-alert);
 }
 
-/* Feedback (§2 of the feedback doc, D7) — desktop/tablet sidebar card
-   trigger. Hidden below 860px (see this file's Responsive section), where
-   .dash-feedback-btn-mobile in the topbar takes over instead. */
+/* Feedback (§2 of the feedback doc, D7) — sidebar card trigger, shown at
+   EVERY width as of R4-1 (implementation_plan.md, "Revision 4"). Used to be
+   hidden below 860px in favor of a separate .dash-feedback-btn-mobile
+   button in the topbar (removed — see this file's Responsive section and
+   .dash-sidebar's own overflow-y comment above for the full reasoning). */
 .dash-feedback-card {
     background: var(--color-bg-card);
     border: 1px solid var(--color-line);
@@ -229,30 +238,11 @@ body.dash-body {
     border: 1.5px solid var(--color-bg-elevated);
 }
 
-/* Feedback (§2, D7) — the MOBILE trigger, hidden by default and shown only
-   below the 860px breakpoint (see this file's Responsive section), where
-   .dash-feedback-card in the sidebar is hidden instead. */
-.dash-feedback-btn-mobile {
-    display: none;
-    align-items: center;
-    gap: 6px;
-    padding: 9px 14px;
-    border-radius: 999px;
-    border: none;
-    background: var(--color-primary);
-    color: #14110d;
-    font-family: var(--font-body);
-    font-weight: 700;
-    font-size: 0.8rem;
-    cursor: pointer;
-    white-space: nowrap;
-}
-
-.dash-feedback-btn-mobile svg {
-    width: 15px;
-    height: 15px;
-    flex-shrink: 0;
-}
+/* .dash-feedback-btn-mobile (the standalone topbar Feedback button shown
+   only below 860px) and its svg rule were removed outright by R4-1
+   (implementation_plan.md, "Revision 4") — the sidebar's .dash-feedback-card
+   above is now the ONE feedback trigger at every width; see its own comment
+   for why. Pages/user_dashboard.html's markup for this button is gone too. */
 
 /* Notifications dropdown (§3, D6) — same open/close idiom + visual shape as
    .dash-profile-menu below (toggled via the same [data-open] attribute
@@ -296,11 +286,37 @@ body.dash-body {
     color: var(--color-ink);
 }
 
+/* R4-3 (implementation_plan.md, "Revision 4") — .dash-notif-item is now a
+   real <button> (renderNotificationItem(), includes/Dashboard.js), not the
+   inert <div> it used to be, so clicking a notification can jump to its
+   booking's receipt. UA button resets (background/border/width/text-align/
+   font) below keep the exact same flex/gap/padding look it already had;
+   hover + :focus-visible are new — there was nothing to highlight on a
+   non-interactive <div>. */
 .dash-notif-item {
     display: flex;
     align-items: flex-start;
+    width: 100%;
     gap: 10px;
     padding: 10px;
+    border-radius: 8px;
+    background: none;
+    border: 0;
+    text-align: left;
+    font: inherit;
+    color: inherit;
+    cursor: pointer;
+    transition: background 0.15s ease;
+}
+
+.dash-notif-item:hover,
+.dash-notif-item:focus-visible {
+    background: rgba(244, 239, 230, 0.06);
+}
+
+.dash-notif-item:focus-visible {
+    outline: 2px solid var(--color-primary);
+    outline-offset: -2px;
 }
 
 .dash-notif-item + .dash-notif-item {
@@ -377,6 +393,24 @@ body.dash-body {
     font-weight: 700;
     font-size: 0.95rem;
     flex-shrink: 0;
+}
+
+/* R4-4 (implementation_plan.md, "Revision 4") — renderProfile()
+   (includes/Dashboard.js) inserts this <img> inside a .dash-avatar
+   whenever profiles.avatar_url is set, at whatever size THAT .dash-avatar
+   already renders at (38px topbar, 76px Profile panel, the Account
+   Settings preview below) — .dash-avatar's own rule above is completely
+   untouched, so the no-image initials avatar looks and behaves exactly as
+   it always has. object-fit: cover center-crops a non-square photo instead
+   of squashing it (belt-and-suspenders — the upload pipeline already
+   center-crops to a square before it's ever saved); border-radius: inherit
+   clips the image into the same circle regardless of which .dash-avatar
+   context painted it. */
+.dash-avatar-img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    border-radius: inherit;
 }
 
 .dash-profile-trigger .dash-caret {
@@ -1793,6 +1827,17 @@ body.dash-body {
     display: flex;
     flex-direction: column;
     gap: 12px;
+    transition: outline-color 0.3s ease;
+}
+
+/* R4-3 (implementation_plan.md, "Revision 4") — brief highlight flashed by
+   a notification click (includes/Dashboard.js's notifList click delegate)
+   so the customer can actually tell which card the Receipts panel just
+   scrolled to. Added for ~2s, then removed by that same JS — the
+   transition above is only what makes ITS removal fade rather than snap. */
+.dash-receipt-card.is-highlighted {
+    outline: 2px solid var(--color-primary);
+    outline-offset: 3px;
 }
 
 .dash-receipt-top {
@@ -1902,6 +1947,44 @@ body.dash-body {
 /* ==========================================================================
    Account settings
    ========================================================================== */
+/* Profile Photo — R4-4 (implementation_plan.md, "Revision 4"). Markup lives
+   in Pages/user_dashboard.html (the FIRST card in this panel), wiring in
+   includes/Dashboard.js; .dash-avatar/.dash-avatar-img above do the actual
+   image-vs-initials rendering — these rules are only this card's own
+   layout (preview + buttons row, hint text). */
+.dash-avatar-upload-row {
+    display: flex;
+    align-items: center;
+    gap: 22px;
+    flex-wrap: wrap;
+}
+
+.dash-avatar-upload-preview {
+    width: 88px;
+    height: 88px;
+    font-size: 1.8rem;
+}
+
+.dash-avatar-upload-controls {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    min-width: 0;
+}
+
+.dash-avatar-upload-actions {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+.dash-avatar-upload-hint {
+    font-size: 0.8rem;
+    color: var(--color-ink-faint);
+    margin: 0;
+}
+
 /* First/Middle/Surname (§9, D3) — a 3-column row above the existing
    .dash-settings-grid (Email/Mobile). Same 20px gap as that grid for visual
    consistency; collapses to 1 column at the same 1080px breakpoint
@@ -2155,6 +2238,18 @@ body.dash-body {
     display: none;
 }
 
+/* R4-2 (implementation_plan.md, "Revision 4") — while the off-canvas drawer
+   is open below 860px (body.dash-sidebar-open, toggled in
+   includes/Dashboard.js), the page behind it must not also scroll — without
+   this, a touch-drag or wheel event over the scrim/drawer could scroll
+   .dash-body underneath both of them at once. Not scoped inside the 860px
+   media query below: the class is only ever added while the hamburger
+   toggle is visible/usable (also gated to that width), so this has no
+   effect at wider viewports on its own. */
+body.dash-sidebar-open {
+    overflow: hidden;
+}
+
 /* ==========================================================================
    Responsive
    ========================================================================== */
@@ -2227,19 +2322,11 @@ body.dash-body {
         display: none !important;
     }
 
-    /* Feedback (§2, D7) — mobile/desktop trigger swap. The sidebar card
-       lives inside the off-canvas drawer at this width (only reachable
-       after opening the hamburger menu), so it's hidden in favor of the
-       always-visible topbar button instead — only one feedback entry point
-       shows at a time, matching the feedback doc's "Mobile UI" vs
-       "Desktop/Tablet UI" split. */
-    .dash-feedback-card {
-        display: none;
-    }
-
-    .dash-feedback-btn-mobile {
-        display: inline-flex;
-    }
+    /* R4-1 (implementation_plan.md, "Revision 4") removed the rule that used
+       to hide .dash-feedback-card here (plus the topbar's now-deleted
+       .dash-feedback-btn-mobile that took over in its place) — the sidebar
+       card stays visible inside the off-canvas drawer at this width, same
+       as every other nav item, reachable via the hamburger toggle. */
 }
 
 @media (max-width: 640px) {
@@ -2249,18 +2336,6 @@ body.dash-body {
 
     .dash-topbar-actions {
         gap: 10px;
-    }
-
-    /* Icon-only at this width — the topbar is already tight (hamburger,
-       title, theme toggle, bell, avatar); dropping the text label keeps the
-       Feedback button a clear, tappable pill without crowding the rest of
-       the row. */
-    .dash-feedback-btn-mobile {
-        padding: 9px;
-    }
-
-    .dash-feedback-btn-mobile-label {
-        display: none;
     }
 
     .dash-content {

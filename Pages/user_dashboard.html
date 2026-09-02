@@ -90,19 +90,22 @@
                 </li>
             </ul>
 
-            <!-- Feedback (§2 of the feedback doc, D7): the desktop/tablet
-                 trigger — "a small 'Feedback' card placed at the bottom of
-                 the side navigation menu ... a brief prompt ... paired with
-                 a clear, clickable 'Give Feedback' button." Hidden below the
-                 860px breakpoint (Style/Dashboard.css, same breakpoint the
-                 sidebar already uses to become an off-canvas drawer), where
-                 the separate .dash-feedback-btn-mobile button in the topbar
-                 (below) takes over instead — only one feedback entry point
-                 is visible per breakpoint at a time, matching the doc's
-                 "Mobile UI" vs "Desktop/Tablet UI" split. Both triggers open
-                 the SAME modal (data-dash-feedback-overlay, near the end of
-                 this file) via the shared [data-dash-feedback-open]
-                 attribute — see includes/Dashboard.js. -->
+            <!-- Feedback (§2 of the feedback doc, D7) — "a small 'Feedback'
+                 card placed at the bottom of the side navigation menu ... a
+                 brief prompt ... paired with a clear, clickable 'Give
+                 Feedback' button." Originally hidden below 860px in favor of
+                 a separate .dash-feedback-btn-mobile button in the topbar;
+                 R4-1 (implementation_plan.md, "Revision 4") removed that
+                 split — the user asked for ONE feedback entry point, in the
+                 side menu, identical on mobile and desktop, since the
+                 sidebar is already reachable below 860px as an off-canvas
+                 drawer (opened via the hamburger button in the topbar). The
+                 old mobile topbar button and all of its CSS are gone;
+                 .dash-sidebar gained overflow-y: auto (Style/Dashboard.css)
+                 so this card stays reachable even on a short viewport.
+                 Opens the modal (data-dash-feedback-overlay, near the end of
+                 this file) via [data-dash-feedback-open] — see
+                 includes/Dashboard.js. -->
             <div class="dash-sidebar-foot">
                 <div class="dash-nav-divider"></div>
                 <div class="dash-feedback-card" data-dash-feedback-card>
@@ -128,19 +131,11 @@
                 </div>
 
                 <div class="dash-topbar-actions">
-                    <!-- Feedback (§2, D7) — the MOBILE trigger: "a distinct,
-                         standalone 'Feedback' button directly inside the
-                         navigation bar ... a prominent button", shown only
-                         below the 860px breakpoint (Style/Dashboard.css) —
-                         the sidebar card above is the desktop/tablet
-                         equivalent, hidden at that same breakpoint. Opens
-                         the same modal as the sidebar card via the shared
-                         [data-dash-feedback-open] attribute. -->
-                    <button type="button" class="dash-feedback-btn-mobile" data-dash-feedback-open>
-                        <svg viewBox="0 0 24 24" fill="none"><path d="M4 5.5h16a1 1 0 0 1 1 1V15a1 1 0 0 1-1 1H9l-4.5 4V16H4a1 1 0 0 1-1-1V6.5a1 1 0 0 1 1-1z" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/></svg>
-                        <span class="dash-feedback-btn-mobile-label">Feedback</span>
-                    </button>
-
+                    <!-- The mobile-only Feedback button that used to live
+                         here was removed by R4-1 (implementation_plan.md,
+                         "Revision 4") — the sidebar's .dash-feedback-card
+                         (above) is now the ONE feedback entry point at every
+                         width; see that card's own comment for why. -->
                     <button type="button" class="theme-toggle" data-theme-toggle aria-label="Toggle theme" aria-pressed="false" style="margin-right: 8px;">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                             <circle cx="12" cy="12" r="5" class="sun-circle"/>
@@ -848,6 +843,52 @@
                         <div>
                             <h2>Account Settings</h2>
                             <p>Update your personal details and manage your password.</p>
+                        </div>
+                    </div>
+
+                    <!-- Profile Photo — R4-4, implementation_plan.md
+                         "Revision 4". FIRST card in this panel per that
+                         spec. profiles.avatar_url already existed (already
+                         selected by includes/authGuard.js) but nothing read
+                         or wrote it until now. No Supabase Storage bucket
+                         exists anywhere in this project (see the two notes
+                         in Pages/owner_dashboard.html) and provisioning one
+                         is out of this repo's tracked scope, so the picked
+                         photo is downscaled through a <canvas> to a small,
+                         fixed-size (256x256, center-cropped) JPEG and stored
+                         directly in that text column as a data URL — see the
+                         upload/remove wiring in includes/Dashboard.js. The
+                         circle below doubles as the LIVE preview: it's a
+                         plain .dash-avatar, the exact same element every
+                         .dash-avatar elsewhere on this page already is, so
+                         renderProfile() (includes/Dashboard.js) paints it —
+                         and keeps it in sync with the topbar/Profile-panel
+                         avatars — through the one shared code path instead
+                         of a second one written just for this card. Starts
+                         on the same "JD" placeholder every other .dash-avatar
+                         starts on, before the real signed-in profile loads;
+                         see renderProfile()'s own comment for why an
+                         avatar_url swaps this for an <img> and a missing one
+                         leaves it exactly as-is. -->
+                    <div class="dash-card">
+                        <div class="dash-card-head">
+                            <h3>Profile Photo</h3>
+                        </div>
+                        <div class="dash-avatar-upload-row">
+                            <div class="dash-avatar dash-avatar-upload-preview">JD</div>
+                            <div class="dash-avatar-upload-controls">
+                                <div class="dash-avatar-upload-actions">
+                                    <button type="button" class="dash-btn-save" data-dash-avatar-upload-trigger>Upload Photo</button>
+                                    <button type="button" class="dash-btn-ghost" data-dash-avatar-remove hidden>Remove Photo</button>
+                                    <!-- Hidden native picker — the two buttons
+                                         above are the real visible controls;
+                                         data-dash-avatar-upload-trigger just
+                                         calls this input's own .click() (see
+                                         includes/Dashboard.js). -->
+                                    <input type="file" accept="image/*" data-dash-avatar-file hidden>
+                                </div>
+                                <p class="dash-avatar-upload-hint">Any image file, up to 5&nbsp;MB — we'll resize and crop it automatically.</p>
+                            </div>
                         </div>
                     </div>
 
