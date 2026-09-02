@@ -463,3 +463,17 @@ bucket is preferred instead, that changes R4-4's write path only, not its UI.
   slightly.
 - Removing `transform` from `.inigo-reveal` touches all three dashboards; risk is
   low (no-op value) but is worth a visual smoke test of the reveal animation.
+
+## Post-implementation notes (Revision 4 as shipped)
+
+- `.dash-notif-item-body` became a `<span>` rather than a `<div>`, since the
+  notification item itself is now a `<button>` and `<div>` is not valid content
+  inside one. `display: flex` makes it render identically either way.
+- `.inigo-reveal` in `Style/Loading.css` is the only shared file touched; the
+  reveal fade was smoke-tested on the owner and staff dashboards and still
+  toggles opacity 0 -> 1 correctly, with no transform reintroduced.
+- Not verified live (no signed-in Supabase session available in the sandbox):
+  the `profiles.avatar_url` write round-trip against the real database, and the
+  notification -> receipt jump against real booking rows. Both were exercised
+  through the real code paths with a stubbed `window.sb` query chain, but need
+  a signed-in browser pass to be considered confirmed.

@@ -151,7 +151,8 @@
    changing nothing visible: the fade-in animation below is unaffected,
    since it never depended on the transform to begin with. Applies to
    owner_dashboard.html/staff_dashboard.html too (same .inigo-reveal class)
-   — a benign fix there as well, not a behavior change either. -->
+   — a benign fix there as well, not a behavior change either.
+   ========================================================================== */
 
 html.inigo-auth-pending .inigo-reveal {
     opacity: 0;
