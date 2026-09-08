@@ -516,27 +516,33 @@
                         <div class="dash-wizard-panel" data-dash-book-step="2">
                             <h3 class="dash-wizard-panel-title">Choose a date &amp; time</h3>
 
+                            <!-- `min`/`value` are set by includes/Dashboard.js
+                                 (todayDateInputValue()) — this used to carry a
+                                 hardcoded value="2026-07-14" with no `min`,
+                                 silently allowing a past date to be "booked". -->
                             <div class="dash-form-group">
                                 <span class="dash-form-label">Date</span>
-                                <input type="date" class="dash-input" data-dash-book-date value="2026-07-14">
+                                <input type="date" class="dash-input" data-dash-book-date>
                             </div>
 
+                            <!-- Part 3 (implementation_plan.md, "Multi-hour
+                                 booking with availability checking") — this
+                                 used to be 12 hardcoded <button data-dash-slot>
+                                 elements (three permanently disabled as pure
+                                 mockup, 12 PM skipped entirely, never
+                                 regenerated per court or date). Now an empty
+                                 container renderSlotGrid()/paintSlotGrid() in
+                                 includes/Dashboard.js fill with one real,
+                                 clickable button per bookable hour
+                                 ([OPEN_HOUR, CLOSE_HOUR) from
+                                 includes/businessHours.js), supporting a
+                                 multi-hour RANGE selection (first click =
+                                 start, second click = end) checked against
+                                 real `booking` rows for the chosen court +
+                                 unit + date. -->
                             <div class="dash-form-group">
                                 <span class="dash-form-label">Available time slots</span>
-                                <div class="dash-slot-grid">
-                                    <button type="button" class="dash-slot" data-dash-slot>8:00 AM</button>
-                                    <button type="button" class="dash-slot" data-dash-slot>9:00 AM</button>
-                                    <button type="button" class="dash-slot is-unavailable" disabled>10:00 AM</button>
-                                    <button type="button" class="dash-slot" data-dash-slot>11:00 AM</button>
-                                    <button type="button" class="dash-slot is-unavailable" disabled>1:00 PM</button>
-                                    <button type="button" class="dash-slot" data-dash-slot>2:00 PM</button>
-                                    <button type="button" class="dash-slot" data-dash-slot>3:00 PM</button>
-                                    <button type="button" class="dash-slot" data-dash-slot>4:00 PM</button>
-                                    <button type="button" class="dash-slot is-unavailable" disabled>5:00 PM</button>
-                                    <button type="button" class="dash-slot" data-dash-slot>6:00 PM</button>
-                                    <button type="button" class="dash-slot" data-dash-slot>7:00 PM</button>
-                                    <button type="button" class="dash-slot" data-dash-slot>8:00 PM</button>
-                                </div>
+                                <div class="dash-slot-grid" data-dash-slot-grid></div>
                             </div>
                         </div>
 
@@ -588,7 +594,7 @@
 
                             <div class="dash-wizard-summary">
                                 <div class="dash-summary-row"><span>Court</span><strong data-dash-summary-court>Loading…</strong></div>
-                                <div class="dash-summary-row"><span>Date</span><strong data-dash-summary-date>Jul 14, 2026</strong></div>
+                                <div class="dash-summary-row"><span>Date</span><strong data-dash-summary-date>Loading…</strong></div>
                                 <div class="dash-summary-row"><span>Time</span><strong data-dash-summary-time>— Select a slot —</strong></div>
                                 <div class="dash-summary-row"><span>Rate</span><strong data-dash-summary-rate>—</strong></div>
 
@@ -1149,6 +1155,12 @@
          fetch-with-fallback shape as courtsData.js above. Must load before
          Dashboard.js, which reads the downpayment percentage from it. -->
     <script src="../includes/appSettings.js"></script>
+    <!-- Shared operating-hours constants (Part 3, multi-hour booking —
+         implementation_plan.md). Must load before Dashboard.js, whose Step 2
+         slot grid and Overview peek widget both read
+         window.InigoBusinessHours.OPEN_HOUR/CLOSE_HOUR/formatHourLabel at
+         parse time. -->
+    <script src="../includes/businessHours.js"></script>
     <!-- Receipt PNG download (§7, D8) — same no-build-step CDN <script>
          convention as the supabase-js tag above. Must load before
          Dashboard.js, whose downloadReceiptAsPng() calls window.html2canvas

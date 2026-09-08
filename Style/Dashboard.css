@@ -1410,7 +1410,7 @@ body.dash-body {
     transition: background 0.2s, color 0.2s, border-color 0.2s;
 }
 
-.dash-slot:hover:not(.is-unavailable) {
+.dash-slot:hover:not(.is-unavailable):not(.is-past) {
     border-color: var(--color-primary);
     color: var(--color-ink);
 }
@@ -1427,6 +1427,37 @@ body.dash-body {
     text-decoration: line-through;
     cursor: not-allowed;
     opacity: 0.5;
+}
+
+/* Part 3 (implementation_plan.md, "Multi-hour booking with availability
+   checking") — an hour earlier than "now" on the currently selected date.
+   Distinct from .is-unavailable (booked by someone else): less opaque, since
+   "not bookable today" is a less urgent signal than "already taken". */
+.dash-slot.is-past {
+    color: var(--color-ink-faint);
+    text-decoration: line-through;
+    cursor: not-allowed;
+    opacity: 0.35;
+}
+
+/* Multi-hour range picker (Part 3) — .is-in-range marks an hour strictly
+   BETWEEN the two clicked boundary hours. The boundaries themselves keep
+   the .is-selected solid fill above (a single-hour selection is just a
+   range whose start and end are the same hour, so it only ever gets
+   .is-selected) plus .is-range-start/.is-range-end below for a small ring
+   so the two ends read as deliberate boundaries. rgba(255, 106, 44, *) is
+   this stylesheet's own existing translucent-primary literal (see
+   .dash-notice and the notification-dot rules above) — reused here rather
+   than introduced fresh. */
+.dash-slot.is-in-range {
+    background: rgba(255, 106, 44, 0.16);
+    border-color: var(--color-primary);
+    color: var(--color-ink);
+}
+
+.dash-slot.is-range-start,
+.dash-slot.is-range-end {
+    box-shadow: inset 0 0 0 2px var(--color-primary-dim);
 }
 
 .dash-payment-options {

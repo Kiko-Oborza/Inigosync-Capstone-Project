@@ -1,0 +1,74 @@
+// IñigoSync — Shared operating-hours constants (Part 3, multi-hour booking —
+// implementation_plan.md, "Multi-hour booking with availability checking").
+//
+// Before this file existed, the sports center's operating hours were three
+// separate, hardcoded, and mutually inconsistent hour lists:
+//   - Pages/user_dashboard.html's Step 2 slot buttons: 8 AM-8 PM, and — a
+//     real bug — SKIPPED 12:00 PM entirely (12 of 13 possible hours only).
+//   - includes/Dashboard.js's OVERVIEW_SLOT_HOURS (the Overview "Peek
+//     slots" widget): 8 AM-8 PM, correctly including noon.
+//   - includes/staff_dashboard.js's SCHEDULE_SLOTS (the Court Schedule
+//     grid): 2-hour columns from 8 AM, its LAST column covering only
+//     6 PM-8 PM — silently unable to ever show a booking in the 8 PM-9 PM
+//     hour, because it assumed closing time was 8 PM, not 9 PM.
+// Every consumer now reads OPEN_HOUR/CLOSE_HOUR from here instead, so
+// there is exactly one place that says what the sports center's bookable
+// hours are. There is no operating-hours row in `app_settings`
+// (database/schema/007_app_settings.sql) or anywhere else in the live
+// database — like that file's payment defaults, this is a hardcoded
+// fallback the whole app agrees on until an admin-configurable setting
+// exists for it.
+//
+// This project ships plain <script src> tags (no build step, no ES
+// modules), so this attaches to window, same as includes/courtsData.js and
+// includes/appSettings.js. Load this after Config/supabaseClient.js (not
+// actually required by this file, but keeps this project's <script> block
+// ordering easy to reason about) and BEFORE includes/Dashboard.js and
+// includes/staff_dashboard.js, both of which read window.InigoBusinessHours
+// at parse time (top-level `const` hour lists), not just inside a later
+// callback.
+(function () {
+    // 8:00 AM. The sports center's first bookable hour.
+    const OPEN_HOUR = 8;
+    // 9:00 PM (21:00). Exclusive — the LAST bookable hour STARTS at 8 PM
+    // (hour 20) and ends here. Never treat this as a valid start hour.
+    const CLOSE_HOUR = 21;
+
+    // "8:00 AM" / "6:00 PM" — the long form used by the customer dashboard
+    // (Booking Step 2's slot grid, the Overview peek widget).
+    function formatHourLabel(hour) {
+        const period = hour >= 12 ? 'PM' : 'AM';
+        const hour12 = ((hour + 11) % 12) + 1;
+        return `${hour12}:00 ${period}`;
+    }
+
+    // "8 AM" / "6 PM" — the short form used by the staff Court Schedule's
+    // narrower time-column labels. Same period/hour12 math as
+    // formatHourLabel above, just without the ":00".
+    function formatHourLabelShort(hour) {
+        const period = hour >= 12 ? 'PM' : 'AM';
+        const hour12 = ((hour + 11) % 12) + 1;
+        return `${hour12} ${period}`;
+    }
+
+    // [OPEN_HOUR, CLOSE_HOUR) stepping by `step` (default 1, hourly).
+    // includes/staff_dashboard.js's SCHEDULE_SLOTS calls this with step=2
+    // for its 2-hour columns — see that file for why this now yields ONE
+    // MORE column than its old hardcoded array (a real coverage fix, not a
+    // cosmetic change: the old array silently couldn't show a booking in
+    // the 8 PM-9 PM hour at all).
+    function hoursRange(step) {
+        const stepSize = Number.isFinite(step) && step > 0 ? step : 1;
+        const hours = [];
+        for (let h = OPEN_HOUR; h < CLOSE_HOUR; h += stepSize) hours.push(h);
+        return hours;
+    }
+
+    window.InigoBusinessHours = {
+        OPEN_HOUR,
+        CLOSE_HOUR,
+        formatHourLabel,
+        formatHourLabelShort,
+        hoursRange,
+    };
+})();

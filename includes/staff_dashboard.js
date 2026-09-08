@@ -255,6 +255,24 @@ document.addEventListener('DOMContentLoaded', () => {
         return new Date(iso).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
     }
 
+    // Part 3 (implementation_plan.md, "Multi-hour booking with availability
+    // checking") — bookings are ranges now (database/schema/
+    // 012_booking_time_range.sql's end_at). Only used for the Booking
+    // Overview table's Time column below; formatOverviewDate() above is
+    // left as a plain single-timestamp formatter since it's also used for
+    // audit_log's created_at further below, which has no "end" of its own.
+    // Falls back to a single start-time label when end_at is missing/
+    // invalid — a booking made before that migration, or while it hadn't
+    // been applied yet.
+    function formatOverviewTimeRange(startIso, endIso) {
+        const startLabel = formatOverviewDate(startIso);
+        if (!endIso) return startLabel;
+        const end = new Date(endIso);
+        if (Number.isNaN(end.getTime())) return startLabel;
+        const endLabel = end.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+        return `${startLabel} – ${endLabel}`;
+    }
+
     // Bookings today (by time_date) drive all 4 overview stat cards plus
     // the 2 real Staff Profile tiles — computed client-side from the same
     // dataset refreshBookingOverview() already fetched, instead of extra
@@ -360,7 +378,7 @@ document.addEventListener('DOMContentLoaded', () => {
             row.innerHTML = `
                 <td class="staff-cell-main">${customerName}${customerContact ? `<span class="staff-cell-sub">${customerContact}</span>` : ''}</td>
                 <td>${courtLabel}</td>
-                <td>${formatOverviewDate(booking.time_date)}</td>
+                <td>${formatOverviewTimeRange(booking.time_date, booking.end_at)}</td>
                 <td class="staff-cell-ref">#${window.escapeHtml(booking.booking_id)}</td>
                 <td><span class="staff-status ${statusClass}">${statusLabel}</span></td>
                 <td>${bookingActionsHtml(booking)}</td>
@@ -794,23 +812,37 @@ document.addEventListener('DOMContentLoaded', () => {
     refreshWalkinsPanel();
     document.addEventListener('inigosync:profile-ready', refreshWalkinsPanel);
 
+    if (!window.InigoBusinessHours) {
+        // Should never happen — includes/businessHours.js must load before
+        // this file (see the <script> order in Pages/staff_dashboard.html).
+        console.error('[staff] window.InigoBusinessHours is missing — check that includes/businessHours.js loads before includes/staff_dashboard.js.');
+    }
+
     // ------------------------------------------------------------------
     // Court Schedule — rendered from real courts (window.InigoCourtsData)
     // as columns and real `booking` + `walk_in_booking` rows (today only)
     // as cells, replacing the fully static demo grid. Each cell represents
-    // a fixed 2-hour window (matching the original demo's row granularity,
-    // and the sports center's assumed 8 AM–8 PM operating hours — nothing
-    // in this system tracks real operating hours, so this is the grid's
-    // display bound, not a claim about any individual's schedule). A
-    // booking "occupies" every slot its [start, start+duration) window
-    // overlaps, so a booking that runs long visibly spans more than one
-    // cell instead of only ever marking its starting slot.
+    // a fixed 2-hour window. A booking "occupies" every slot its
+    // [start, start+duration) window overlaps, so a booking that runs long
+    // visibly spans more than one cell instead of only ever marking its
+    // starting slot.
     // ------------------------------------------------------------------
     const scheduleGrid = document.querySelector('[data-staff-schedule-grid]');
     const scheduleDateEl = document.querySelector('[data-staff-schedule-date]');
     const scheduleSportTabs = document.querySelector('[data-staff-sport-tabs]');
 
-    const SCHEDULE_SLOTS = [8, 10, 12, 14, 16, 18]; // 2-hour windows, 8 AM through 8 PM
+    // 2-hour windows, [OPEN_HOUR, CLOSE_HOUR) from includes/businessHours.js
+    // (Part 3, implementation_plan.md) — used to be its own hardcoded
+    // [8,10,12,14,16,18], which assumed an 8 PM closing time. The real
+    // closing time (CLOSE_HOUR = 21, 9 PM) means this now derives ONE MORE
+    // column (adds hour 20) than before — a real coverage fix, not a
+    // cosmetic change: a booking in the 8 PM-9 PM hour was previously
+    // invisible on this grid, because the old array's last column
+    // (starting at 18) only covered 6 PM-8 PM. Literal fallback here only
+    // for the "should never happen" case this file's own load-order guard
+    // already logs (see the window.InigoCourtsData guard further below,
+    // same pattern).
+    const SCHEDULE_SLOTS = window.InigoBusinessHours ? window.InigoBusinessHours.hoursRange(2) : [8, 10, 12, 14, 16, 18, 20];
     const SCHEDULE_SLOT_MS = 2 * 60 * 60 * 1000;
     // Kept equal to database/schema/004_staff_module.sql's
     // booking.duration_minutes DEFAULT — see that file's header comment.
@@ -818,10 +850,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
     let scheduleActiveSport = 'all';
 
+    // "8 AM" / "6 PM" — delegates to includes/businessHours.js's shared
+    // short-form formatter (Part 3) so this grid's time column can never
+    // drift from the customer dashboard's own hour labels again.
     function formatHourLabel(hour) {
-        const period = hour >= 12 ? 'PM' : 'AM';
-        const hour12 = ((hour + 11) % 12) + 1;
-        return `${hour12} ${period}`;
+        return window.InigoBusinessHours.formatHourLabelShort(hour);
     }
 
     function formatScheduleDate(d) {
@@ -837,8 +870,18 @@ document.addEventListener('DOMContentLoaded', () => {
     // duration_minutes is undefined on every row until
     // database/schema/004_staff_module.sql is applied — falls back to
     // DEFAULT_DURATION_MINUTES, never invents a longer/shorter guess.
+    // Prefers the real end_at (database/schema/012_booking_time_range.sql,
+    // Part 3) when present — the authoritative end of a multi-hour booking
+    // — and only recomputes from duration_minutes for a row from before
+    // that migration, or for a `walk_in_booking` row (that table has no
+    // end_at column — see 004_staff_module.sql's header note on why it and
+    // `booking` were never the same table).
     function bookingWindow(row) {
         const start = new Date(row.time_date);
+        if (row.end_at) {
+            const end = new Date(row.end_at);
+            if (!Number.isNaN(end.getTime())) return { start, end };
+        }
         const minutesRaw = Number(row.duration_minutes);
         const minutes = Number.isFinite(minutesRaw) && minutesRaw > 0 ? minutesRaw : DEFAULT_DURATION_MINUTES;
         return { start, end: new Date(start.getTime() + minutes * 60000) };

@@ -338,7 +338,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const items = (bookings || []).slice(0, NOTIF_LIMIT).map((booking) => {
             const status = String(booking.status || 'pending');
             const court = booking.courts || 'Court';
-            const when = `${formatBookingDate(booking.time_date)} · ${formatBookingTime(booking.time_date)}`;
+            const when = `${formatBookingDate(booking.time_date)} · ${formatBookingTime(booking.time_date, booking.end_at)}`;
             return {
                 bookingId: booking.booking_id,
                 title: NOTIF_STATUS_TITLES[status] || 'Booking update',
@@ -609,19 +609,55 @@ document.addEventListener('DOMContentLoaded', () => {
     // the Overview widget) are now one and the same — see the Overview
     // Courts section further below (§4/D2).
     //
-    // IMPORTANT — the wizard changes ONLY presentation. bookingState, its
-    // court/date/slot/payment selection, updateSummary()'s live
-    // recalculation, and the sb.from('booking').insert({...}) payload
-    // further below are all unchanged from before this phase; real per-slot
-    // availability and double-booking prevention remain a later phase
-    // (implementation_plan.md Phase 4) — the booking table only stores a
-    // single start timestamp.
+    // Part 3 (implementation_plan.md, "Multi-hour booking with availability
+    // checking") replaced Step 2's 12 hardcoded <button data-dash-slot>
+    // elements (three permanently `disabled` as pure mockup, and the grid
+    // never regenerated per court or date) with a real, data-driven,
+    // multi-hour RANGE picker backed by database/schema/
+    // 012_booking_time_range.sql's new end_at/duration_minutes/court_unit
+    // columns and its booking_no_overlap EXCLUDE constraint — see
+    // renderSlotGrid()/fetchDayBookings() further below and that
+    // migration's own header comment. bookingState.time (a single "8:00 AM"
+    // string) is gone, replaced by bookingState.startHour/endHour (24-hour
+    // integers) and bookingState.unit (the Step 1 preview's resolved
+    // Court/Lane/Table label, D3 — persisted now instead of thrown away).
     // ------------------------------------------------------------------
+    if (!window.InigoBusinessHours) {
+        // Should never happen — includes/businessHours.js must load before
+        // this file (see the <script> order in Pages/user_dashboard.html).
+        console.error('[dashboard] window.InigoBusinessHours is missing — check that includes/businessHours.js loads before includes/Dashboard.js.');
+    }
+
     const bookSelect = document.querySelector('[data-dash-book-select]');
     const bookDate = document.querySelector('[data-dash-book-date]');
-    const slots = document.querySelectorAll('[data-dash-slot]');
+    // Real slot buttons no longer exist in the markup at page load — they're
+    // rendered into this (initially empty) container by renderSlotGrid()/
+    // paintSlotGrid() below, one per bookable hour, and re-wired on every
+    // repaint (same idiom this file's wireOverviewCourtList() already uses
+    // for its own dynamically rendered scope further below).
+    const slotGridEl = document.querySelector('[data-dash-slot-grid]');
     const paymentOptions = document.querySelectorAll('[data-dash-payment-option]');
     const bookSubmit = document.querySelector('[data-dash-book-submit]');
+
+    // Defaults the date input to TODAY and floors it there (Part 3 — this
+    // input used to carry a hardcoded value="2026-07-14" with no `min`,
+    // silently allowing a past date to be "booked"). Computed from local
+    // Y/M/D, not toISOString().slice(0,10) — that reads UTC, which for a PH
+    // user (UTC+8) rolls over to the WRONG calendar date for roughly the
+    // first 8 hours of every local day. Must run before bookingState below
+    // reads bookDate.value as its own initial date.
+    function todayDateInputValue() {
+        const now = new Date();
+        const y = now.getFullYear();
+        const m = String(now.getMonth() + 1).padStart(2, '0');
+        const d = String(now.getDate()).padStart(2, '0');
+        return `${y}-${m}-${d}`;
+    }
+    if (bookDate) {
+        const todayStr = todayDateInputValue();
+        bookDate.min = todayStr;
+        if (!bookDate.value || bookDate.value < todayStr) bookDate.value = todayStr;
+    }
 
     const summaryCourt = document.querySelector('[data-dash-summary-court]');
     const summaryDate = document.querySelector('[data-dash-summary-date]');
@@ -659,14 +695,24 @@ document.addEventListener('DOMContentLoaded', () => {
     // court's REAL related sport (e.g. "Bowling" for the "Bowling —
     // Duckpin" court, not a copy of the court name) — booking.sports is
     // NOT NULL, so this must never still be empty by the time a booking is
-    // submitted; see the insert below.
+    // submitted; see the insert below. `unit` is the Step 1 preview's
+    // currently resolved Court/Lane/Table label (window.InigoCourtsData
+    // .resolveCourtUnits(), kept in sync by paintBookPreview() below) — used
+    // to be preview-only (the chosen unit never left the DOM); Part 3/D3
+    // persists it, since availability/overlap is checked PER UNIT, not per
+    // sport (booking two different Basketball courts must not conflict with
+    // each other). `startHour`/`endHour` (24-hour integers, or null before
+    // anything is picked) replace the old single `time` string — see
+    // renderSlotGrid()/onSlotClick() below.
     let bookingState = {
         court: '',
         sport: '',
         rate: null,
         rateUnit: '/hr',
         date: bookDate ? bookDate.value : '',
-        time: null,
+        unit: null,
+        startHour: null,
+        endHour: null,
         paymentType: 'downpayment',
         // Overwritten once window.InigoAppSettings.getSettings() resolves
         // below — 50 is the same fallback that module itself uses when
@@ -702,7 +748,12 @@ document.addEventListener('DOMContentLoaded', () => {
     // as renderOverviewCourtCard() does further below (§4/D2) rather than a
     // second implementation — see that function's own header comment for
     // why "no photo yet" always renders the honest "Photo coming soon"
-    // placeholder instead of a broken <img> or an invented URL.
+    // placeholder instead of a broken <img> or an invented URL. Also the
+    // ONE place that keeps bookingState.unit in sync (Part 3/D3) — every
+    // caller below (bookSelect's court change, the unit <select>'s own
+    // change, and populateBookSelect()'s initial paint) always goes through
+    // here, so Step 2's per-unit availability check can never see a stale
+    // unit.
     function paintBookPreview(court, unitIndexOverride) {
         if (!bookPreviewMedia) return;
 
@@ -710,6 +761,7 @@ document.addEventListener('DOMContentLoaded', () => {
             bookPreviewMedia.innerHTML = '<span class="dash-court-monogram" aria-hidden="true">?<small class="dash-court-photo-soon">Select a court to preview it</small></span>';
             if (bookUnitWrap) bookUnitWrap.hidden = true;
             if (bookUnitSelect) bookUnitSelect.innerHTML = '';
+            bookingState.unit = null;
             return;
         }
 
@@ -722,6 +774,12 @@ document.addEventListener('DOMContentLoaded', () => {
         const index = Math.min(Math.max(0, unitIndexOverride !== undefined ? unitIndexOverride : bookSelectedUnitIndex), units.length - 1);
         bookSelectedUnitIndex = index;
         const unit = units[index];
+        // Null only in the rare "quantity 0, no unit_images" fallback (see
+        // window.InigoCourtsData.resolveCourtUnits()) — a real data gap, not
+        // an error; fetchDayBookings()/the insert below both treat a null
+        // unit as "nothing to disambiguate", same as a legacy pre-Part-3
+        // booking.
+        bookingState.unit = unit.label;
 
         const monogram = window.InigoCourtsData ? window.InigoCourtsData.monogramFor(court.sportSlug, court.name) : '?';
         const alt = unit.label ? `${court.name} — ${unit.label}` : court.name;
@@ -758,11 +816,16 @@ document.addEventListener('DOMContentLoaded', () => {
         bookUnitSelect.addEventListener('change', () => {
             const court = findBookCourt(bookingState.court);
             if (!court) return;
-            // Unit choice is preview-only (see this section's header
-            // comment on the Booking panel markup) — it repaints the photo
-            // and nothing else; bookingState/the eventual insert payload
-            // never learn which unit was previewed.
+            // Unit choice used to be preview-only — it repainted the photo
+            // and nothing else. Part 3/D3 makes it meaningful: a different
+            // unit can have entirely different availability, so any
+            // in-progress Step 2 selection is cleared and the grid
+            // re-fetched for the newly chosen unit (resetSlotSelectionAndRender(),
+            // defined with the rest of the slot-grid machinery below —
+            // hoisted, safe to call from here).
             paintBookPreview(court, Number(bookUnitSelect.value) || 0);
+            resetSlotSelectionAndRender();
+            updateSummary();
         });
     }
 
@@ -777,7 +840,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function bookStepIsReady(step) {
         if (step === 1) return Boolean(bookingState.court);
-        if (step === 2) return Boolean(bookingState.date) && Boolean(bookingState.time);
+        // A single clicked hour (startHour set, endHour still null) is
+        // already a complete, valid 1-hour booking — see onSlotClick()
+        // below; a customer isn't forced to click twice just to book one
+        // hour.
+        if (step === 2) return Boolean(bookingState.date) && bookingState.startHour !== null;
         return true;
     }
 
@@ -825,14 +892,46 @@ document.addEventListener('DOMContentLoaded', () => {
         return typeof bookingState.rate === 'number' && !Number.isNaN(bookingState.rate);
     }
 
+    // Number of whole hours currently selected in Step 2, or 0 before any
+    // hour has been clicked. A single clicked hour with no second click yet
+    // (endHour still null) counts as ITS OWN 1-hour end — see
+    // onSlotClick() below for why that's a deliberate, complete selection
+    // on its own, not a "waiting for step 2 of 2" state.
+    function bookingHoursSelected() {
+        if (bookingState.startHour === null) return 0;
+        const effectiveEnd = bookingState.endHour !== null ? bookingState.endHour : bookingState.startHour;
+        return effectiveEnd - bookingState.startHour + 1;
+    }
+
+    // "8:00 AM – 12:00 PM · 4 hrs" (Part 3) — replaces the old single-slot
+    // label (bookingState.time). Null before any hour is picked, same
+    // "nothing selected yet" signal the old bookingState.time === null used
+    // to give summaryTime's own fallback text below.
+    function bookingTimeRangeLabel() {
+        const hours = bookingHoursSelected();
+        if (hours === 0) return null;
+        const effectiveEnd = bookingState.endHour !== null ? bookingState.endHour : bookingState.startHour;
+        const fmt = window.InigoBusinessHours.formatHourLabel;
+        // effectiveEnd+1 is deliberate — a booking whose last clicked hour
+        // is 11 (11 AM-12 PM) ENDS at 12, per this feature's "clicking 8
+        // then 11 books 8:00-12:00" rule (implementation_plan.md).
+        return `${fmt(bookingState.startHour)} – ${fmt(effectiveEnd + 1)} · ${hours} hr${hours === 1 ? '' : 's'}`;
+    }
+
     function updateSummary() {
         const isFull = bookingState.paymentType === 'full';
         const pct = bookingState.downpaymentPct;
-        const amount = hasKnownRate() ? (isFull ? bookingState.rate : bookingState.rate * (pct / 100)) : null;
+        const hours = bookingHoursSelected();
+        // Part 3 — total now scales with hours selected (it used to always
+        // be `rate × (pct or 1)`, i.e. hardcoded to exactly 1 hour, because
+        // only one slot was ever selectable). Still null whenever the rate
+        // itself is unknown (every court today — see hasKnownRate() above)
+        // so this never invents a peso figure.
+        const amount = (hasKnownRate() && hours > 0) ? (bookingState.rate * hours * (isFull ? 1 : pct / 100)) : null;
 
         if (summaryCourt) summaryCourt.textContent = bookingState.court || '—';
         if (summaryDate) summaryDate.textContent = formatDate(bookingState.date);
-        if (summaryTime) summaryTime.textContent = bookingState.time || '— Select a slot —';
+        if (summaryTime) summaryTime.textContent = bookingTimeRangeLabel() || '— Select a slot —';
         if (summaryRate) summaryRate.textContent = hasKnownRate() ? `₱${bookingState.rate}${bookingState.rateUnit}` : 'Rate TBA';
         if (summaryPayment) summaryPayment.textContent = isFull ? 'Full Payment' : `Downpayment (${pct}%)`;
         if (summaryTotal) summaryTotal.textContent = amount !== null ? `₱${amount.toFixed(2)}` : '—';
@@ -844,7 +943,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (downpaymentDesc) downpaymentDesc.textContent = `Pay ${pct}% now, balance on-site.`;
 
         if (bookSubmit) {
-            const ready = Boolean(bookingState.time) && Boolean(bookingState.court);
+            const ready = bookingState.startHour !== null && Boolean(bookingState.court);
             bookSubmit.disabled = !ready;
             bookSubmit.textContent = ready ? 'Request Booking' : 'Select a time slot to continue';
         }
@@ -866,25 +965,33 @@ document.addEventListener('DOMContentLoaded', () => {
             bookingState.rate = (opt && opt.dataset.rate) ? Number(opt.dataset.rate) : null;
             bookingState.rateUnit = (opt && opt.dataset.rateUnit) || '/hr';
             syncBookPreviewFromState();
+            // A different court almost always means different availability
+            // (and paintBookPreview() above just reset bookingState.unit
+            // too) — any in-progress Step 2 selection is stale, so it's
+            // cleared and the grid re-fetched for the new court.
+            resetSlotSelectionAndRender();
             updateSummary();
         });
     }
 
     if (bookDate) {
         bookDate.addEventListener('change', () => {
+            // Belt-and-suspenders on top of the `min` attribute set above —
+            // `min` stops most browsers' native date picker from offering a
+            // past date, but doesn't stop every possible way a value gets
+            // into this input (e.g. a very old browser, or manual entry
+            // where supported). Clamped forward to today rather than just
+            // rejected, so the field never sits on an invalid value.
+            const todayStr = todayDateInputValue();
+            if (bookDate.value < todayStr) {
+                bookDate.value = todayStr;
+                window.InigoToast?.show("You can't book a date in the past — showing today instead.", true);
+            }
             bookingState.date = bookDate.value;
+            resetSlotSelectionAndRender();
             updateSummary();
         });
     }
-
-    slots.forEach((slot) => {
-        slot.addEventListener('click', () => {
-            slots.forEach((s) => s.classList.remove('is-selected'));
-            slot.classList.add('is-selected');
-            bookingState.time = slot.textContent.trim();
-            updateSummary();
-        });
-    });
 
     paymentOptions.forEach((option) => {
         option.addEventListener('click', () => {
@@ -899,15 +1006,270 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     });
 
-    // "8:00 AM" / "6:00 PM" -> 24h "08:00" / "18:00", for building the
-    // booking's time_date timestamp (each slot is a single 1-hour start time).
-    function slotTo24h(label) {
-        const match = /^(\d{1,2}):(\d{2})\s*(AM|PM)$/i.exec(label || '');
-        if (!match) return null;
-        let [, h, m, period] = match;
-        h = Number(h) % 12;
-        if (period.toUpperCase() === 'PM') h += 12;
-        return `${String(h).padStart(2, '0')}:${m}`;
+    // ------------------------------------------------------------------
+    // Step 2 — data-driven multi-hour range picker (Part 3,
+    // implementation_plan.md "Multi-hour booking with availability
+    // checking"). Replaces the old single-select [data-dash-slot] click
+    // handler above (bookingState.time, slotTo24h()) — both are gone.
+    //
+    // Bookable hours: window.InigoBusinessHours.hoursRange() —
+    // [OPEN_HOUR, CLOSE_HOUR) from includes/businessHours.js, the same
+    // source OVERVIEW_SLOT_HOURS further below and includes/
+    // staff_dashboard.js's SCHEDULE_SLOTS now read.
+    //
+    // Availability: fetchDayBookings() below queries the real `booking`
+    // table for the selected court + calendar day, restricted to
+    // 'pending'/'confirmed' rows (a cancelled/completed booking never
+    // blocks a new one). An hour is "booked" only if a returned row's
+    // window overlaps it AND that row's court_unit matches the CURRENTLY
+    // selected unit (bookingState.unit) — per-unit, not per-sport (D3):
+    // booking "Court 1" must never block "Court 2" of the same sport. A
+    // legacy row (court_unit is null, made before database/schema/
+    // 012_booking_time_range.sql existed) groups under '' along with any
+    // OTHER booking that also has no unit — i.e. it behaves as a
+    // sport-wide block. Accepted, documented gap (implementation_plan.md's
+    // "Open questions and risks").
+    //
+    // Reuses this file's own overlap primitives — overviewBookingWindow()/
+    // overviewWindowsOverlap()/overviewSlotWindow() further below in the
+    // Overview Courts section — instead of a third copy of the same
+    // `a.start < b.end && b.start < a.end` math. Despite their "overview"
+    // names (kept as-is; see isOverviewSchemaMismatch()'s own "despite its
+    // name" comment further below for why this file doesn't rename a
+    // widely-used helper just because a second, unrelated feature now
+    // shares it), all three are plain, date-agnostic functions — calling
+    // them from here is safe: they're `function` DECLARATIONS in this same
+    // outer scope, hoisted, so it doesn't matter that they're defined later
+    // in this file than this section.
+    //
+    // RLS CAVEAT (implementation_plan.md's "Open questions and risks" —
+    // documented, not introduced here, and NOT fixable from this repo):
+    // `booking`'s row-level security policies predate this repo's schema
+    // tracking and are not visible to it (database/schema/
+    // 004_staff_module.sql's own header note). If the signed-in customer
+    // role cannot SELECT other customers' booking rows, the query below
+    // returns only (or none of) their own bookings and this grid would
+    // cheerfully show a truly-booked hour as open. This code is written to
+    // be correct regardless of what RLS actually allows, but it cannot
+    // verify or fix RLS from here. The REAL guarantee against a double
+    // booking either way is server-side: database/schema/
+    // 012_booking_time_range.sql's booking_no_overlap EXCLUDE constraint,
+    // which the bookSubmit handler's own 23P01 branch below exists to
+    // surface as a friendly message. If RLS does turn out to hide other
+    // customers' bookings, the fix is a `security definer` RPC that
+    // returns ONLY busy time ranges (no customer identities) — NOT
+    // widening `booking`'s SELECT policy to expose every customer's
+    // bookings to every other signed-in customer.
+    // ------------------------------------------------------------------
+    let slotGridBookings = { ok: true, rows: [] };
+    // Bumped on every renderSlotGrid() call so a slow, now-superseded fetch
+    // (rapid court/date/unit changes) can detect it's stale and drop its
+    // own result instead of overwriting a newer render.
+    let slotGridRequestSeq = 0;
+
+    async function fetchDayBookings(courtName, dateStr) {
+        if (!window.sb || !courtName || !dateStr) return { ok: false, rows: [] };
+
+        const dayStart = new Date(`${dateStr}T00:00:00`);
+        const dayEnd = new Date(dayStart.getTime() + 24 * 60 * 60 * 1000);
+
+        // court_unit/end_at only exist once database/schema/
+        // 012_booking_time_range.sql has been applied. If it hasn't, this
+        // first attempt fails with a schema-mismatch error (same
+        // classifier fetchOverviewWalkins() below already uses, despite
+        // its "isOverviewSchemaMismatch" name) and this retries with only
+        // the columns that exist today, so the grid can still show
+        // approximate (sport-wide, not per-unit) availability instead of
+        // nothing.
+        let res = await window.sb
+            .from('booking')
+            .select('court_unit, time_date, end_at, duration_minutes')
+            .eq('courts', courtName)
+            .in('status', ['pending', 'confirmed'])
+            .gte('time_date', dayStart.toISOString())
+            .lt('time_date', dayEnd.toISOString());
+
+        if (res.error && isOverviewSchemaMismatch(res.error)) {
+            res = await window.sb
+                .from('booking')
+                .select('time_date, duration_minutes')
+                .eq('courts', courtName)
+                .in('status', ['pending', 'confirmed'])
+                .gte('time_date', dayStart.toISOString())
+                .lt('time_date', dayEnd.toISOString());
+        }
+
+        if (res.error) {
+            console.error('[dashboard] failed to load bookings for the slot grid', res.error);
+            return { ok: false, rows: [] };
+        }
+        return { ok: true, rows: res.data || [] };
+    }
+
+    // True when `hour` (on the currently selected date) has already
+    // started — the customer's local "now", not the server's, since this
+    // is purely a client-side UX guard (the DB doesn't know or care what a
+    // browser's clock reads).
+    function isSlotHourPast(hour) {
+        const start = new Date(`${bookingState.date}T00:00:00`);
+        start.setHours(hour, 0, 0, 0);
+        return start.getTime() < Date.now();
+    }
+
+    // True when `hour` on the currently selected date overlaps a fetched
+    // booking that shares the CURRENTLY selected unit (or shares "no
+    // unit" — see this section's header comment on legacy rows).
+    function isSlotHourBooked(hour) {
+        if (!slotGridBookings.ok) return false;
+        const dateBase = new Date(`${bookingState.date}T00:00:00`);
+        const slot = overviewSlotWindow(hour, dateBase);
+        const currentUnit = bookingState.unit || '';
+        return slotGridBookings.rows.some((row) => {
+            const rowUnit = row.court_unit || '';
+            if (rowUnit !== currentUnit) return false;
+            return overviewWindowsOverlap(overviewBookingWindow(row), slot);
+        });
+    }
+
+    function slotHourStatus(hour) {
+        if (isSlotHourPast(hour)) return 'past';
+        if (isSlotHourBooked(hour)) return 'booked';
+        return 'available';
+    }
+
+    // Extends the range from bookingState.startHour up to (and including)
+    // targetHour, stopping at the first past/booked hour it meets instead
+    // of spanning across it — "a range may not span a booked hour" is
+    // enforced here, not just at the two clicked endpoints (both of which
+    // are already guaranteed available/future, since a past/booked hour's
+    // button is rendered `disabled` and never reaches onSlotClick()).
+    function extendSelectionTo(targetHour) {
+        let newEnd = bookingState.startHour;
+        let blockedAt = null;
+        for (let h = bookingState.startHour + 1; h <= targetHour; h++) {
+            if (slotHourStatus(h) !== 'available') {
+                blockedAt = h;
+                break;
+            }
+            newEnd = h;
+        }
+        bookingState.endHour = newEnd;
+        if (blockedAt !== null) {
+            const blockedLabel = window.InigoBusinessHours.formatHourLabel(blockedAt);
+            window.InigoToast?.show(`${blockedLabel} is already taken, so the range was shortened to end there.`, true);
+        }
+    }
+
+    // Range-selection rule (implementation_plan.md): first click sets the
+    // start, second click sets the end (inclusive of that hour's own
+    // slot — clicking 8 then 11 books 8:00-12:00). Clicking the start
+    // again, or clicking an hour BEFORE it, starts a new selection there
+    // instead. A third click, once a full [start, end] range already
+    // exists, also starts fresh — there is no "extend an already-completed
+    // range" gesture.
+    function onSlotClick(hour) {
+        if (bookingState.startHour === null) {
+            bookingState.startHour = hour;
+            bookingState.endHour = null;
+        } else if (bookingState.endHour === null) {
+            if (hour === bookingState.startHour) {
+                // No-op — already the sole selected hour.
+            } else if (hour < bookingState.startHour) {
+                bookingState.startHour = hour;
+                bookingState.endHour = null;
+            } else {
+                extendSelectionTo(hour);
+            }
+        } else {
+            bookingState.startHour = hour;
+            bookingState.endHour = null;
+        }
+
+        paintSlotGrid();
+        updateSummary();
+    }
+
+    // Pure re-render from whatever renderSlotGrid() last fetched into
+    // slotGridBookings — used both after a fetch resolves and after every
+    // click (a click only changes bookingState.startHour/endHour, never
+    // the underlying availability data, so it never needs a new request).
+    function paintSlotGrid() {
+        if (!slotGridEl || !window.InigoBusinessHours) return;
+
+        if (!slotGridBookings.ok) {
+            slotGridEl.innerHTML = '<p style="color: var(--color-ink-faint); padding: 8px 4px;">Could not check live availability right now — please try a different date, or refresh the page.</p>';
+            return;
+        }
+
+        const effectiveEnd = bookingState.endHour !== null ? bookingState.endHour : bookingState.startHour;
+        const hours = window.InigoBusinessHours.hoursRange();
+
+        slotGridEl.innerHTML = hours.map((hour) => {
+            const status = slotHourStatus(hour);
+            const classes = ['dash-slot'];
+            let disabled = false;
+
+            if (status === 'past') {
+                classes.push('is-past');
+                disabled = true;
+            } else if (status === 'booked') {
+                classes.push('is-unavailable');
+                disabled = true;
+            } else if (bookingState.startHour !== null && hour >= bookingState.startHour && hour <= effectiveEnd) {
+                if (hour === bookingState.startHour || hour === effectiveEnd) {
+                    classes.push('is-selected');
+                    if (hour === bookingState.startHour) classes.push('is-range-start');
+                    if (hour === effectiveEnd) classes.push('is-range-end');
+                } else {
+                    classes.push('is-in-range');
+                }
+            }
+
+            const label = window.escapeHtml(window.InigoBusinessHours.formatHourLabel(hour));
+            const disabledAttr = disabled ? ' disabled' : '';
+            return `<button type="button" class="${classes.join(' ')}" data-dash-slot data-hour="${hour}"${disabledAttr}>${label}</button>`;
+        }).join('');
+
+        slotGridEl.querySelectorAll('[data-dash-slot]:not([disabled])').forEach((btn) => {
+            btn.addEventListener('click', () => onSlotClick(Number(btn.dataset.hour)));
+        });
+    }
+
+    // Re-fetches availability for the currently selected court + date, then
+    // paints the grid from the result. Called whenever court, unit, or
+    // date changes (implementation_plan.md) — a unit-only change re-fetches
+    // too, even though fetchDayBookings() isn't itself unit-filtered
+    // (filtering happens client-side in isSlotHourBooked() above); the
+    // extra round trip is cheap and keeps this one function the single
+    // "availability might have changed" entry point.
+    function renderSlotGrid() {
+        if (!slotGridEl) return;
+
+        if (!bookingState.court || !bookingState.date) {
+            slotGridEl.innerHTML = '<p style="color: var(--color-ink-faint); padding: 8px 4px;">Select a court first.</p>';
+            return;
+        }
+
+        const mySeq = ++slotGridRequestSeq;
+        slotGridEl.innerHTML = '<p style="color: var(--color-ink-faint); padding: 8px 4px;">Checking availability…</p>';
+
+        fetchDayBookings(bookingState.court, bookingState.date).then((result) => {
+            // A newer render started while this one was in flight — that
+            // newer call already owns the grid, so this stale response is
+            // dropped instead of flashing outdated availability.
+            if (mySeq !== slotGridRequestSeq) return;
+            slotGridBookings = result;
+            paintSlotGrid();
+        });
+    }
+
+    // Clears any in-progress Step 2 selection and re-renders the grid —
+    // shared by every "the court/unit/date might have just changed"
+    // handler above and below, so none of them has to repeat both steps.
+    function resetSlotSelectionAndRender() {
+        bookingState.startHour = null;
+        bookingState.endHour = null;
+        renderSlotGrid();
     }
 
     if (bookSubmit) {
@@ -918,15 +1280,46 @@ document.addEventListener('DOMContentLoaded', () => {
                 return;
             }
 
-            const time24 = slotTo24h(bookingState.time);
-            if (!bookingState.date || !time24) {
-                window.InigoToast?.show('Please select a date and time slot.', true);
+            if (!bookingState.date || bookingState.startHour === null) {
+                window.InigoToast?.show('Please select a date and time range.', true);
                 return;
             }
+
+            const effectiveEnd = bookingState.endHour !== null ? bookingState.endHour : bookingState.startHour;
+            const hours = effectiveEnd - bookingState.startHour + 1;
+            const startIso = new Date(`${bookingState.date}T${String(bookingState.startHour).padStart(2, '0')}:00:00`).toISOString();
+            const endIso = new Date(`${bookingState.date}T${String(effectiveEnd + 1).padStart(2, '0')}:00:00`).toISOString();
 
             const originalLabel = bookSubmit.textContent;
             bookSubmit.disabled = true;
             bookSubmit.textContent = 'Submitting…';
+
+            // Re-check availability immediately before inserting (D4,
+            // implementation_plan.md) — an app-level check ON TOP OF the
+            // database's own booking_no_overlap EXCLUDE constraint below,
+            // not instead of it (see fetchDayBookings()'s own header
+            // comment on the RLS caveat this can't fully close). Refreshes
+            // slotGridBookings with the very latest data first so this
+            // isn't judging against whatever was fetched whenever Step 2
+            // last rendered, which could be stale by now.
+            const recheck = await fetchDayBookings(bookingState.court, bookingState.date);
+            if (recheck.ok) slotGridBookings = recheck;
+            let conflict = false;
+            if (slotGridBookings.ok) {
+                for (let h = bookingState.startHour; h <= effectiveEnd; h++) {
+                    if (isSlotHourBooked(h)) { conflict = true; break; }
+                }
+            }
+            if (conflict) {
+                window.InigoToast?.show('That time was just taken — please pick another time.', true);
+                bookSubmit.disabled = false;
+                bookSubmit.textContent = originalLabel;
+                bookingState.startHour = null;
+                bookingState.endHour = null;
+                paintSlotGrid();
+                updateSummary();
+                return;
+            }
 
             // Column facts verified against the LIVE database — read this
             // before touching the payload below, so this bug doesn't come
@@ -949,10 +1342,41 @@ document.addEventListener('DOMContentLoaded', () => {
             //  - `courts` is what the rest of this dashboard actually
             //    reads back (getCourtRate(booking.courts), and the My
             //    Bookings table's main cell), so it still carries the
-            //    customer's exact court selection.
+            //    customer's exact court selection. database/schema/
+            //    012_booking_time_range.sql's booking_no_overlap EXCLUDE
+            //    constraint also matches on this exact string — this
+            //    insert is the ONLY place in the whole project that writes
+            //    booking.courts (confirmed by grepping every
+            //    `.from('booking')` call site), and it always sends
+            //    court.name verbatim (see populateBookSelect() above), so
+            //    that constraint can't be bypassed by a differently
+            //    formatted name from here. The staff walk-in flow
+            //    (includes/staff_dashboard.js) writes a DIFFERENT table,
+            //    `walk_in_booking` — not this one — so it neither
+            //    threatens nor benefits from this constraint; see that
+            //    migration's header comment on why walk-in conflicts are
+            //    out of scope entirely.
+            //  - court_unit (Part 3, D3) is the specific Court/Lane/Table
+            //    label the Step 1 preview resolved (bookingState.unit,
+            //    kept in sync by paintBookPreview() above) — null for a
+            //    court with nothing to disambiguate. This is what makes
+            //    availability/overlap PER UNIT instead of per sport. A
+            //    legacy row from before this column existed has
+            //    court_unit = NULL, which both this feature's availability
+            //    check and the EXCLUDE constraint group under '' — i.e. it
+            //    behaves as a sport-wide block. Accepted, documented gap.
+            //  - end_at / duration_minutes (Part 3) — end_at is the real
+            //    exclusive end of the range picked in Step 2; duration_minutes
+            //    is kept in sync (hours * 60) rather than left at the old
+            //    always-60 default, so every OTHER duration-aware reader of
+            //    this table (the Overview peek widget below,
+            //    includes/staff_dashboard.js's Court Schedule) automatically
+            //    spans a multi-hour booking correctly with no changes of
+            //    their own. database/schema/012_booking_time_range.sql's
+            //    trigger fills in whichever of the two is missing, for any
+            //    OTHER insert path that doesn't supply both.
             //  - customer_id attributes the booking to the signed-in
-            //    profile; time_date is the single required start
-            //    timestamp this simplified booking flow stores.
+            //    profile; time_date is the range's start timestamp.
             //  - payment_id, booking_id, and created_at are deliberately
             //    OMITTED here rather than sent as null: no payment record
             //    exists yet for a brand-new booking (see the Receipts
@@ -966,7 +1390,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 customer_id: window.inigosyncProfile.id,
                 sports: bookingState.sport || bookingState.court,
                 courts: bookingState.court,
-                time_date: new Date(`${bookingState.date}T${time24}:00`).toISOString(),
+                court_unit: bookingState.unit || null,
+                time_date: startIso,
+                end_at: endIso,
+                duration_minutes: hours * 60,
                 status: 'pending',
             });
 
@@ -983,6 +1410,18 @@ document.addEventListener('DOMContentLoaded', () => {
                     friendlyMessage = 'Your booking is missing required information. Please reselect the court and try again.';
                 } else if (error.code === '23514') {
                     friendlyMessage = 'We couldn\'t process your booking. Please try again or contact staff for help.';
+                } else if (error.code === '23P01') {
+                    // exclusion_violation — database/schema/
+                    // 012_booking_time_range.sql's booking_no_overlap
+                    // constraint. THIS is the real double-booking guarantee
+                    // (D4, implementation_plan.md): the app-level recheck
+                    // above is only a UX convenience that can't see past
+                    // whatever RLS allows, but this rejection happens in the
+                    // database itself regardless of what this client could
+                    // see, so a race between two customers booking the same
+                    // hour at the same instant still can't produce an
+                    // overlap.
+                    friendlyMessage = 'That time was just taken by another booking — please pick another time.';
                 } else if (error.message) {
                     friendlyMessage = error.message;
                 }
@@ -990,13 +1429,29 @@ document.addEventListener('DOMContentLoaded', () => {
                 window.InigoToast?.show(friendlyMessage, true);
                 bookSubmit.disabled = false;
                 bookSubmit.textContent = originalLabel;
+                if (error.code === '23P01') {
+                    // The grid we're showing is now known-stale — someone
+                    // else just took part of this range. Refresh it so the
+                    // customer can immediately see and pick around the real
+                    // conflict instead of retrying blind.
+                    bookingState.startHour = null;
+                    bookingState.endHour = null;
+                    renderSlotGrid();
+                    updateSummary();
+                }
                 return;
             }
 
             window.InigoToast?.show('Booking request submitted — we\'ll confirm it shortly.');
-            slots.forEach((s) => s.classList.remove('is-selected'));
-            bookingState.time = null;
+            bookingState.startHour = null;
+            bookingState.endHour = null;
             updateSummary();
+            // Refetches this court/date/unit's availability so a customer
+            // who immediately starts a second booking (before changing
+            // court, date, or unit — the only three triggers that would
+            // otherwise re-fetch) sees the booking they just made reflected
+            // as taken, not the pre-submit snapshot.
+            renderSlotGrid();
             // Back to Step 1 so a customer who wants to book a second court
             // right away starts the guided flow fresh instead of sitting on
             // a Confirm step that just fired.
@@ -1010,6 +1465,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // below) — same "loading" honesty as the <select>'s own "Loading
     // courts…" option.
     paintBookPreview(null);
+    renderSlotGrid();
     updateSummary();
 
     // Real downpayment percentage (E2, implementation_plan.md) — read once
@@ -1080,6 +1536,11 @@ document.addEventListener('DOMContentLoaded', () => {
         bookingState.rate = (firstOpt && firstOpt.dataset.rate) ? Number(firstOpt.dataset.rate) : null;
         bookingState.rateUnit = (firstOpt && firstOpt.dataset.rateUnit) || '/hr';
         syncBookPreviewFromState();
+        // First time bookingState.court/unit become real (courts load
+        // asynchronously) — renders Step 2's grid for real instead of the
+        // "Select a court first." placeholder renderSlotGrid() showed at
+        // setup time above.
+        renderSlotGrid();
         updateSummary();
     }
 
@@ -1148,7 +1609,15 @@ document.addEventListener('DOMContentLoaded', () => {
     const overviewCourtList = document.querySelector('[data-dash-overview-court-list]');
     const overviewSortSelect = document.querySelector('[data-dash-overview-sort]');
 
-    const OVERVIEW_SLOT_HOURS = [8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20]; // hourly, 8 AM–8 PM
+    // Hourly, [OPEN_HOUR, CLOSE_HOUR) — includes/businessHours.js (Part 3,
+    // implementation_plan.md). Used to be its own hardcoded [8..20] literal
+    // that happened to match today's operating hours by coincidence, not by
+    // reference — Step 2's slot grid (renderSlotGrid() above) and
+    // includes/staff_dashboard.js's SCHEDULE_SLOTS now read the exact same
+    // source. Literal fallback here only for the "should never happen"
+    // case the guard above already logs — keeps this widget rendering
+    // SOMETHING sensible instead of an empty peek strip.
+    const OVERVIEW_SLOT_HOURS = window.InigoBusinessHours ? window.InigoBusinessHours.hoursRange() : [8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20];
     // Kept equal to database/schema/004_staff_module.sql's
     // booking.duration_minutes DEFAULT, same reasoning as
     // includes/staff_dashboard.js's own DEFAULT_DURATION_MINUTES.
@@ -1192,27 +1661,47 @@ document.addEventListener('DOMContentLoaded', () => {
         return { start, end };
     }
 
-    // "8:00 AM" / "6:00 PM" — matches the Booking panel's own [data-dash-slot]
-    // label format exactly (not includes/staff_dashboard.js's shorter
-    // "8 AM"), because a clicked pill's label is carried straight into
-    // bookingState.time and parsed by this file's own slotTo24h() above.
+    // "8:00 AM" / "6:00 PM" — delegates to includes/businessHours.js's
+    // shared formatter (Part 3) so this widget and Step 2's slot grid
+    // (renderSlotGrid() above) can never disagree on how an hour reads.
+    // Kept as its own named function rather than inlining the call at its
+    // one remaining use below, since the "why this exact format" reasoning
+    // (matches the Booking panel's own labels) is worth keeping documented
+    // here.
     function formatOverviewHourLabel(hour) {
-        const period = hour >= 12 ? 'PM' : 'AM';
-        const hour12 = ((hour + 11) % 12) + 1;
-        return `${hour12}:00 ${period}`;
+        return window.InigoBusinessHours.formatHourLabel(hour);
     }
 
-    function overviewSlotWindow(hour) {
-        const start = new Date(overviewDateBase);
+    // `dateBase` defaults to overviewDateBase (this widget's own "today") —
+    // Step 2's slot grid (isSlotHourBooked() above) reuses this SAME
+    // function for an arbitrary customer-picked date by passing one
+    // explicitly, instead of a second near-identical implementation. Despite
+    // the "overview" name (kept as-is — see isOverviewSchemaMismatch()'s own
+    // "despite its name" comment below for why this file doesn't rename a
+    // helper just because a second feature now shares it), this has always
+    // been a plain, date-agnostic window builder.
+    function overviewSlotWindow(hour, dateBase) {
+        const start = new Date(dateBase || overviewDateBase);
         start.setHours(hour, 0, 0, 0);
         return { start, end: new Date(start.getTime() + 60 * 60 * 1000) };
     }
 
     // Same shape as includes/staff_dashboard.js's bookingWindow() — a
     // missing/invalid duration_minutes falls back to
-    // OVERVIEW_DEFAULT_DURATION_MINUTES, never a fabricated guess.
+    // OVERVIEW_DEFAULT_DURATION_MINUTES, never a fabricated guess. Prefers
+    // the real end_at (database/schema/012_booking_time_range.sql, Part 3)
+    // when the caller's query selected it — Step 2's fetchDayBookings()
+    // above does; this widget's own booking query below does not (adding it
+    // there would need the same schema-mismatch retry fetchDayBookings()
+    // has, for zero behavioural gain — duration_minutes already agrees with
+    // end_at by construction for every row this feature writes) — so this
+    // branch is a no-op here and only actually engages for Step 2.
     function overviewBookingWindow(row) {
         const start = new Date(row.time_date);
+        if (row.end_at) {
+            const end = new Date(row.end_at);
+            if (!Number.isNaN(end.getTime())) return { start, end };
+        }
         const minutesRaw = Number(row.duration_minutes);
         const minutes = Number.isFinite(minutesRaw) && minutesRaw > 0 ? minutesRaw : OVERVIEW_DEFAULT_DURATION_MINUTES;
         return { start, end: new Date(start.getTime() + minutes * 60000) };
@@ -1639,9 +2128,20 @@ document.addEventListener('DOMContentLoaded', () => {
         return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
     }
 
-    function formatBookingTime(iso) {
+    // Part 3 (implementation_plan.md) — bookings are ranges now (database/
+    // schema/012_booking_time_range.sql's end_at). `endIso` is optional and
+    // falls back to a single start-time label (this function's old, entire
+    // behavior) whenever it's missing/invalid — a booking made before that
+    // migration, or made while it hadn't been applied yet, has no end_at,
+    // and this must keep rendering something sensible for it either way.
+    function formatBookingTime(iso, endIso) {
         const d = new Date(iso);
-        return d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+        const startLabel = d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+        if (!endIso) return startLabel;
+        const endD = new Date(endIso);
+        if (Number.isNaN(endD.getTime())) return startLabel;
+        const endLabel = endD.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+        return `${startLabel} – ${endLabel}`;
     }
 
     // ------------------------------------------------------------------
@@ -1780,7 +2280,7 @@ document.addEventListener('DOMContentLoaded', () => {
             row.innerHTML = `
                 <td class="dash-cell-main">${courtLabel}</td>
                 <td>${formatBookingDate(booking.time_date)}</td>
-                <td>${formatBookingTime(booking.time_date)}</td>
+                <td>${formatBookingTime(booking.time_date, booking.end_at)}</td>
                 <td>${amount}</td>
                 <td><span class="dash-status ${statusClass}">${statusLabel}</span></td>
                 <td>
@@ -1858,6 +2358,11 @@ document.addEventListener('DOMContentLoaded', () => {
             court: booking.courts || 'Booking',
             sport: booking.sports || '',
             when: booking.time_date,
+            // Part 3 — booking.end_at (database/schema/
+            // 012_booking_time_range.sql); undefined for a booking made
+            // before that migration, which formatBookingTime() below
+            // already handles by falling back to a single start-time label.
+            until: booking.end_at,
             status: displayStatusFor(booking),
             rate: getCourtRate(booking.courts),
         };
@@ -1892,7 +2397,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 <div class="dash-receipt-rows">
                     <div class="dash-summary-row"><span>Sport</span><strong>${window.escapeHtml(receipt.sport || '—')}</strong></div>
                     <div class="dash-summary-row"><span>Date</span><strong>${window.escapeHtml(formatBookingDate(receipt.when))}</strong></div>
-                    <div class="dash-summary-row"><span>Time</span><strong>${window.escapeHtml(formatBookingTime(receipt.when))}</strong></div>
+                    <div class="dash-summary-row"><span>Time</span><strong>${window.escapeHtml(formatBookingTime(receipt.when, receipt.until))}</strong></div>
                     <div class="dash-summary-row"><span>Amount</span><strong>${window.escapeHtml(amount)}</strong></div>
                 </div>
                 <div class="dash-receipt-actions">

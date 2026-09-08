@@ -581,6 +581,11 @@
      fetch-with-fallback shape as courtsData.js above. Must load before
      staff_dashboard.js, which reads the walk-in payment options from it. -->
 <script src="../includes/appSettings.js"></script>
+<!-- Shared operating-hours constants (Part 3, multi-hour booking —
+     implementation_plan.md). Must load before staff_dashboard.js, whose
+     Court Schedule SCHEDULE_SLOTS/formatHourLabel read
+     window.InigoBusinessHours at parse time. -->
+<script src="../includes/businessHours.js"></script>
 <script src="../includes/staff_dashboard.js"></script>
 </body>
 </html>

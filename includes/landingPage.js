@@ -9,11 +9,14 @@
 //      includes/home-showcase.js — which loads *after* this file — can use
 //      it too, keeping courts/events to ONE source of truth instead of the
 //      three drifting hardcoded copies this page used to have.
-//   2. Rendering the Courts & Facilities grid, the Pricing rate sheet and
-//      the Feedback & Reviews grid from that shared data, with every piece
-//      of untrusted text escaped before it touches innerHTML. Courts and
-//      Pricing both read the SAME memoized getCourts() promise — one fetch,
-//      one list, never a second hardcoded price sheet (D2).
+//   2. Rendering the Courts & Pricing grid and the Feedback & Reviews grid
+//      from that shared data, with every piece of untrusted text escaped
+//      before it touches innerHTML. Pricing used to be a second section with
+//      its own render function (renderPricingRow, removed in the Courts+
+//      Pricing merge); rates now show on the grid card (renderCourtCard) and
+//      in the court viewer's price block (open(), below) instead — both
+//      still reading the SAME memoized getCourts() promise, one fetch, one
+//      list, never a second hardcoded price sheet (D2).
 //   3. The court viewer: one reusable modal, opened from the court cards,
 //      that shows one unit's photo (or its honest placeholder) large plus a
 //      labelled combobox listing every individual court / lane / table for
@@ -269,8 +272,8 @@ function mergeCourtsBySport(items) {
             // to throw these away; the court viewer needs them so Bowling can
             // offer "Duckpin" and "Ten-Pin" as two real options with their own
             // image_urls (resolveCourtUnits case 2). Nothing above changed —
-            // the grid card and the pricing row still read exactly the same
-            // merged fields they did before.
+            // the grid card and the court viewer's price block still read
+            // exactly the same merged fields they did before.
             variants: group,
             // Concatenated so an owner who fills unit_images in on only ONE of
             // a merged sport's rows still lands in case 1. Each entry carries
@@ -585,34 +588,6 @@ function renderCourtCard(court) {
     `;
 }
 
-// One row of the Pricing rate sheet. Same normalized court object the grid
-// renders — there is deliberately no second court/price list anywhere (D2).
-// `rate` is NULL for every court until the owner enters rates through admin
-// Court Listings, so today every row renders the "Rate TBA" chip. Never a
-// placeholder number.
-function renderPricingRow(court) {
-    const rateHtml = court.rate !== null
-        ? `<span class="pricing-rate-value">₱${escapeHtml(String(court.rate))}${escapeHtml(court.rateUnit)}</span>`
-        : `<span class="pricing-rate-value is-tba">Rate TBA</span>`;
-
-    return `
-        <li class="pricing-row">
-            <div class="pricing-sport">
-                <h3>${escapeHtml(court.name)}</h3>
-                <p class="pricing-note">${escapeHtml(court.note)}</p>
-            </div>
-            <p class="pricing-unit">
-                <span class="pricing-cell-label">What you book</span>
-                <span class="pricing-unit-value">${escapeHtml(String(court.quantity))} ${escapeHtml(court.unit)}</span>
-            </p>
-            <p class="pricing-rate">
-                <span class="pricing-cell-label">Rate</span>
-                ${rateHtml}
-            </p>
-        </li>
-    `;
-}
-
 function renderTestimonialCard(t) {
     const stars = Math.min(5, Math.max(0, Math.round(Number(t.rating)) || 0));
     const starGlyphs = '★'.repeat(stars) + '☆'.repeat(5 - stars);
@@ -659,19 +634,25 @@ function createCourtViewer() {
     const dialog = root.querySelector('[data-court-viewer-dialog]');
     const mediaEl = root.querySelector('[data-court-viewer-media]');
     const titleEl = root.querySelector('[data-court-viewer-title]');
-    const countEl = root.querySelector('[data-court-viewer-count]');
     const unitEl = root.querySelector('[data-court-viewer-unit]');
     const pickerEl = root.querySelector('[data-court-viewer-units]');
     const pickerLabelEl = root.querySelector('[data-court-viewer-units-label]');
     const selectEl = root.querySelector('[data-court-viewer-select]');
     const noteEl = root.querySelector('[data-court-viewer-note]');
+    // bookEl ("What you book") + rateEl together are the price block that
+    // replaced the old #pricing section's rate sheet in the Courts+Pricing
+    // merge — see the comment above it in Pages/Index.html. bookEl also
+    // absorbed the dialog's old data-court-viewer-count line: that showed
+    // the same quantity+unit with no label, which would have duplicated
+    // this row.
+    const bookEl = root.querySelector('[data-court-viewer-book]');
     const rateEl = root.querySelector('[data-court-viewer-rate]');
     const photoEl = root.querySelector('[data-court-viewer-photo-status]');
     const closeBtn = root.querySelector('[data-court-viewer-close]');
     const backdrop = root.querySelector('[data-court-viewer-backdrop]');
 
-    if (!dialog || !mediaEl || !titleEl || !countEl || !unitEl || !pickerEl
-        || !pickerLabelEl || !selectEl || !noteEl || !rateEl || !photoEl) {
+    if (!dialog || !mediaEl || !titleEl || !unitEl || !pickerEl
+        || !pickerLabelEl || !selectEl || !noteEl || !bookEl || !rateEl || !photoEl) {
         console.error('[IñigoSync] #courtViewer markup is incomplete — court cards cannot open. Check Pages/Index.html.');
         return null;
     }
@@ -737,7 +718,8 @@ function createCourtViewer() {
         // photo, not a second heading.
         unitEl.textContent = unit.label || '';
         // With a single unit there is no combobox to caption, and the title +
-        // count already say everything a lone "Court 1" eyebrow would.
+        // "What you book" row already say everything a lone "Court 1"
+        // eyebrow would.
         unitEl.hidden = !unit.label || units.length < 2;
     }
 
@@ -766,7 +748,6 @@ function createCourtViewer() {
         selectEl.disabled = !hasChoice;
 
         titleEl.textContent = court.name;
-        countEl.innerHTML = `<span class="court-count-value">${escapeHtml(String(court.quantity))}</span><span class="court-count-unit">${escapeHtml(court.unit)}</span>`;
 
         // Paints the media, the photo-status line and the unit eyebrow.
         selectUnit(0);
@@ -774,8 +755,17 @@ function createCourtViewer() {
         noteEl.textContent = court.note || '';
         noteEl.hidden = !court.note;
 
-        // Same rule as the grid card and the pricing row: a real number when
-        // the owner has set one, an honest TBA otherwise. Never invented.
+        // Price block — "What you book" is plain textContent (quantity is a
+        // number, unit is owner-written free text, neither is ever markup),
+        // same quantity + unit the grid card's own count chip shows.
+        bookEl.textContent = `${court.quantity} ${court.unit}`;
+
+        // Rate: same rule as the grid card's .court-rate chip — a real
+        // number when the owner has set one via admin Court Listings, an
+        // honest TBA otherwise. Never invented; every court's rate is NULL
+        // in the live DB today (database/seed/002_seed_content.sql), so this
+        // is expected to read "Rate TBA" on all 8 sports until the owner
+        // sets real rates.
         if (court.rate !== null && court.rate !== undefined) {
             rateEl.className = 'court-viewer-rate';
             rateEl.textContent = `₱${court.rate}${court.rateUnit}`;
@@ -899,7 +889,7 @@ function createCourtViewer() {
 document.addEventListener('DOMContentLoaded', () => {
     const courtViewer = createCourtViewer();
 
-    // Courts & Facilities grid — Supabase's `court` table first, falling
+    // Courts & Pricing grid — Supabase's `court` table first, falling
     // back to COURTS_INVENTORY (includes/courts-data.js) if that fetch
     // fails or is empty, which is what will actually happen until the
     // owner runs database/schema + database/seed in the Supabase SQL editor.
@@ -936,21 +926,6 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             if (!courtViewer) return;
             courtViewer.open(court, card);
-        });
-    }
-
-    // Pricing rate sheet — the SAME memoized getCourts() promise the grid
-    // above uses. Calling it twice does not fetch twice (see the memoized
-    // courtsPromise), and there is deliberately no second court/price list
-    // anywhere in the codebase (D2 in implementation_plan.md).
-    const pricingList = document.querySelector('[data-pricing-list]');
-    if (pricingList) {
-        getCourts().then((courts) => {
-            pricingList.innerHTML = courts.length
-                ? courts.map(renderPricingRow).join('')
-                : '<li class="pricing-empty">Rates are being set up. Please check back shortly, or ask at the front desk.</li>';
-        }).catch((err) => {
-            console.error('[IñigoSync] Could not render the pricing list.', err);
         });
     }
 
@@ -1028,7 +1003,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // render the same links (see Index.html), so there are two <a> elements
     // per href — match by href, not by node identity, so both stay in sync.
     //
-    // The nav is Home / Courts / Pricing / About, and each of those resolves
+    // The nav is Home / Courts & Pricing / About, and each of those resolves
     // to a real section: the hero now carries id="home", so `#home` maps
     // through the normal document.querySelector path. The `href === '#'`
     // branch below is kept as a fallback for any nav that still ships a bare

@@ -200,22 +200,41 @@ select extname, extversion from pg_extension order by extname;
 --     The paper names preventing double booking as a core objective. If this
 --     returns ANY rows, the system has already allowed a double booking and
 --     the guarantee is not enforced at the database level.
---     NOTE: adjust column names if query 3 shows they differ.
+--
+--     FIXED (database/schema/012_booking_time_range.sql) — this query used to
+--     assume booking_date/start_time/end_time/id, none of which exist on the
+--     real `booking` table. Confirmed live columns (query 3 above, plus
+--     docs/QA_AUDIT_REPORT.md): booking_id (PK), time_date (single start
+--     timestamp), duration_minutes (nullable, default 60).
+--
+--     RUN THIS FIRST, before applying database/schema/012_booking_time_range.sql
+--     — that migration adds a GiST EXCLUDE constraint that will FAIL TO CREATE
+--     if any rows below are returned (an EXCLUDE constraint is validated
+--     against every existing row, same as UNIQUE). Resolve anything this
+--     returns (e.g. cancel/reschedule one side) before running that file.
+--
+--     Coarser than the real constraint on purpose: this runs BEFORE 012 adds
+--     `court_unit`, so it can't group by unit yet and compares every booking
+--     on the same `courts` string regardless of which unit it's for. A row
+--     here MAY turn out to be on two different units of the same court (which
+--     012's per-unit constraint would allow) — treat every row as "worth a
+--     manual look", not an automatic failure.
 -- ----------------------------------------------------------------------------
 select
-    a.id            as booking_a,
-    b.id            as booking_b,
-    a.courts        as court,
-    a.booking_date  as date,
-    a.start_time    as a_start, a.end_time as a_end,
-    b.start_time    as b_start, b.end_time as b_end,
-    a.status        as a_status, b.status as b_status
+    a.booking_id                                                          as booking_a,
+    b.booking_id                                                          as booking_b,
+    a.courts                                                              as court,
+    a.time_date                                                           as a_start,
+    a.time_date + make_interval(mins => coalesce(a.duration_minutes, 60)) as a_end,
+    b.time_date                                                           as b_start,
+    b.time_date + make_interval(mins => coalesce(b.duration_minutes, 60)) as b_end,
+    a.status                                                              as a_status,
+    b.status                                                              as b_status
 from public.booking a
 join public.booking b
-  on  a.id < b.id
-  and a.courts       = b.courts
-  and a.booking_date = b.booking_date
-  and a.start_time   < b.end_time
-  and b.start_time   < a.end_time
-where a.status not in ('cancelled','canceled','expired')
-  and b.status not in ('cancelled','canceled','expired');
+  on  a.booking_id < b.booking_id
+  and a.courts     = b.courts
+  and a.time_date  < (b.time_date + make_interval(mins => coalesce(b.duration_minutes, 60)))
+  and b.time_date  < (a.time_date + make_interval(mins => coalesce(a.duration_minutes, 60)))
+where a.status in ('pending', 'confirmed')
+  and b.status in ('pending', 'confirmed');

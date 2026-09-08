@@ -825,13 +825,22 @@ nav ul li a.active {
 }
 
 /* ==========================================================================
-   Courts & Facilities
+   Courts & Pricing
 
    Each card is a real <button> (includes/landingPage.js renderCourtCard) that
    opens the court viewer for that sport, so keyboard and screen-reader
    support come for free — no tabindex/role patching. The rules below undo the
    UA button defaults (font, colour, alignment, width) so it still reads as a
    card, not a form control.
+
+   Background: kept at --surface-page rather than adopting the old standalone
+   #pricing section's --surface-band. That band existed to give Pricing its
+   own visual identity as a distinct strip sitting BETWEEN two --surface-page
+   sections (Courts above, About below); now that it is folded into Courts
+   instead of sitting after it, Courts is once again directly followed by
+   About, and .about is also --surface-page (see below) — matching keeps that
+   handoff seamless instead of introducing a band that would flash on for one
+   section and back off for the next.
    ========================================================================== */
 .courts {
     padding: 100px 0;
@@ -1138,23 +1147,12 @@ body.court-viewer-lock {
     font-weight: 600;
     font-size: 1.6rem;
     line-height: 1.2;
-    margin-bottom: 10px;
-}
-
-.court-viewer-count {
-    font-family: var(--font-mono);
-    font-size: 1.15rem;
-    color: var(--color-accent-text);
-    display: flex;
-    align-items: baseline;
-    gap: 6px;
-    margin-bottom: 10px;
-}
-
-.court-viewer-count .court-count-unit {
-    font-family: var(--font-body);
-    font-size: 0.8rem;
-    color: var(--color-ink-faint);
+    /* Was 10px, back when a data-court-viewer-count stat sat directly under
+       this and supplied its own margin-bottom too. That line is gone (its
+       quantity+unit now lives in .court-viewer-price below, so it is not
+       shown twice — see the comment in Pages/Index.html), so this alone
+       carries the gap down to the next block. */
+    margin-bottom: 14px;
 }
 
 /* --------------------------------------------------------------------------
@@ -1162,7 +1160,8 @@ body.court-viewer-lock {
    belongs to, and the combobox that switches between them. Both are set to
    [hidden] by includes/landingPage.js whenever a sport resolves to a single
    unit (Volleyball, quantity 1): a one-item <select> is a dead control, and
-   a lone "Court 1" caption says nothing the title and count don't already.
+   a lone "Court 1" caption says nothing the title and price block don't
+   already.
 
    Neither needs an explicit `[hidden] { display: none }` restatement — that
    is only necessary where an author rule sets `display` itself, as
@@ -1265,106 +1264,50 @@ body.court-viewer-lock {
     margin-bottom: 14px;
 }
 
-.court-viewer-rate {
-    font-family: var(--font-mono);
-    font-size: 1rem;
-    color: var(--color-accent-text);
+/* Price block — "What you book" + Rate, folded in from the old #pricing
+   section's rate-sheet row during the Courts+Pricing merge (see the comment
+   above this markup in Pages/Index.html). Each row stacks its label above
+   its value rather than sitting side by side: the dialog is one narrow
+   column at every width (no header row to line up with, unlike the old
+   section's desktop 3-column grid), and the Rate row's TBA state is a full
+   sentence ("Rate TBA — rates are still being confirmed with the front
+   desk."), not a short number, so it needs its own line. This is the same
+   stacked shape the old section fell back to on its own narrow/mobile
+   layout (.pricing-cell-label above .pricing-rate-value). */
+.court-viewer-price {
+    display: grid;
+    gap: 10px;
     margin-bottom: 14px;
 }
 
-.court-viewer-rate.is-tba {
-    font-family: var(--font-body);
-    font-size: 0.9rem;
-    color: var(--color-ink-dim);
-}
-
-.court-viewer-photo-status {
-    font-size: 0.85rem;
-    color: var(--color-ink-faint);
-    padding-top: 14px;
-    border-top: 1px solid var(--border-soft);
-}
-
-/* ==========================================================================
-   Pricing — rendered from the SAME window.InigoContent.getCourts() promise
-   the Courts grid uses (memoized, so this is not a second fetch and not a
-   second price list — D2). Every court's `rate` is NULL until the owner
-   confirms them, so every row currently reads "Rate TBA"; the layout is
-   built to look deliberate in exactly that state rather than apologetic.
-   ========================================================================== */
-.pricing {
-    padding: 100px 0;
-    background: var(--surface-band);
-    transition: background-color 0.2s ease;
-}
-
-@media (prefers-reduced-motion: reduce) {
-    .pricing {
-        transition: none;
-    }
-}
-
-.pricing-head {
-    display: grid;
-    grid-template-columns: 1.6fr 1fr 1fr;
-    gap: 20px;
-    padding: 0 24px 10px;
+.court-viewer-price-label {
+    display: block;
     font-family: var(--font-mono);
     font-size: 0.72rem;
     letter-spacing: 0.08em;
     text-transform: uppercase;
     color: var(--color-ink-faint);
-}
-
-.pricing-list {
-    list-style: none;
-    display: grid;
-    gap: 12px;
-}
-
-.pricing-row {
-    display: grid;
-    grid-template-columns: 1.6fr 1fr 1fr;
-    gap: 20px;
-    align-items: center;
-    padding: 20px 24px;
-    background: var(--surface-card);
-    border: 1px solid var(--border-card);
-    border-radius: 14px;
-    box-shadow: var(--shadow-card);
-}
-
-.pricing-sport h3 {
-    font-family: var(--font-display);
-    font-size: 1.1rem;
-    font-weight: 600;
     margin-bottom: 4px;
 }
 
-.pricing-note {
-    font-size: 0.85rem;
-    color: var(--color-ink-faint);
-}
-
-.pricing-cell-label {
-    display: none;
-}
-
-.pricing-unit-value {
+.court-viewer-price-value {
     font-family: var(--font-mono);
     font-size: 0.95rem;
     color: var(--color-ink-dim);
 }
 
-.pricing-rate-value {
+.court-viewer-rate {
     font-family: var(--font-mono);
-    font-size: 1.05rem;
+    font-size: 1rem;
     color: var(--color-accent-text);
 }
 
-/* "Rate TBA" is the state of every row today. Rendered as a deliberate
-   neutral chip rather than a greyed-out apology — no invented prices (D1). */
-.pricing-rate-value.is-tba {
+/* "Rate TBA" is the state of every sport today — ported from the old
+   #pricing section's (now deleted) .pricing-rate-value.is-tba pill rather
+   than rebuilt, so the one visual idea the standalone sheet had worth
+   keeping ("TBA is deliberate, not a greyed-out apology") survives the
+   merge. No invented prices (D1). */
+.court-viewer-rate.is-tba {
     display: inline-block;
     font-family: var(--font-body);
     font-size: 0.8rem;
@@ -1377,15 +1320,13 @@ body.court-viewer-lock {
     padding: 6px 14px;
 }
 
-.pricing-foot {
-    margin-top: 22px;
-    font-size: 0.88rem;
-    line-height: 1.7;
-    color: var(--color-ink-dim);
-    max-width: 640px;
+.court-viewer-photo-status {
+    font-size: 0.85rem;
+    color: var(--color-ink-faint);
+    padding-top: 14px;
+    border-top: 1px solid var(--border-soft);
 }
 
-.pricing-empty,
 .court-grid-empty {
     padding: 28px 24px;
     background: var(--surface-card);
@@ -1661,28 +1602,6 @@ body.court-viewer-lock {
         grid-template-columns: repeat(2, 1fr);
     }
 
-    /* Rate sheet loses its header row and stacks each cell with its own
-       label, so the three columns stay readable without a horizontal
-       scroller. */
-    .pricing-head {
-        display: none;
-    }
-
-    .pricing-row {
-        grid-template-columns: 1fr;
-        gap: 12px;
-    }
-
-    .pricing-cell-label {
-        display: block;
-        font-family: var(--font-mono);
-        font-size: 0.7rem;
-        letter-spacing: 0.08em;
-        text-transform: uppercase;
-        color: var(--color-ink-faint);
-        margin-bottom: 4px;
-    }
-
     .site-nav {
         padding: 18px 24px;
     }
@@ -1875,8 +1794,7 @@ body.court-viewer-lock {
         display: none;
     }
 
-    .courts,
-    .pricing {
+    .courts {
         padding: 64px 0;
     }
 
@@ -1907,9 +1825,5 @@ body.court-viewer-lock {
 
     .court-viewer-body {
         padding: 20px 20px 24px;
-    }
-
-    .pricing-row {
-        padding: 18px 18px;
     }
 }

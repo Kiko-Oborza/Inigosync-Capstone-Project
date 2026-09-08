@@ -586,6 +586,27 @@ document.addEventListener('DOMContentLoaded', () => {
         authIsOpen = true;
         if (panelName) setActivePanel(panelName);
 
+        // Clear every panel's form, not only the one being shown — a
+        // trigger always opens straight to Log In (panelName is always
+        // 'login' or 'reset', never 'signup'/'admin'), so resetting just the
+        // active one would still leave a stale value (and, for Sign Up, a
+        // checklist still showing old "met" ticks) sitting in another panel
+        // for the next time someone tabs over to it. This is what let a
+        // typed password survive a Close and a later Reopen — the field is
+        // genuinely always empty on load, but never got cleared again after
+        // that. Safe to do unconditionally here: every call site of
+        // openModal() (a [data-auth-open] trigger, the recovery-link
+        // redirect, the forced-signout notice) is a fresh "open the modal"
+        // moment, never a tab switch or a mid-signup step change — those go
+        // through setActivePanel() / setSignupStep() directly and never
+        // reach this function, so a signup already in progress in an
+        // ALREADY-open modal is never interrupted by this. form.reset()
+        // fires no `input` event, so the password checklist (Sign Up step 1
+        // / Reset) needs a manual resync afterwards — same pairing already
+        // used after a successful password reset below.
+        panels.forEach((panel) => panel.reset());
+        syncPasswordRules();
+
         const activePanel = overlay.querySelector('.auth-form.is-active');
         const firstField = activePanel && activePanel.querySelector('input');
         if (firstField) firstField.focus();

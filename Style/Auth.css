@@ -800,14 +800,24 @@ body.auth-lock {
    today (checked — no dashboard page links it), and scoping keeps this off any
    form that borrows the file later. The OTP boxes are deliberately out of
    scope; they carry no autocomplete attribute and are never autofilled.
-   -------------------------------------------------------------------------- */
+
+   A FOURTH declaration, added on top of the three above: an inset left
+   accent stripe, layered in the same box-shadow property so it paints on
+   top of (not instead of) the 1000px background repaint. Without it, an
+   autofilled-but-not-yet-focused field is byte-identical to an empty one —
+   which is exactly what made a real password look "pre-typed" (see the
+   `placeholder="Enter your password"` fix on the inputs themselves). The
+   stripe uses --color-primary-dim, the same token .auth-otp-box.is-filled
+   already uses to mark "this control already holds a value" — --color-primary
+   itself stays reserved for :focus below, so a focused-and-autofilled field
+   still reads as "focused" first. */
 .auth-field input:-webkit-autofill,
 .auth-field input:-webkit-autofill:hover,
 .auth-field input:-webkit-autofill:focus,
 .auth-field input:-webkit-autofill:active {
     -webkit-text-fill-color: var(--color-ink);
-    -webkit-box-shadow: 0 0 0 1000px var(--color-bg-card) inset;
-    box-shadow: 0 0 0 1000px var(--color-bg-card) inset;
+    -webkit-box-shadow: inset 3px 0 0 var(--color-primary-dim), 0 0 0 1000px var(--color-bg-card) inset;
+    box-shadow: inset 3px 0 0 var(--color-primary-dim), 0 0 0 1000px var(--color-bg-card) inset;
     caret-color: var(--color-ink);
     transition: background-color 5000s ease-in-out 0s, border-color 0.2s;
 }
