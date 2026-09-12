@@ -28,7 +28,7 @@
    TYPE — Revision A2 (implementation_plan.md): Style/typography.css (linked
    before this file on every page) is now the single owner of
    --font-display/--font-body/--font-mono/--font-numeric, the --fs-* size
-   scale, --fw-* weights and --lh-*/--ls-* tokens. This file only consumes
+   scale, --fw-* weights and --lh-* and --ls-* tokens. This file only consumes
    them. Every font-size below is one of the --fs-* tokens (a handful of
    deliberate clamp()s are kept for hero-scale fluid sizing — each says why
    inline); --font-mono usages were re-homed to --font-display (labels) or
@@ -84,7 +84,7 @@
 
     /* Type — Revision A2 (implementation_plan.md): fonts/sizes/weights now
        live in Style/typography.css, linked before this file on every page,
-       so --font-display/--font-body/--font-mono (and the --fs-*/--fw-*
+       so --font-display/--font-body/--font-mono (and the --fs-* and --fw-*
        scale) are defined once for the whole product instead of here. */
 }
 

@@ -299,7 +299,7 @@ body.admin-sidebar-open .admin-toggle-bar:nth-child(3) {
    the same class, toggled via the `hidden` IDL property). */
 
 /* Notifications dropdown (Revision A1, decision A7) — ported from the
-   customer dashboard's .dash-notif*/.dash-notif-item* (Style/Dashboard.css)
+   customer dashboard's .dash-notif* and .dash-notif-item* (Style/Dashboard.css)
    under admin-* names. Same open/close idiom + visual shape as
    .admin-profile-menu below (toggled via the same [data-open] attribute
    pattern from includes/owner_dashboard.js). */
