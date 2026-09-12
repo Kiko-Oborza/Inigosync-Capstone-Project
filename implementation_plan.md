@@ -1,3 +1,136 @@
+# Owner (Admin) Dashboard — Revision A1 + system-wide typography
+
+## Context
+
+The owner dashboard (`Pages/owner_dashboard.html` 880 lines, `includes/owner_dashboard.js` 1050 lines,
+`Style/owner_dashboard.css` 791 lines; panels `overview | staff | courts | media | settings`) lags behind the
+customer dashboard that was just reworked (Revision 5). The user wants it brought to the same standard, plus a
+single typography system applied to every page of the product.
+
+Findings from direct reads (2026-09-12):
+
+- **Brand**: sidebar shows a text monogram `IS` (`.admin-logo-dot`) instead of the real logo the customer page
+  uses (`assets/Logo/WebLogo.png` in `.dash-sidebar-brand`).
+- **Fonts**: all five pages load the same Google Fonts link (Oswald / Inter / Space Mono) and each CSS file
+  redefines `--font-display/--font-body/--font-mono` itself. Space Mono is sprinkled over UI labels (stats,
+  table meta, chips, captions) and there are ~300 ad-hoc `font-size` declarations across the six CSS files.
+- **Topbar**: bell button exists but is dead (no dropdown, no data); profile dropdown exists
+  (`[data-admin-profile]` → Account Settings / Log Out) but the avatar is initials-only (`.admin-avatar`).
+- **Overview**: stat cards + Chart.js trend (`event/chart.js`) are live; **"Busiest courts this week"** and
+  **"Staff on shift"** are hardcoded fake data.
+- **Court Listings**: add/edit share one inline `.admin-add-panel` form that scrolls into view
+  (`openCourtFormForEdit()` → `scrollIntoView`). No modal exists anywhere on the admin page. Card visuals differ
+  from the customer's court cards.
+- **Media Manager**: "Home featured slideshow" and "Court photos" are static, disabled placeholders (no Storage
+  bucket). The landing-page hero already reads slides from `public.event`
+  (`title, meta, tag, image_url, display_order, is_published`, `002_content_tables.sql`) via
+  `includes/home-showcase.js` / `window.InigoContent.getEvents()`; the customer dashboard hero is 3 static
+  `<article data-dash-hero-slide>`.
+- **Staff**: list live; "Reset Password" = `resetPasswordForEmail` (email link); "Deactivate" sets
+  `profiles.status='disabled'`; **no Activate** action; row edit is inline.
+- **Settings**: name saves `profiles.full_name`; email input present but **never saved**; no avatar upload;
+  password change is a single 3-field form.
+- Reusable from the customer page (`includes/Dashboard.js`): `downscaleImageToAvatarDataUrl()` +
+  `saveAvatarUrl()` + avatar rendering (256×256 JPEG data URL in `profiles.avatar_url`), the 2-step password
+  wizard (`signInWithPassword` re-auth → `auth.updateUser({password})`), the notifications dropdown
+  (`[data-dash-notif*]`, `renderNotifications()`), the `.dash-modal-overlay`/`.dash-modal` shell, `InigoToast`.
+
+## Decisions (user confirmed 1,3–9 "all good"; #2 delegated: "you choose", apply to the whole system)
+
+| # | Decision |
+|---|----------|
+| A1 | **Logo**: replace `.admin-logo-dot` "IS" with `<img src="../assets/Logo/WebLogo.png">` + wordmark, same markup/sizing as `.dash-sidebar-brand`. Do the same on the staff sidebar if it also uses a text monogram. |
+| A2 | **Typography (system-wide)**: new shared `Style/typography.css`, linked FIRST on every page (`Index`, `terms`, `user_dashboard`, `staff_dashboard`, `owner_dashboard`). Fonts: **Sora** (display/headings, 600–700) + **Inter** (body/UI, 400–600) with `font-variant-numeric: tabular-nums` for numbers; **Space Mono removed** (`--font-mono` is kept as an alias of Inter so nothing breaks, then usages are cleaned up). One Google Fonts link (`Sora:wght@500;600;700&Inter:wght@400;500;600;700`) replaces the old one on all five pages. Type scale as CSS variables: `--fs-xs .75rem, --fs-sm .8125rem, --fs-md .875rem, --fs-base 1rem, --fs-lg 1.125rem, --fs-xl 1.375rem, --fs-2xl 1.75rem, --fs-3xl 2.25rem, --fs-hero clamp(2.25rem,5vw,3.5rem)`; line-heights `--lh-tight 1.15, --lh-snug 1.3, --lh-normal 1.55`; letter-spacing for uppercase eyebrows `.08em`. Each CSS file's `--font-*` definitions are deleted (inherit from typography.css) and every `font-size:` is mapped to the nearest scale token; heading elements (`h1–h4`, `.admin-stat-value`, `.dash-*-title`…) use `--font-display`. Result: one place defines fonts, sizes, and weights for the whole product. |
+| A3 | **Overview replacements**: "Busiest courts this week" → **Recent bookings** (latest 8 `booking` rows joined to `profiles.full_name`, columns Customer / Court / Date & time / Status with the same status-badge classes; "View all" not needed). "Staff on shift" → **Booking status this month** (counts of pending / confirmed / completed / cancelled + client-derived unattended, as a compact bar list). Both live, refreshed with `refreshOverviewStats()`. |
+| A4 | **Staff → Reset Password**: sets the password to **`12345678`** via a new SECURITY DEFINER RPC `public.admin_reset_staff_password(target_id uuid)` (migration `014_admin_reset_staff_password.sql`): verifies `auth.uid()` is an `admin` profile, target is `staff`/`admin`, then `update auth.users set encrypted_password = crypt('12345678', gen_salt('bf')), updated_at = now()`; requires `pgcrypto`. Button asks `confirm()` first, then toasts "Password reset to the default. Ask <name> to change it after logging in." Keep the email-link path out (replaced). Add **Activate** button for `disabled` staff (`profiles.status='active'`), mirroring the court cards' Activate/Deactivate pair. Staff row edit stays inline (unchanged). |
+| A5 | **Media Manager**: remove the "Court photos" card entirely (markup + CSS + JS stubs). Make the slideshow real against `public.event`: list published+unpublished slides ordered by `display_order`; per slide: photo (replace via upload), Title (`title`), Caption (`meta`), Tag (`tag`, optional), Published toggle (`is_published`), Move up/down (`display_order`), Remove (delete row); "Add slide" (max 6). Uploads go to a new **public Storage bucket `media`** created by migration `015_media_bucket.sql` (`insert into storage.buckets … on conflict do nothing` + RLS policies: public read, admin insert/update/delete on `bucket_id='media'`); client uses `sb.storage.from('media').upload(path, file, {upsert:true})` then `getPublicUrl()` → `event.image_url`. Images are downscaled client-side to max 1600×900 JPEG before upload (reuse the canvas approach of `downscaleImageToAvatarDataUrl`, generalised as `downscaleImageToBlob(file, maxW, maxH, quality)` in a new shared `includes/imageTools.js`). If the bucket is missing (error 404/“Bucket not found”), toast "Media storage isn't set up yet — run 015_media_bucket.sql". The customer dashboard hero (`[data-dash-hero]`) is rewired to render from `InigoContent.getEvents()`-equivalent data (add a small `includes/contentEvents.js` used by both dashboards, or reuse `includes/landingPage.js`'s `InigoContent` if it can load standalone — coder to decide after reading it) so owner edits show on the landing page AND the customer dashboard. |
+| A6 | **Court Listings**: Add/Edit move into a **modal** (`.admin-modal-overlay`/`.admin-modal`, port of the customer `.dash-modal` shell), opened from "+ Add New Court" and each card's Edit; Esc/backdrop/Cancel close; Save keeps the existing insert/update logic (`courtSubmitBtn` handler) and refreshes the grid. The modal's Image field offers **Upload** (to the `media` bucket, path `courts/<id>-<ts>.jpg`) **or URL**. Card redesign to match the customer's court cards: image/monogram media block with status badge, name, sport chip, `N units` chip, rate line ("Rate TBA" when null), description tags, and a consistent action row (Edit = secondary, Activate/Deactivate = ghost/danger). Filter chips unchanged. |
+| A7 | **Notifications (owner)**: port the customer bell/dropdown (`[data-admin-notif*]`): items = new bookings (`status='pending'`, latest 10, "Juan booked Badminton · Sep 14, 9–11 AM") and new feedback (latest 5, "★★★★☆ — message excerpt"). Unread dot = any item newer than `localStorage['inigosync-admin-notif-seen']`; opening the menu marks seen. Clicking a booking item goes to Overview (Recent bookings). Refresh every 60 s and on `inigosync:profile-ready`. |
+| A8 | **Topbar profile**: `.admin-avatar` renders `profiles.avatar_url` (img) when set, initials otherwise — one `renderAdminProfile()` paints every avatar (topbar + settings card). Dropdown unchanged. |
+| A9 | **Account Settings**: (1) **Profile photo card** — Upload / Remove, same pipeline as the customer page (`downscaleImageToAvatarDataUrl` → `profiles.avatar_url`; move that helper into `includes/imageTools.js` and have Dashboard.js use it too, no behaviour change). (2) **Full name + email editable**: name → `profiles.update({full_name})`; email → `sb.auth.updateUser({ email })` then toast "Confirmation link sent to <new email> — the change applies after you click it." On load and on `onAuthStateChange('USER_UPDATED')`, if `session.user.email !== profile.email`, sync `profiles.email` and repaint. (3) **Change Password = 2-step wizard** identical to the customer's (Step 1 current password → `signInWithPassword` re-auth; Step 2 new + confirm with show/hide → `auth.updateUser({password})`), with `data-admin-pw-*` hooks. |
+
+## Files to change
+
+### New
+- `Style/typography.css` — fonts, scale, weights, base element rules (A2).
+- `includes/imageTools.js` — `downscaleImageToDataUrl(file, {size, quality})` (avatar) + `downscaleImageToBlob(file, {maxW, maxH, quality})` (media). Loaded by user + owner dashboards before their main script.
+- `database/schema/014_admin_reset_staff_password.sql` (A4), `database/schema/015_media_bucket.sql` (A5).
+- `docs/OWNER_ACTION_LIST.md` items: run 014 + 015; note the default password policy.
+
+### `Pages/owner_dashboard.html`
+- Sidebar brand → logo image (A1). Fonts link swap + `typography.css` link (A2).
+- Topbar: bell → `[data-admin-notif]` dropdown markup (A7); avatar container accepts `<img>` (A8).
+- Overview: replace the two fake cards with `[data-admin-recent-bookings]` table and `[data-admin-status-breakdown]` list (A3).
+- Courts: remove inline `.admin-add-panel` form; add `[data-admin-court-modal]` (A6).
+- Media: delete Court photos card; slideshow card becomes `[data-admin-slides]` container + "Add slide" (A5).
+- Staff: rows gain Activate (rendered by JS); Reset copy updated (A4).
+- Settings: Profile photo card, editable email, 2-step password wizard (A9).
+- Script order: `imageTools.js` before `owner_dashboard.js`.
+
+### `includes/owner_dashboard.js`
+- `renderAdminProfile()` (avatar img/initials, name, email fields); avatar upload/remove handlers; email change + sync; password wizard state machine (port from `Dashboard.js`, `data-admin-pw-*`).
+- `refreshOverviewStats()` → also `refreshRecentBookings()` and `refreshStatusBreakdown()`.
+- Court modal open/close/populate/save; card renderer redesign; image upload helper `uploadToMedia(path, blob)`.
+- Slides: `loadSlides()`, `renderSlides()`, handlers for replace/add/remove/reorder/publish/title/caption (debounced save on blur).
+- Staff: `admin_reset_staff_password` RPC call; Activate handler.
+- Notifications: `refreshAdminNotifications()`, `renderAdminNotifications()`, menu toggle, seen marker.
+
+### `Style/owner_dashboard.css`
+- Remove `--font-*` block; map sizes to tokens; kill mono usages (A2). New: `.admin-brand img`, `.admin-notif*`, `.admin-modal*`, `.admin-court-card` redesign, `.admin-slide*`, `.admin-recent-table`, `.admin-status-breakdown`, `.admin-avatar img`, `.admin-pw-step*`, `.admin-input[readonly]`.
+
+### Other pages (A2 only — no functional change)
+- `Pages/Index.html`, `Pages/terms.html`, `Pages/user_dashboard.html`, `Pages/staff_dashboard.html`: fonts link swap + `typography.css` link.
+- `Style/LandingPage.css`, `Style/Auth.css`, `Style/Dashboard.css`, `Style/staff_dashboard.css`, `Style/Loading.css`: drop local `--font-*` definitions; map `font-size` values to tokens; replace `--font-mono` usages with body font + `tabular-nums` where it was used for numbers.
+- `Pages/user_dashboard.html` + `includes/Dashboard.js`: hero slides rendered from `event` rows (A5); avatar helper moved to `imageTools.js` (A9) — behaviour unchanged.
+- `Pages/staff_dashboard.html`: logo image if it also uses a text monogram (A1).
+
+## Constraints and non-goals
+- No build step; plain scripts on `window`; keep `data-admin-*` hooks and `admin-*` CSS prefix; hoisted function declarations; explain-why comments citing "Revision A1 / A-number".
+- Do not change booking logic, business hours, staff dashboard behaviour, or the customer Revision 5 features (only their fonts/sizes and the hero data source).
+- Staff creation/invite flow unchanged. No auth.users deletion. No service-role key in the browser — the only privileged operation is the SECURITY DEFINER RPC (A4), which itself checks the caller is an admin.
+- Typography pass must not change layout structure — only font family/size/weight/line-height tokens. Visual regressions are checked page by page.
+
+## Success criteria
+1. Sidebar shows the logo image on owner (and staff, if applicable) pages.
+2. Every page loads only Sora + Inter; no `Space Mono` request in the network tab; all `font-size` values in the six CSS files come from typography tokens (grep shows no raw `font-size: <number>` outside `typography.css`, except intentional `clamp` hero sizes); headings visibly use Sora, body Inter; no layout breakage on mobile/desktop for Index, login, customer, staff, owner.
+3. Overview shows live Recent bookings and Booking status this month; fake cards gone.
+4. Reset Password sets the target's password to `12345678` (login test with that password succeeds afterwards); non-admin callers get a Postgres exception; Activate restores a deactivated staff.
+5. Media Manager: adding/replacing/reordering/publishing/removing a slide persists to `event`, uploads land in the `media` bucket, and the landing-page hero AND the customer dashboard hero show the change; Court photos card is gone.
+6. Court Add/Edit happen in a modal with Esc/backdrop close; save/insert/update still work; cards look consistent with the customer's.
+7. Owner bell shows pending bookings + feedback with an unread dot; opening clears it.
+8. Settings: photo upload/remove works and shows in the topbar; name saves; email change sends a confirmation and `profiles.email` follows after confirmation; password wizard works with wrong-current-password rejection.
+
+## Verification
+- `node --check` on all touched JS; brace-balance on all CSS.
+- Serve with `python -m http.server 8532`; open all five pages; check console/network (fonts requested: Sora, Inter only).
+- Owner login: walk every panel per criteria 3–8; run 014/015 first in Supabase (owner action).
+- Reviewer pass on: RPC SQL (privilege check), storage policies, modal/upload code, typography diff (spot-check each page).
+
+
+## Post-implementation notes (2026-09-12)
+
+Implemented in two sequential coder lanes (features, then typography), reviewed, findings fixed.
+
+- **A2 typography**: `Style/typography.css` now owns fonts (Sora + Inter), the `--fs-*` scale, weights and line-heights; the six page stylesheets only reference tokens. Space Mono removed. `Style/Auth.css` `.auth-field-row` min column raised 86→96px because Sora labels are wider (verified in Playwright at 320–768px). Landing `.cta-button` now inherits 1rem (was UA 13.33px) — matches its sibling link.
+- **A4 hardening**: the reset RPC also deletes the target's `auth.refresh_tokens` and `active_session` row, so a reset ends every open session of that staff account (defence in depth; refresh-token delete is wrapped so a privilege error can't block the reset). `inigosync_is_active_admin()` is revoked from `public`/`anon`.
+- **A5**: Media Manager cap is 5 slides (both heroes render max 5); a newly added slide starts **unpublished**; reorder renumbers duplicates first. Public `event_public_read` policy (from 002) still exposes unpublished rows to SELECT — the heroes filter client-side; acceptable for marketing copy, noted.
+- **A7**: notifications retry without `end_at` on a pre-012 database and show "Couldn't load booking alerts" instead of failing silently.
+- **A9**: email change keeps the typed address in the input with a "pending confirmation" hint; password re-auth uses the session's email.
+- Static demo staff rows are now wired (fallback only).
+
+**Not verified live** (no signed-in session available to the agents): RPC + login with the default password, storage upload + both heroes, notifications data, email confirmation round-trip, and the dashboards' rendering with the new fonts (landing + terms pages were screenshotted at 360/1280 and are clean). Owner must run `014` then `015` first (docs/OWNER_ACTION_LIST.md).
+
+## Risks
+- The RPC touches `auth.users` — must be SECURITY DEFINER owned by `postgres` and revoke `execute` from `anon`; grant to `authenticated`. Document that any admin can reset any staff password to a known default (intended by the user; staff should change it on first login).
+- Storage bucket creation via SQL works on hosted Supabase (`storage.buckets` insert) but policies must be created on `storage.objects`; if the project restricts this, fallback is creating the bucket in the dashboard UI (documented in OWNER_ACTION_LIST).
+- Email change with "Secure email change" enabled sends links to both addresses; the toast text covers "check both inboxes".
+- Typography pass is wide (six CSS files); mis-mapped sizes are the most likely regression → reviewer spot-checks every page at 360px and 1280px widths.
+
+
+---
+
+# Earlier revisions (kept for the code comments that cite them)
+
 # Customer Dashboard — Revision 5 (8 AM–8 PM hours, From/To booking picker, receipt redesign, locked profile + mobile OTP, dashboard-only footer)
 
 ## Context
@@ -148,7 +281,7 @@ Implemented by the coder, reviewed independently, review findings fixed. Deviati
 
 ---
 
-# Earlier revisions (kept for the code comments that cite them)
+
 
 # Customer Page — Revision 2 (post-feedback-v6 corrections)
 

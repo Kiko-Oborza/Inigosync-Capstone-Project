@@ -1,5 +1,12 @@
 /* ==========================================================================
    IñigoSync — Design Tokens (mirrors Style/LandingPage.css :root)
+
+   Revision A2 (implementation_plan.md) — fonts/sizes/weights come from
+   Style/typography.css (linked first, before this file, in
+   Pages/owner_dashboard.html), not from a local --font-* block any more.
+   Every font-size below is an --fs-* token; --font-mono usages were
+   re-homed to --font-display (labels) or --font-numeric (numbers/times/
+   prices) since Space Mono was removed.
    ========================================================================== */
 :root {
     --color-bg: #14110d;
@@ -13,10 +20,6 @@
     --color-court-green: #3e7a5e;
     --color-alert: #d6482f;
     --color-line: rgba(244, 239, 230, 0.12);
-
-    --font-display: 'Oswald', 'Segoe UI', sans-serif;
-    --font-body: 'Inter', 'Segoe UI', sans-serif;
-    --font-mono: 'Space Mono', monospace;
 }
 
 /* Light mode (mirrors Style/LandingPage.css :root[data-theme="light"]) */
@@ -42,8 +45,9 @@
 body.admin-body {
     background-color: var(--color-bg);
     color: var(--color-ink);
-    font-family: var(--font-body);
-    line-height: 1.5;
+    /* font-family/font-size/line-height come from Style/typography.css's
+       base `body` rule (Revision A2) — not redeclared here so there is one
+       source of truth. */
     min-height: 100vh;
 }
 
@@ -77,32 +81,32 @@ body.admin-body {
     margin-bottom: 6px;
 }
 
-.admin-logo-dot {
+/* Revision A1 (implementation_plan.md, decision A1) — the real logo image,
+   replacing the "IS" text monogram (.admin-logo-dot, removed). Same
+   30x30/object-fit:contain sizing as the customer dashboard's own
+   .dash-sidebar-brand img (Style/Dashboard.css). */
+.admin-sidebar-brand img {
     width: 30px;
     height: 30px;
-    border-radius: 9px;
-    background: linear-gradient(135deg, var(--color-primary), var(--color-primary-dim));
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    color: #14110d;
-    font-family: var(--font-display);
-    font-weight: 700;
-    font-size: 0.95rem;
+    object-fit: contain;
     flex-shrink: 0;
 }
 
 .admin-logo-text {
     font-family: var(--font-display);
     color: var(--color-primary);
-    font-size: 1.25rem;
-    font-weight: 700;
+    font-size: var(--fs-lg);
+    /* Revision A2 (implementation_plan.md) — Oswald 700 steps down to
+       --fw-semibold (600); Sora renders heavier at the same weight. */
+    font-weight: var(--fw-semibold);
     letter-spacing: 0.02em;
 }
 
 .admin-role-tag {
-    font-family: var(--font-mono);
-    font-size: 0.68rem;
+    /* Revision A2 (implementation_plan.md) — label role, so it moves to
+       --font-display, not --font-numeric. */
+    font-family: var(--font-display);
+    font-size: var(--fs-xs);
     letter-spacing: 0.06em;
     text-transform: uppercase;
     color: var(--color-ink-faint);
@@ -129,7 +133,7 @@ body.admin-body {
     color: var(--color-ink-dim);
     font-family: var(--font-body);
     font-weight: 600;
-    font-size: 0.92rem;
+    font-size: var(--fs-md);
     cursor: pointer;
     text-align: left;
     transition: background 0.2s, color 0.2s;
@@ -209,8 +213,8 @@ body.admin-sidebar-open .admin-toggle-bar:nth-child(3) {
     transform: rotate(-45deg);
 }
 
-.admin-topbar-title h1 { font-family: var(--font-display); font-weight: 600; font-size: 1.35rem; }
-.admin-topbar-title p { font-size: 0.85rem; color: var(--color-ink-faint); margin-top: 2px; }
+.admin-topbar-title h1 { font-family: var(--font-display); font-weight: 600; font-size: var(--fs-xl); }
+.admin-topbar-title p { font-size: var(--fs-md); color: var(--color-ink-faint); margin-top: 2px; }
 .admin-topbar-actions { display: flex; align-items: center; gap: 18px; }
 
 /* Theme toggle button — this file previously had no rules for it at all,
@@ -236,9 +240,7 @@ body.admin-sidebar-open .admin-toggle-bar:nth-child(3) {
     border-color: var(--color-primary);
 }
 
-:root[data-theme="light"] .theme-toggle:hover {
-    background-color: rgba(255, 97, 21, 0.08);
-}
+:root[data-theme="light"] .theme-toggle:hover { background-color: rgba(255, 97, 21, 0.08); }
 
 .theme-toggle svg {
     width: 19px;
@@ -246,8 +248,11 @@ body.admin-sidebar-open .admin-toggle-bar:nth-child(3) {
 }
 
 .admin-clock {
-    font-family: var(--font-mono);
-    font-size: 0.82rem;
+    /* Revision A2 (implementation_plan.md) — the topbar clock, so it takes
+       --font-numeric (tabular-nums) instead of the removed --font-mono. */
+    font-family: var(--font-numeric);
+    font-variant-numeric: tabular-nums;
+    font-size: var(--fs-sm);
     color: var(--color-ink-dim);
     background: var(--color-bg-card);
     border: 1px solid var(--color-line);
@@ -285,6 +290,131 @@ body.admin-sidebar-open .admin-toggle-bar:nth-child(3) {
     border: 1.5px solid var(--color-bg-elevated);
 }
 
+/* H1 fix, same reasoning as Style/Dashboard.css's .dash-mobile-verified-badge[hidden]
+   rule — an author rule setting `display` on an element that also carries a
+   plain `[hidden]` boolean attribute beats the UA `[hidden] { display: none }`
+   rule at equal specificity because it comes later in the cascade. Nothing
+   here sets `display` on .admin-badge-dot, so this isn't needed today, but
+   is documented in case a later change adds one (data-admin-notif-dot uses
+   the same class, toggled via the `hidden` IDL property). */
+
+/* Notifications dropdown (Revision A1, decision A7) — ported from the
+   customer dashboard's .dash-notif*/.dash-notif-item* (Style/Dashboard.css)
+   under admin-* names. Same open/close idiom + visual shape as
+   .admin-profile-menu below (toggled via the same [data-open] attribute
+   pattern from includes/owner_dashboard.js). */
+.admin-notif {
+    position: relative;
+}
+
+.admin-notif-menu {
+    position: absolute;
+    top: calc(100% + 10px);
+    right: 0;
+    width: 340px;
+    max-width: calc(100vw - 32px);
+    max-height: 420px;
+    overflow-y: auto;
+    background: var(--color-bg-card);
+    border: 1px solid var(--color-line);
+    border-radius: 12px;
+    padding: 8px;
+    box-shadow: 0 18px 40px rgba(0, 0, 0, 0.4);
+    opacity: 0;
+    transform: translateY(-6px);
+    pointer-events: none;
+    transition: opacity 0.18s ease, transform 0.18s ease;
+    z-index: 6;
+}
+
+.admin-notif[data-open] .admin-notif-menu {
+    opacity: 1;
+    transform: translateY(0);
+    pointer-events: auto;
+}
+
+.admin-notif-menu-head {
+    font-family: var(--font-display);
+    font-weight: 600;
+    font-size: var(--fs-md);
+    padding: 8px 10px 10px;
+    color: var(--color-ink);
+}
+
+/* .admin-notif-item renders as EITHER a <button> (a pending booking — click
+   jumps to Overview) or a plain <div> (a feedback row — informational
+   only); shared layout rules below cover both, button-only resets/states
+   are scoped with the `button.` prefix so a static <div> never looks
+   clickable. */
+.admin-notif-item {
+    display: flex;
+    align-items: flex-start;
+    width: 100%;
+    gap: 10px;
+    padding: 10px;
+    border-radius: 8px;
+}
+
+button.admin-notif-item {
+    background: none;
+    border: 0;
+    text-align: left;
+    font: inherit;
+    color: inherit;
+    cursor: pointer;
+    transition: background 0.15s ease;
+}
+
+button.admin-notif-item:hover,
+button.admin-notif-item:focus-visible {
+    background: rgba(244, 239, 230, 0.06);
+}
+
+button.admin-notif-item:focus-visible {
+    outline: 2px solid var(--color-primary);
+    outline-offset: -2px;
+}
+
+.admin-notif-item + .admin-notif-item {
+    border-top: 1px solid var(--color-line);
+}
+
+.admin-notif-item-body {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+}
+
+.admin-notif-item-body strong {
+    font-size: var(--fs-md);
+    color: var(--color-ink);
+}
+
+.admin-notif-item-body span {
+    font-size: var(--fs-xs);
+    color: var(--color-ink-faint);
+}
+
+.admin-notif-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    margin-top: 5px;
+    flex-shrink: 0;
+    background: var(--color-ink-faint);
+}
+
+.admin-notif-dot.pending { background: var(--color-primary); }
+.admin-notif-dot.feedback { background: var(--color-court-green); }
+
+.admin-notif-empty {
+    color: var(--color-ink-faint);
+    font-size: var(--fs-md);
+    padding: 16px 10px;
+    text-align: center;
+}
+
 .admin-profile { position: relative; }
 
 .admin-profile-trigger {
@@ -297,8 +427,24 @@ body.admin-sidebar-open .admin-toggle-bar:nth-child(3) {
     width: 38px; height: 38px; border-radius: 50%;
     background: linear-gradient(135deg, var(--color-primary), var(--color-primary-dim));
     display: flex; align-items: center; justify-content: center;
-    color: #14110d; font-family: var(--font-display); font-weight: 700; font-size: 0.95rem;
+    /* Revision A2 (implementation_plan.md) — Oswald 700 steps down to
+       --fw-semibold (600); Sora renders heavier at the same weight. */
+    color: #14110d; font-family: var(--font-display); font-weight: var(--fw-semibold); font-size: var(--fs-base);
     flex-shrink: 0;
+}
+
+/* Revision A1 (decision A8/A9) — renderAdminProfile() (includes/
+   owner_dashboard.js) inserts this <img> inside a .admin-avatar whenever
+   profiles.avatar_url is set, at whatever size THAT .admin-avatar already
+   renders at (topbar, Settings' profile card, Settings' own upload
+   preview) — .admin-avatar's own rule above is untouched, so the no-image
+   initials avatar looks exactly as it always has. Ported from the
+   customer dashboard's .dash-avatar-img (Style/Dashboard.css). */
+.admin-avatar-img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    border-radius: inherit;
 }
 
 .admin-profile-trigger .admin-caret {
@@ -307,8 +453,8 @@ body.admin-sidebar-open .admin-toggle-bar:nth-child(3) {
 .admin-profile[data-open] .admin-caret { transform: rotate(180deg); }
 
 .admin-profile-name { text-align: left; display: none; }
-.admin-profile-name strong { display: block; font-size: 0.88rem; }
-.admin-profile-name span { display: block; font-size: 0.75rem; color: var(--color-ink-faint); }
+.admin-profile-name strong { display: block; font-size: var(--fs-md); }
+.admin-profile-name span { display: block; font-size: var(--fs-xs); color: var(--color-ink-faint); }
 
 .admin-profile-menu {
     position: absolute; top: calc(100% + 10px); right: 0; min-width: 200px;
@@ -322,7 +468,7 @@ body.admin-sidebar-open .admin-toggle-bar:nth-child(3) {
 .admin-profile-menu button {
     display: flex; align-items: center; gap: 10px; width: 100%;
     padding: 10px 12px; border-radius: 8px; border: none; background: transparent;
-    color: var(--color-ink-dim); font-family: var(--font-body); font-size: 0.88rem; font-weight: 600;
+    color: var(--color-ink-dim); font-family: var(--font-body); font-size: var(--fs-md); font-weight: 600;
     text-align: left; cursor: pointer;
 }
 .admin-profile-menu button:hover { background: color-mix(in srgb, var(--color-ink) 6%, transparent); color: var(--color-ink); }
@@ -344,8 +490,8 @@ body.admin-sidebar-open .admin-toggle-bar:nth-child(3) {
 .admin-panel-head {
     display: flex; align-items: flex-end; justify-content: space-between; gap: 20px; flex-wrap: wrap;
 }
-.admin-panel-head h2 { font-family: var(--font-display); font-weight: 600; font-size: 1.6rem; }
-.admin-panel-head p { color: var(--color-ink-faint); font-size: 0.92rem; margin-top: 4px; }
+.admin-panel-head h2 { font-family: var(--font-display); font-weight: 600; font-size: var(--fs-2xl); }
+.admin-panel-head p { color: var(--color-ink-faint); font-size: var(--fs-md); margin-top: 4px; }
 
 /* Stat cards */
 .admin-stat-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 18px; }
@@ -361,8 +507,10 @@ body.admin-sidebar-open .admin-toggle-bar:nth-child(3) {
     display: flex; align-items: center; justify-content: center;
 }
 .admin-stat-icon svg { width: 17px; height: 17px; }
-.admin-stat-value { font-family: var(--font-display); font-size: 1.7rem; font-weight: 700; }
-.admin-stat-label { font-size: 0.82rem; color: var(--color-ink-faint); }
+/* Revision A2 (implementation_plan.md) — Oswald 700 steps down to
+   --fw-semibold (600); Sora renders heavier at the same weight. */
+.admin-stat-value { font-family: var(--font-display); font-size: var(--fs-2xl); font-weight: var(--fw-semibold); }
+.admin-stat-label { font-size: var(--fs-sm); color: var(--color-ink-faint); }
 
 /* Generic card */
 .admin-card { background: var(--color-bg-card); border: 1px solid var(--color-line); border-radius: 16px; padding: 26px; }
@@ -370,12 +518,31 @@ body.admin-sidebar-open .admin-toggle-bar:nth-child(3) {
 .admin-card-head {
     display: flex; align-items: center; justify-content: space-between; margin-bottom: 18px; gap: 14px; flex-wrap: wrap;
 }
-.admin-card-head h3 { font-family: var(--font-display); font-size: 1.05rem; font-weight: 600; }
-.admin-card-head p.admin-card-sub { font-size: 0.8rem; color: var(--color-ink-faint); margin-top: 2px; }
+.admin-card-head h3 { font-family: var(--font-display); font-size: var(--fs-base); font-weight: 600; }
+.admin-card-head p.admin-card-sub { font-size: var(--fs-sm); color: var(--color-ink-faint); margin-top: 2px; }
+
+/* Generic small-print hint under a form group/card (mirrors Style/
+   Dashboard.css's .dash-form-hint) — used by the staff Reset Password note,
+   the court modal's image status line, and the Personal Information email
+   note. Existed as a class name in the markup with no rule at all before
+   this revision. */
+.admin-form-hint {
+    font-size: var(--fs-sm);
+    color: var(--color-ink-faint);
+    line-height: 1.5;
+    margin: 0;
+}
+
+.admin-form-label-hint {
+    text-transform: none;
+    letter-spacing: normal;
+    font-weight: 400;
+    opacity: 0.75;
+}
 
 .admin-link-btn {
     background: none; border: none; color: var(--color-primary);
-    font-family: var(--font-body); font-weight: 600; font-size: 0.85rem; cursor: pointer;
+    font-family: var(--font-body); font-weight: 600; font-size: var(--fs-md); cursor: pointer;
 }
 .admin-link-btn:hover { color: var(--color-primary-dim); text-decoration: underline; }
 
@@ -387,7 +554,9 @@ body.admin-sidebar-open .admin-toggle-bar:nth-child(3) {
 .admin-chart-head { align-items: flex-start; }
 .admin-chart-controls { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
 .admin-chart-total {
-    font-family: var(--font-mono); font-size: 0.78rem; color: var(--color-ink-faint); white-space: nowrap;
+    /* Revision A2 (implementation_plan.md) — a booking count, so it takes
+       --font-numeric (tabular-nums) instead of the removed --font-mono. */
+    font-family: var(--font-numeric); font-variant-numeric: tabular-nums; font-size: var(--fs-xs); color: var(--color-ink-faint); white-space: nowrap;
 }
 
 .admin-toggle-pill {
@@ -396,52 +565,29 @@ body.admin-sidebar-open .admin-toggle-bar:nth-child(3) {
 }
 .admin-pill-btn {
     padding: 8px 18px; border-radius: 999px; border: none; cursor: pointer; background: transparent;
-    color: var(--color-ink-dim); font-family: var(--font-body); font-weight: 700; font-size: 0.82rem;
+    color: var(--color-ink-dim); font-family: var(--font-body); font-weight: 700; font-size: var(--fs-sm);
     white-space: nowrap; transition: background 0.2s, color 0.2s;
 }
 .admin-pill-btn.is-active { background: var(--color-primary); color: #14110d; }
 .admin-pill-btn:not(.is-active):hover { color: var(--color-ink); }
 
-/* Busiest courts — horizontal progress bars */
+/* Recent bookings / Booking status this month (Revision A1, decision A3) —
+   Recent bookings reuses .admin-table (below); Booking status this month
+   reuses these SAME horizontal progress-bar rules the old "Busiest courts
+   this week" fake card used (label + count + proportional bar), just fed
+   by includes/owner_dashboard.js's refreshStatusBreakdown() instead of a
+   hardcoded width. */
 .admin-progress-list { display: flex; flex-direction: column; gap: 14px; }
 .admin-progress-item { display: flex; flex-direction: column; gap: 6px; }
 .admin-progress-row {
     display: flex; justify-content: space-between; align-items: baseline; gap: 10px;
-    font-size: 0.88rem; font-weight: 600;
+    font-size: var(--fs-md); font-weight: 600;
 }
-.admin-progress-count { font-family: var(--font-mono); font-weight: 400; color: var(--color-ink-faint); white-space: nowrap; }
+/* Revision A2 (implementation_plan.md) — a count ("12/20"), so it takes
+   --font-numeric (tabular-nums) instead of the removed --font-mono. */
+.admin-progress-count { font-family: var(--font-numeric); font-variant-numeric: tabular-nums; font-weight: 400; color: var(--color-ink-faint); white-space: nowrap; }
 .admin-progress-track { height: 8px; border-radius: 999px; background: var(--color-bg-elevated); overflow: hidden; }
 .admin-progress-fill { height: 100%; border-radius: 999px; background: var(--color-primary); }
-
-/* Active staff list */
-.admin-staff-list { display: flex; flex-direction: column; gap: 12px; }
-
-.admin-staff-row {
-    display: flex; align-items: center; gap: 14px;
-    padding: 12px 14px; background: var(--color-bg-elevated);
-    border: 1px solid var(--color-line); border-radius: 10px;
-}
-
-.admin-staff-avatar-sm {
-    width: 34px; height: 34px; border-radius: 50%; flex-shrink: 0;
-    background: linear-gradient(135deg, var(--color-primary), var(--color-primary-dim));
-    display: flex; align-items: center; justify-content: center;
-    color: #14110d; font-family: var(--font-display); font-weight: 700; font-size: 0.78rem;
-}
-
-.admin-staff-row-info { flex: 1; min-width: 0; }
-.admin-staff-row-info h4 { font-size: 0.9rem; font-weight: 600; }
-.admin-staff-row-info p { font-size: 0.78rem; color: var(--color-ink-faint); margin-top: 1px; }
-
-.admin-online-dot {
-    display: inline-flex; align-items: center; gap: 6px;
-    font-family: var(--font-mono); font-size: 0.72rem; color: var(--color-ink-faint);
-}
-.admin-online-dot span {
-    width: 7px; height: 7px; border-radius: 50%; background: var(--color-ink-faint);
-}
-.admin-online-dot.is-online { color: var(--color-court-green); }
-.admin-online-dot.is-online span { background: var(--color-court-green); box-shadow: 0 0 6px var(--color-court-green); }
 
 /* Toolbar / filters / search */
 .admin-toolbar { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
@@ -450,7 +596,7 @@ body.admin-sidebar-open .admin-toggle-bar:nth-child(3) {
 .admin-chip {
     padding: 8px 16px; border-radius: 999px; border: 1px solid var(--color-line);
     background: var(--color-bg-card); color: var(--color-ink-dim);
-    font-family: var(--font-body); font-weight: 600; font-size: 0.82rem; cursor: pointer;
+    font-family: var(--font-body); font-weight: 600; font-size: var(--fs-sm); cursor: pointer;
     transition: background 0.2s, color 0.2s, border-color 0.2s;
 }
 .admin-chip.is-active { background: var(--color-primary); border-color: var(--color-primary); color: #14110d; }
@@ -464,30 +610,43 @@ body.admin-sidebar-open .admin-toggle-bar:nth-child(3) {
 .admin-search {
     width: 100%; background: var(--color-bg-elevated); border: 1px solid var(--color-line);
     border-radius: 999px; padding: 10px 14px 10px 36px; color: var(--color-ink);
-    font-family: var(--font-body); font-size: 0.86rem; transition: border-color 0.2s;
+    font-family: var(--font-body); font-size: var(--fs-md); transition: border-color 0.2s;
 }
 .admin-search:focus { outline: none; border-color: var(--color-primary); }
 
 /* Buttons */
 .admin-btn-primary {
     padding: 12px 22px; border-radius: 999px; border: none; background: var(--color-primary);
-    color: #14110d; font-family: var(--font-body); font-weight: 700; font-size: 0.88rem; cursor: pointer;
+    color: #14110d; font-family: var(--font-body); font-weight: 700; font-size: var(--fs-md); cursor: pointer;
     transition: background 0.2s, transform 0.2s; white-space: nowrap;
 }
 .admin-btn-primary:hover { background: var(--color-primary-dim); transform: translateY(-1px); }
+.admin-btn-primary:disabled { opacity: 0.45; cursor: not-allowed; transform: none; }
 
 .admin-btn-ghost {
     padding: 12px 22px; border-radius: 999px; border: 1px solid var(--color-line); background: transparent;
-    color: var(--color-ink-dim); font-family: var(--font-body); font-weight: 700; font-size: 0.88rem; cursor: pointer;
+    color: var(--color-ink-dim); font-family: var(--font-body); font-weight: 700; font-size: var(--fs-md); cursor: pointer;
 }
 .admin-btn-ghost:hover { border-color: var(--color-primary); color: var(--color-ink); }
 
 .admin-btn-save {
     padding: 12px 26px; border-radius: 999px; border: none; background: var(--color-primary);
-    color: #14110d; font-family: var(--font-body); font-weight: 700; font-size: 0.9rem; cursor: pointer;
+    color: #14110d; font-family: var(--font-body); font-weight: 700; font-size: var(--fs-md); cursor: pointer;
     transition: background 0.2s, transform 0.2s;
 }
 .admin-btn-save:hover { background: var(--color-primary-dim); transform: translateY(-1px); }
+
+/* .admin-btn-save never had a disabled STATE before this revision's Change
+   Password wizard (Next/Save Password, data-admin-pw-next) started
+   toggling `disabled` on it — same rule Style/Dashboard.css's own
+   .dash-btn-save:disabled note documents for the identical customer-page
+   wizard: without this, a disabled button is functionally blocked but
+   LOOKS identical to an enabled one. */
+.admin-btn-save:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+    transform: none;
+}
 
 .admin-form-actions { display: flex; justify-content: flex-end; gap: 12px; margin-top: 6px; }
 
@@ -496,44 +655,59 @@ body.admin-sidebar-open .admin-toggle-bar:nth-child(3) {
 .admin-table { width: 100%; border-collapse: collapse; min-width: 680px; }
 
 .admin-table th {
-    text-align: left; font-family: var(--font-mono); font-size: 0.7rem; letter-spacing: 0.05em;
+    /* Revision A2 (implementation_plan.md) — column header label, so it
+       moves to --font-display, not --font-numeric. */
+    text-align: left; font-family: var(--font-display); font-size: var(--fs-xs); letter-spacing: 0.05em;
     text-transform: uppercase; color: var(--color-ink-faint); padding: 0 14px 12px; border-bottom: 1px solid var(--color-line);
 }
 .admin-table td {
-    padding: 14px; border-bottom: 1px solid var(--color-line); font-size: 0.88rem;
+    padding: 14px; border-bottom: 1px solid var(--color-line); font-size: var(--fs-md);
     color: var(--color-ink-dim); vertical-align: middle;
 }
 .admin-table tr:last-child td { border-bottom: none; }
 .admin-table td.admin-cell-main { color: var(--color-ink); font-weight: 600; }
-.admin-table td.admin-cell-sub { font-size: 0.76rem; color: var(--color-ink-faint); display: block; margin-top: 2px; }
+.admin-table td.admin-cell-sub { font-size: var(--fs-xs); color: var(--color-ink-faint); display: block; margin-top: 2px; }
 .admin-table-actions { display: flex; gap: 8px; flex-wrap: wrap; }
 
 .admin-mini-btn {
     padding: 7px 13px; border-radius: 999px; border: 1px solid var(--color-line); background: transparent;
-    color: var(--color-ink-dim); font-family: var(--font-body); font-weight: 600; font-size: 0.76rem; cursor: pointer;
+    color: var(--color-ink-dim); font-family: var(--font-body); font-weight: 600; font-size: var(--fs-xs); cursor: pointer;
     white-space: nowrap; transition: border-color 0.2s, color 0.2s, background 0.2s;
 }
 .admin-mini-btn:hover { border-color: var(--color-primary); color: var(--color-ink); }
 .admin-mini-btn.is-danger:hover { border-color: var(--color-alert); color: var(--color-alert); }
 
-/* Status badges */
+/* Status badges. .active/.inactive/.pending back Staff/Court statuses;
+   .confirmed/.completed/.cancelled/.unattended (new, Revision A1 decision
+   A3) back Recent bookings' derived booking status — same palette the
+   customer dashboard's .dash-status modifiers use (Style/Dashboard.css),
+   ported here since booking statuses now render on this page too. */
 .admin-status {
-    font-family: var(--font-mono); font-size: 0.7rem; font-weight: 700; letter-spacing: 0.04em;
+    /* Revision A2 (implementation_plan.md) — label role (status badge), so
+       it moves to --font-display, not --font-numeric; Oswald 700 steps down
+       to --fw-semibold (600) since Sora renders heavier at the same weight. */
+    font-family: var(--font-display); font-size: var(--fs-xs); font-weight: var(--fw-semibold); letter-spacing: 0.04em;
     text-transform: uppercase; padding: 5px 11px; border-radius: 999px; white-space: nowrap; display: inline-block;
 }
 .admin-status.active { background: color-mix(in srgb, var(--color-court-green) 20%, transparent); color: var(--color-court-green); }
 .admin-status.inactive { background: color-mix(in srgb, var(--color-alert) 16%, transparent); color: var(--color-alert); }
 .admin-status.pending { background: color-mix(in srgb, var(--color-primary) 16%, transparent); color: var(--color-primary); }
+.admin-status.confirmed { background: color-mix(in srgb, var(--color-court-green) 20%, transparent); color: var(--color-court-green); }
+.admin-status.completed { background: color-mix(in srgb, var(--color-ink-faint) 22%, transparent); color: var(--color-ink-dim); }
+.admin-status.cancelled { background: color-mix(in srgb, var(--color-alert) 16%, transparent); color: var(--color-alert); }
+.admin-status.unattended { background: color-mix(in srgb, var(--color-alert) 24%, transparent); color: var(--color-alert); }
 
 .admin-notice {
     display: flex; gap: 10px; padding: 13px 14px; border-radius: 10px;
     background: color-mix(in srgb, var(--color-primary) 8%, transparent);
     border: 1px solid color-mix(in srgb, var(--color-primary) 25%, transparent);
-    font-size: 0.8rem; color: var(--color-ink-dim); line-height: 1.5;
+    font-size: var(--fs-sm); color: var(--color-ink-dim); line-height: 1.5;
 }
 .admin-notice svg { width: 17px; height: 17px; color: var(--color-primary); flex-shrink: 0; margin-top: 1px; }
 
-/* Add / edit forms (toggleable panels) */
+/* Add / edit forms (toggleable panels) — still used by Staff Management's
+   inline add-staff form. Court Listings' own form moved into the modal
+   below (Revision A1, decision A6) and no longer uses this class. */
 .admin-add-panel { display: none; }
 .admin-add-panel.is-open { display: block; }
 
@@ -542,22 +716,19 @@ body.admin-sidebar-open .admin-toggle-bar:nth-child(3) {
 .admin-form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
 
 .admin-form-label {
-    font-family: var(--font-mono); font-size: 0.72rem; letter-spacing: 0.06em; text-transform: uppercase;
+    /* Revision A2 (implementation_plan.md) — label role, so it moves to
+       --font-display, not --font-numeric. */
+    font-family: var(--font-display); font-size: var(--fs-xs); letter-spacing: 0.06em; text-transform: uppercase;
     color: var(--color-ink-faint);
 }
 
 .admin-select, .admin-input {
     width: 100%; background: var(--color-bg-elevated); border: 1px solid var(--color-line); border-radius: 10px;
-    padding: 12px 14px; color: var(--color-ink); font-family: var(--font-body); font-size: 0.92rem;
+    padding: 12px 14px; color: var(--color-ink); font-family: var(--font-body); font-size: var(--fs-md);
     transition: border-color 0.2s;
 }
 .admin-select:focus, .admin-input:focus { outline: none; border-color: var(--color-primary); }
 
-/* Account Settings' Username field and the Media Manager's slide title/
-   caption fields are disabled (no backing column / no upload backend yet —
-   see includes/owner_dashboard.js) — same "make that visibly obvious"
-   treatment Style/Dashboard.css already uses for its own disabled email
-   field. */
 .admin-input:disabled {
     color: var(--color-ink-faint);
     background: var(--color-bg);
@@ -574,14 +745,14 @@ body.admin-sidebar-open .admin-toggle-bar:nth-child(3) {
 }
 .admin-toggle-visibility:hover { color: var(--color-ink); background: color-mix(in srgb, var(--color-ink) 8%, transparent); }
 
-/* Toggle switches (payment configuration) */
+/* Toggle switches (payment configuration, slide "Published" state) */
 .admin-toggle-row {
     display: flex; align-items: center; justify-content: space-between; gap: 16px;
     padding: 14px 0; border-bottom: 1px solid var(--color-line);
 }
 .admin-toggle-row:last-of-type { border-bottom: none; }
-.admin-toggle-row-copy h4 { font-size: 0.92rem; font-weight: 600; }
-.admin-toggle-row-copy p { font-size: 0.78rem; color: var(--color-ink-faint); margin-top: 2px; }
+.admin-toggle-row-copy h4 { font-size: var(--fs-md); font-weight: 600; }
+.admin-toggle-row-copy p { font-size: var(--fs-xs); color: var(--color-ink-faint); margin-top: 2px; }
 
 .admin-switch {
     position: relative; width: 46px; height: 26px; flex-shrink: 0;
@@ -605,7 +776,7 @@ body.admin-sidebar-open .admin-toggle-bar:nth-child(3) {
 .admin-court-card:hover { transform: translateY(-4px); border-color: var(--color-primary); }
 
 .admin-court-media {
-    position: relative; height: 120px;
+    position: relative; height: 130px;
     background: linear-gradient(135deg, var(--color-bg-elevated), var(--color-bg-card));
     display: flex; align-items: center; justify-content: center; color: var(--color-primary);
     border-bottom: 1px solid var(--color-line);
@@ -617,20 +788,24 @@ body.admin-sidebar-open .admin-toggle-bar:nth-child(3) {
    includes/landingPage.js's .media-slot / .media-slot-monogram. */
 .admin-court-media img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
 .admin-court-monogram {
-    position: relative; font-family: var(--font-display); font-weight: 700; font-size: 1.5rem;
+    /* Revision A2 (implementation_plan.md) — Oswald 700 steps down to
+       --fw-semibold (600); Sora renders heavier at the same weight. */
+    position: relative; font-family: var(--font-display); font-weight: var(--fw-semibold); font-size: var(--fs-2xl);
     letter-spacing: 0.02em; color: var(--color-primary); opacity: 0.55;
 }
 
 .admin-court-media .admin-status { position: absolute; top: 12px; right: 12px; }
 
 .admin-court-body { padding: 18px 20px 20px; display: flex; flex-direction: column; gap: 8px; flex: 1; }
-.admin-court-body h3 { font-family: var(--font-display); font-size: 1.05rem; font-weight: 600; }
-.admin-court-rate { font-family: var(--font-mono); font-size: 1.05rem; color: var(--color-primary); }
-.admin-court-rate span { font-size: 0.72rem; color: var(--color-ink-faint); }
+.admin-court-body h3 { font-family: var(--font-display); font-size: var(--fs-base); font-weight: 600; }
+/* Revision A2 (implementation_plan.md) — a peso amount, so it takes
+   --font-numeric (tabular-nums) instead of the removed --font-mono. */
+.admin-court-rate { font-family: var(--font-numeric); font-variant-numeric: tabular-nums; font-size: var(--fs-base); color: var(--color-primary); }
+.admin-court-rate span { font-size: var(--fs-xs); color: var(--color-ink-faint); }
 
 .admin-court-tags { display: flex; flex-wrap: wrap; gap: 6px; }
 .admin-court-tags span {
-    font-size: 0.72rem; color: var(--color-ink-faint); background: var(--color-bg-elevated);
+    font-size: var(--fs-xs); color: var(--color-ink-faint); background: var(--color-bg-elevated);
     border: 1px solid var(--color-line); padding: 3px 9px; border-radius: 999px;
 }
 
@@ -638,23 +813,270 @@ body.admin-sidebar-open .admin-toggle-bar:nth-child(3) {
 .admin-btn-secondary {
     flex: 1; padding: 10px 0; border-radius: 999px; border: 1px solid var(--color-line);
     background: transparent; color: var(--color-ink-dim); font-family: var(--font-body); font-weight: 700;
-    font-size: 0.82rem; cursor: pointer; text-align: center; transition: border-color 0.2s, color 0.2s;
+    font-size: var(--fs-sm); cursor: pointer; text-align: center; transition: border-color 0.2s, color 0.2s;
 }
 .admin-btn-secondary:hover { border-color: var(--color-primary); color: var(--color-ink); }
+/* Deactivate is rendered with .is-danger (includes/owner_dashboard.js) so
+   the ONE action that removes a court from customer-facing listings reads
+   as consequential; Activate (the same button slot, opposite state) stays
+   the plain secondary look. */
 .admin-btn-secondary.is-danger:hover { border-color: var(--color-alert); color: var(--color-alert); }
 
-/* Profile / settings card */
+/* ==========================================================================
+   Generic modal shell (Revision A1, decision A6) — port of the customer
+   dashboard's .dash-modal-overlay/.dash-modal (Style/Dashboard.css) under
+   admin-* names. Used today by the Court Listings Add/Edit dialog
+   ([data-admin-court-modal]); any later dialog on this page can reuse the
+   same shell rather than styling a third one.
+   ========================================================================== */
+.admin-modal-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 50;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+    background: rgba(10, 8, 6, 0.6);
+    opacity: 0;
+    transition: opacity 0.25s ease;
+}
+
+.admin-modal-overlay[data-open] {
+    opacity: 1;
+}
+
+/* Restates plain `display: none` at equal specificity to the author rule
+   above — the same fix Style/Dashboard.css documents for its own
+   .dash-modal-overlay[hidden] (an author `display: flex` rule otherwise
+   beats the UA `[hidden]` rule and the "closed" modal keeps painting). */
+.admin-modal-overlay[hidden] {
+    display: none;
+}
+
+.admin-modal {
+    position: relative;
+    width: 100%;
+    max-width: 560px;
+    max-height: calc(100vh - 48px);
+    overflow-y: auto;
+    background: var(--color-bg-card);
+    border: 1px solid var(--color-line);
+    border-radius: 18px;
+    padding: 28px;
+    box-shadow: 0 24px 60px rgba(0, 0, 0, 0.45);
+    transform: translateY(12px);
+    transition: transform 0.25s ease;
+}
+
+.admin-modal-overlay[data-open] .admin-modal {
+    transform: translateY(0);
+}
+
+.admin-modal h3 {
+    font-family: var(--font-display);
+    font-weight: 600;
+    font-size: var(--fs-lg);
+    margin-bottom: 18px;
+    padding-right: 34px; /* clears the absolutely-positioned close button */
+}
+
+.admin-modal-close {
+    position: absolute;
+    top: 18px;
+    right: 18px;
+    width: 34px;
+    height: 34px;
+    border-radius: 50%;
+    border: 1px solid var(--color-line);
+    background: transparent;
+    color: var(--color-ink-dim);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: color 0.2s, border-color 0.2s;
+}
+
+.admin-modal-close svg {
+    width: 16px;
+    height: 16px;
+}
+
+.admin-modal-close:hover {
+    color: var(--color-ink);
+    border-color: var(--color-primary);
+}
+
+/* Court modal's Photo field — URL input + Upload button side by side. */
+.admin-image-field {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    flex-wrap: wrap;
+}
+.admin-image-field .admin-input {
+    flex: 1 1 200px;
+    min-width: 0;
+}
+.admin-image-field .admin-btn-ghost {
+    flex: 0 0 auto;
+    padding: 12px 18px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .admin-modal-overlay,
+    .admin-modal {
+        transition: none;
+    }
+}
+
+/* ==========================================================================
+   Generic step wizard shell (Revision A1, decision A9 — Change Password).
+   Port of the customer dashboard's .dash-wizard-* (Style/Dashboard.css)
+   under admin-* names.
+   ========================================================================== */
+.admin-wizard-steps {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 4px;
+}
+
+.admin-wizard-step {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+.admin-wizard-step:not(:last-child)::after {
+    content: '';
+    flex: 1 1 auto;
+    height: 1px;
+    background: var(--color-line);
+    margin: 0 2px;
+}
+
+.admin-wizard-step-num {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--color-bg-elevated);
+    border: 1px solid var(--color-line);
+    color: var(--color-ink-faint);
+    /* Revision A2 (implementation_plan.md) — a step number (1/2/3), so it
+       takes --font-numeric (tabular-nums) instead of the removed
+       --font-mono. */
+    font-family: var(--font-numeric);
+    font-variant-numeric: tabular-nums;
+    font-weight: 700;
+    font-size: var(--fs-sm);
+    flex-shrink: 0;
+    transition: background 0.2s, border-color 0.2s, color 0.2s;
+}
+
+.admin-wizard-step-label {
+    font-family: var(--font-body);
+    font-weight: 600;
+    font-size: var(--fs-sm);
+    color: var(--color-ink-faint);
+    min-width: 0;
+}
+
+.admin-wizard-step.is-current .admin-wizard-step-num {
+    background: var(--color-primary);
+    border-color: var(--color-primary);
+    color: #14110d;
+}
+
+.admin-wizard-step.is-current .admin-wizard-step-label,
+.admin-wizard-step.is-done .admin-wizard-step-label {
+    color: var(--color-ink);
+}
+
+.admin-wizard-step.is-done .admin-wizard-step-num {
+    background: color-mix(in srgb, var(--color-primary) 16%, transparent);
+    border-color: var(--color-primary);
+    color: var(--color-primary);
+}
+
+.admin-wizard-panel {
+    display: none;
+    flex-direction: column;
+}
+
+.admin-wizard-panel.is-active {
+    display: flex;
+}
+
+.admin-wizard-nav {
+    display: flex;
+    justify-content: flex-end;
+    gap: 12px;
+    margin-top: 24px;
+    padding-top: 20px;
+    border-top: 1px solid var(--color-line);
+    flex-wrap: wrap;
+}
+
+/* Cancel sits at the far left (kept from the pre-wizard markup — see
+   Pages/owner_dashboard.html's own comment on this button); Go Back/Next/
+   Save Password stay grouped together on the right. */
+.admin-wizard-nav .admin-wizard-cancel {
+    margin-right: auto;
+}
+
+/* ==========================================================================
+   Profile / settings card
+   ========================================================================== */
 .admin-profile-card { display: flex; align-items: center; gap: 22px; flex-wrap: wrap; }
-.admin-profile-card .admin-avatar { width: 76px; height: 76px; font-size: 1.6rem; }
-.admin-profile-card-info h3 { font-family: var(--font-display); font-size: 1.25rem; font-weight: 600; }
-.admin-profile-card-info p { color: var(--color-ink-faint); font-size: 0.88rem; margin-top: 3px; }
+.admin-profile-card .admin-avatar { width: 76px; height: 76px; font-size: var(--fs-2xl); }
+.admin-profile-card-info h3 { font-family: var(--font-display); font-size: var(--fs-lg); font-weight: 600; }
+.admin-profile-card-info p { color: var(--color-ink-faint); font-size: var(--fs-md); margin-top: 3px; }
 
 .admin-settings-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+
+/* Profile Photo card (Revision A1, decision A9) — port of the customer
+   dashboard's .dash-avatar-upload-* (Style/Dashboard.css) under admin-*
+   names. */
+.admin-avatar-upload-row {
+    display: flex;
+    align-items: center;
+    gap: 22px;
+    flex-wrap: wrap;
+}
+
+.admin-avatar-upload-preview {
+    width: 88px;
+    height: 88px;
+    font-size: var(--fs-2xl);
+}
+
+.admin-avatar-upload-controls {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    min-width: 0;
+}
+
+.admin-avatar-upload-actions {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+}
 
 /* ==========================================================================
    Media Manager
    ========================================================================== */
-.admin-media-hint { font-family: var(--font-mono); font-size: 0.76rem; color: var(--color-ink-faint); white-space: nowrap; }
+/* Revision A2 (implementation_plan.md) — "rotates every 5s" is a plain
+   caption sentence, so it inherits the body font. */
+.admin-media-hint { font-size: var(--fs-xs); color: var(--color-ink-faint); white-space: nowrap; }
 
 .admin-slide-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-top: 4px; }
 
@@ -665,83 +1087,92 @@ body.admin-sidebar-open .admin-toggle-bar:nth-child(3) {
 .admin-slide-thumb { position: relative; }
 .admin-slide-thumb img { display: block; width: 100%; height: 150px; object-fit: cover; }
 .admin-slide-badge {
-    position: absolute; top: 10px; left: 10px; font-family: var(--font-mono); font-size: 0.68rem;
+    /* Revision A2 (implementation_plan.md) — "PUBLISHED"/"DRAFT" label, so
+       it moves to --font-display, not --font-numeric. */
+    position: absolute; top: 10px; left: 10px; font-family: var(--font-display); font-size: var(--fs-xs);
     text-transform: uppercase; color: #FFFCF4; background: rgba(20, 17, 13, 0.72);
     padding: 4px 9px; border-radius: 999px;
 }
+
+/* Honest "no photo yet" placeholder (event.image_url null) — same idea as
+   the customer dashboard's .dash-court-photo-soon, sized for this card's
+   150px-tall thumb instead of a monogram (a slide has no single sport to
+   derive one from). */
+.admin-slide-photo-soon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 150px;
+    text-align: center;
+    padding: 0 12px;
+    font-size: var(--fs-xs);
+    color: var(--color-ink-faint);
+}
+
 .admin-slide-body { padding: 14px; display: flex; flex-direction: column; gap: 10px; }
-.admin-slide-title { font-family: var(--font-body); font-size: 0.85rem; }
-.admin-slide-caption { font-family: var(--font-mono); font-size: 0.76rem; color: var(--color-ink-dim); }
+.admin-slide-title { font-family: var(--font-body); font-size: var(--fs-md); }
+/* Revision A2 (implementation_plan.md) — a free-text caption input (same
+   role as .admin-slide-title just above), so it inherits the body font. */
+.admin-slide-caption { font-size: var(--fs-xs); color: var(--color-ink-dim); }
+
+/* Published toggle row — label + .admin-switch, same row layout as the
+   Payment Configuration toggles but tighter (no border/padding — the
+   card's own .admin-slide-body gap already spaces it from its siblings). */
+.admin-slide-publish-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    font-size: var(--fs-sm);
+    color: var(--color-ink-dim);
+    font-weight: 600;
+}
+
 .admin-slide-actions { display: flex; gap: 8px; }
+
+/* Move up / Move down — a second row under Replace photo, three roughly
+   equal segments (two secondary + one danger) rather than the primary
+   chip's flex:1 (which would make "Replace photo" alone look right but a
+   3-button row look lopsided). */
+.admin-slide-actions-row2 {
+    flex-wrap: wrap;
+}
+.admin-slide-actions-row2 > button {
+    flex: 1 1 0;
+}
 
 .admin-btn-chip-primary {
     flex: 1; text-align: center; padding: 9px 0; border-radius: 999px; border: none;
     background: var(--color-primary); color: #14110d; font-family: var(--font-body);
-    font-weight: 700; font-size: 0.78rem; cursor: pointer; transition: background 0.2s;
+    font-weight: 700; font-size: var(--fs-xs); cursor: pointer; transition: background 0.2s;
 }
 .admin-btn-chip-primary:hover { background: var(--color-primary-dim); }
 
+.admin-btn-chip-secondary {
+    padding: 9px 10px; border-radius: 999px; border: 1px solid var(--color-line); background: transparent;
+    color: var(--color-ink-dim); font-family: var(--font-body); font-weight: 600; font-size: var(--fs-xs);
+    cursor: pointer; white-space: nowrap; transition: border-color 0.2s, color 0.2s;
+}
+.admin-btn-chip-secondary:hover { border-color: var(--color-primary); color: var(--color-ink); }
+
 .admin-btn-chip-danger {
     padding: 9px 14px; border-radius: 999px; border: 1px solid var(--color-line); background: transparent;
-    color: var(--color-alert); font-family: var(--font-body); font-weight: 600; font-size: 0.78rem;
+    color: var(--color-alert); font-family: var(--font-body); font-weight: 600; font-size: var(--fs-xs);
     cursor: pointer; white-space: nowrap; transition: border-color 0.2s, background 0.2s;
 }
 .admin-btn-chip-danger:hover { border-color: var(--color-alert); background: color-mix(in srgb, var(--color-alert) 10%, transparent); }
 
-/* Media Manager upload controls are disabled (no Supabase Storage bucket
-   yet — implementation_plan.md E4). Same faded, not-just-inert treatment
-   Style/Dashboard.css uses for .dash-slot.is-unavailable, so a disabled
-   control never still looks clickable. */
 .admin-btn-chip-primary:disabled,
-.admin-btn-chip-danger:disabled,
-.admin-mediacourt-body button:disabled {
+.admin-btn-chip-secondary:disabled,
+.admin-btn-chip-danger:disabled {
     opacity: 0.5;
     cursor: not-allowed;
 }
-
-.admin-slide-dropzone {
-    border: 1.5px dashed color-mix(in srgb, var(--color-primary) 50%, transparent); border-radius: 14px;
-    min-height: 290px; display: flex; flex-direction: column; align-items: center; justify-content: center;
-    gap: 10px; background: color-mix(in srgb, var(--color-primary) 5%, transparent);
-    text-align: center; padding: 20px; cursor: pointer; transition: background 0.2s, border-color 0.2s;
-}
-.admin-slide-dropzone:hover:not(.is-disabled),
-.admin-slide-dropzone.is-dragover { background: color-mix(in srgb, var(--color-primary) 10%, transparent); border-color: var(--color-primary); }
-
-.admin-slide-dropzone.is-disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-    pointer-events: none;
-}
-.admin-slide-dropzone strong { font-size: 0.92rem; color: var(--color-ink); font-family: var(--font-body); }
-.admin-slide-dropzone span { font-size: 0.8rem; color: var(--color-ink-faint); }
-.admin-dropzone-browse { color: var(--color-primary); font-weight: 600; }
-.admin-dropzone-meta { font-family: var(--font-mono); font-size: 0.72rem; }
-.admin-dropzone-icon {
-    width: 44px; height: 44px; border-radius: 12px;
-    background: color-mix(in srgb, var(--color-primary) 14%, transparent); color: var(--color-primary);
-    display: flex; align-items: center; justify-content: center;
-}
-.admin-dropzone-icon svg { width: 22px; height: 22px; }
 
 .admin-visually-hidden {
     position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
     overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
 }
-
-.admin-mediacourt-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-top: 4px; }
-.admin-mediacourt-card { border: 1px solid var(--color-line); border-radius: 12px; overflow: hidden; background: var(--color-bg-elevated); }
-.admin-mediacourt-thumb { height: 96px; }
-.admin-mediacourt-thumb img { display: block; width: 100%; height: 100%; object-fit: cover; }
-.admin-mediacourt-body { padding: 12px; display: flex; flex-direction: column; gap: 5px; }
-.admin-mediacourt-body h4 { font-family: var(--font-display); font-size: 0.9rem; font-weight: 600; }
-.admin-mediacourt-body p { font-family: var(--font-mono); font-size: 0.7rem; color: var(--color-ink-faint); }
-.admin-mediacourt-body button {
-    margin-top: 5px; width: 100%; padding: 8px 0; border-radius: 999px; border: 1px solid var(--color-line);
-    background: transparent; color: var(--color-ink-dim); font-family: var(--font-body); font-weight: 700;
-    font-size: 0.74rem; cursor: pointer; transition: border-color 0.2s, color 0.2s;
-}
-.admin-mediacourt-body button:hover { border-color: var(--color-primary); color: var(--color-ink); }
 
 /* ==========================================================================
    Responsive
@@ -752,7 +1183,6 @@ body.admin-sidebar-open .admin-toggle-bar:nth-child(3) {
     .admin-court-grid { grid-template-columns: repeat(2, 1fr); }
     .admin-settings-grid { grid-template-columns: 1fr; }
     .admin-slide-grid { grid-template-columns: repeat(2, 1fr); }
-    .admin-mediacourt-grid { grid-template-columns: repeat(3, 1fr); }
 }
 
 @media (max-width: 860px) {
@@ -770,7 +1200,6 @@ body.admin-sidebar-open .admin-toggle-bar:nth-child(3) {
     .admin-form-row { grid-template-columns: 1fr; }
     .admin-chart-head { flex-direction: column; align-items: flex-start; }
     .admin-chart-controls { width: 100%; justify-content: space-between; }
-    .admin-mediacourt-grid { grid-template-columns: repeat(2, 1fr); }
 }
 
 @media (max-width: 640px) {
@@ -788,5 +1217,4 @@ body.admin-sidebar-open .admin-toggle-bar:nth-child(3) {
 
 @media (max-width: 420px) {
     .admin-stat-grid { grid-template-columns: 1fr; }
-    .admin-mediacourt-grid { grid-template-columns: 1fr; }
 }

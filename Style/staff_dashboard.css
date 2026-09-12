@@ -1,5 +1,12 @@
 /* ==========================================================================
    IñigoSync — Design Tokens (mirrors Style/LandingPage.css :root)
+
+   Revision A2 (implementation_plan.md) — fonts/sizes/weights come from
+   Style/typography.css (linked first, before this file, in
+   Pages/staff_dashboard.html), not from a local --font-* block any more.
+   Every font-size below is an --fs-* token; --font-mono usages were
+   re-homed to --font-display (labels) or --font-numeric (numbers/times/
+   prices) since Space Mono was removed.
    ========================================================================== */
 :root {
     --color-bg: #14110d;
@@ -13,10 +20,6 @@
     --color-court-green: #3e7a5e;
     --color-alert: #d6482f;
     --color-line: rgba(244, 239, 230, 0.12);
-
-    --font-display: 'Oswald', 'Segoe UI', sans-serif;
-    --font-body: 'Inter', 'Segoe UI', sans-serif;
-    --font-mono: 'Space Mono', monospace;
 }
 
 /* Light mode (mirrors Style/LandingPage.css :root[data-theme="light"]) */
@@ -42,8 +45,9 @@
 body.staff-body {
     background-color: var(--color-bg);
     color: var(--color-ink);
-    font-family: var(--font-body);
-    line-height: 1.5;
+    /* font-family/font-size/line-height come from Style/typography.css's
+       base `body` rule (Revision A2) — not redeclared here so there is one
+       source of truth. */
     min-height: 100vh;
 }
 
@@ -78,6 +82,18 @@ body.staff-body {
     margin-bottom: 6px;
 }
 
+/* Revision A1 (implementation_plan.md, decision A1) — the real logo image,
+   replacing the "IS" text monogram (.staff-logo-dot). .staff-logo-dot's own
+   rule is left in place (unused but harmless — same "not worth pruning a
+   still-harmless rule" convention Style/Dashboard.css already documents
+   elsewhere) since nothing in this file's markup references it anymore. */
+.staff-sidebar-brand img {
+    width: 30px;
+    height: 30px;
+    object-fit: contain;
+    flex-shrink: 0;
+}
+
 .staff-logo-dot {
     width: 30px;
     height: 30px;
@@ -88,22 +104,31 @@ body.staff-body {
     justify-content: center;
     color: #14110d;
     font-family: var(--font-display);
-    font-weight: 700;
-    font-size: 0.95rem;
+    /* Revision A2 (implementation_plan.md) — Oswald 700 steps down to
+       --fw-semibold (600); Sora renders heavier at the same weight. Kept in
+       sync with .admin-logo-dot even though Revision A1 replaced the
+       markup this styled with the real logo <img> (.staff-logo-dot is no
+       longer rendered, but left consistent in case it's ever reused). */
+    font-weight: var(--fw-semibold);
+    font-size: var(--fs-base);
     flex-shrink: 0;
 }
 
 .staff-logo-text {
     font-family: var(--font-display);
     color: var(--color-primary);
-    font-size: 1.25rem;
-    font-weight: 700;
+    font-size: var(--fs-lg);
+    /* Revision A2 (implementation_plan.md) — Oswald 700 steps down to
+       --fw-semibold (600); Sora renders heavier at the same weight. */
+    font-weight: var(--fw-semibold);
     letter-spacing: 0.02em;
 }
 
 .staff-role-tag {
-    font-family: var(--font-mono);
-    font-size: 0.68rem;
+    /* Revision A2 (implementation_plan.md) — label role, so it moves to
+       --font-display, not --font-numeric. */
+    font-family: var(--font-display);
+    font-size: var(--fs-xs);
     letter-spacing: 0.06em;
     text-transform: uppercase;
     color: var(--color-ink-faint);
@@ -130,7 +155,7 @@ body.staff-body {
     color: var(--color-ink-dim);
     font-family: var(--font-body);
     font-weight: 600;
-    font-size: 0.92rem;
+    font-size: var(--fs-md);
     cursor: pointer;
     text-align: left;
     transition: background 0.2s, color 0.2s;
@@ -144,8 +169,11 @@ body.staff-body {
 
 .staff-nav-badge {
     margin-left: auto;
-    font-family: var(--font-mono);
-    font-size: 0.68rem;
+    /* Revision A2 (implementation_plan.md) — a count badge, so it takes
+       --font-numeric (tabular-nums) instead of the removed --font-mono. */
+    font-family: var(--font-numeric);
+    font-variant-numeric: tabular-nums;
+    font-size: var(--fs-xs);
     font-weight: 700;
     background: rgba(255, 97, 21, 0.18);
     color: var(--color-primary);
@@ -232,15 +260,18 @@ body.staff-sidebar-open .staff-toggle-bar:nth-child(3) {
     transform: rotate(-45deg);
 }
 
-.staff-topbar-title h1 { font-family: var(--font-display); font-weight: 600; font-size: 1.35rem; }
+.staff-topbar-title h1 { font-family: var(--font-display); font-weight: 600; font-size: var(--fs-xl); }
 
-.staff-topbar-title p { font-size: 0.85rem; color: var(--color-ink-faint); margin-top: 2px; }
+.staff-topbar-title p { font-size: var(--fs-md); color: var(--color-ink-faint); margin-top: 2px; }
 
 .staff-topbar-actions { display: flex; align-items: center; gap: 18px; }
 
 .staff-clock {
-    font-family: var(--font-mono);
-    font-size: 0.82rem;
+    /* Revision A2 (implementation_plan.md) — the topbar clock, so it takes
+       --font-numeric (tabular-nums) instead of the removed --font-mono. */
+    font-family: var(--font-numeric);
+    font-variant-numeric: tabular-nums;
+    font-size: var(--fs-sm);
     color: var(--color-ink-dim);
     background: var(--color-bg-card);
     border: 1px solid var(--color-line);
@@ -292,7 +323,9 @@ body.staff-sidebar-open .staff-toggle-bar:nth-child(3) {
     width: 38px; height: 38px; border-radius: 50%;
     background: linear-gradient(135deg, var(--color-primary), var(--color-primary-dim));
     display: flex; align-items: center; justify-content: center;
-    color: #14110d; font-family: var(--font-display); font-weight: 700; font-size: 0.95rem;
+    /* Revision A2 (implementation_plan.md) — Oswald 700 steps down to
+       --fw-semibold (600); Sora renders heavier at the same weight. */
+    color: #14110d; font-family: var(--font-display); font-weight: var(--fw-semibold); font-size: var(--fs-base);
     flex-shrink: 0;
 }
 
@@ -304,9 +337,9 @@ body.staff-sidebar-open .staff-toggle-bar:nth-child(3) {
 
 .staff-profile-name { text-align: left; display: none; }
 
-.staff-profile-name strong { display: block; font-size: 0.88rem; }
+.staff-profile-name strong { display: block; font-size: var(--fs-md); }
 
-.staff-profile-name span { display: block; font-size: 0.75rem; color: var(--color-ink-faint); }
+.staff-profile-name span { display: block; font-size: var(--fs-xs); color: var(--color-ink-faint); }
 
 .staff-profile-menu {
     position: absolute; top: calc(100% + 10px); right: 0; min-width: 200px;
@@ -323,7 +356,7 @@ body.staff-sidebar-open .staff-toggle-bar:nth-child(3) {
 .staff-profile-menu button {
     display: flex; align-items: center; gap: 10px; width: 100%;
     padding: 10px 12px; border-radius: 8px; border: none; background: transparent;
-    color: var(--color-ink-dim); font-family: var(--font-body); font-size: 0.88rem; font-weight: 600;
+    color: var(--color-ink-dim); font-family: var(--font-body); font-size: var(--fs-md); font-weight: 600;
     text-align: left; cursor: pointer;
 }
 
@@ -351,9 +384,9 @@ body.staff-sidebar-open .staff-toggle-bar:nth-child(3) {
     display: flex; align-items: flex-end; justify-content: space-between; gap: 20px; flex-wrap: wrap;
 }
 
-.staff-panel-head h2 { font-family: var(--font-display); font-weight: 600; font-size: 1.6rem; }
+.staff-panel-head h2 { font-family: var(--font-display); font-weight: 600; font-size: var(--fs-2xl); }
 
-.staff-panel-head p { color: var(--color-ink-faint); font-size: 0.92rem; margin-top: 4px; }
+.staff-panel-head p { color: var(--color-ink-faint); font-size: var(--fs-md); margin-top: 4px; }
 
 /* Stat cards */
 .staff-stat-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 18px; }
@@ -371,9 +404,11 @@ body.staff-sidebar-open .staff-toggle-bar:nth-child(3) {
 
 .staff-stat-icon svg { width: 17px; height: 17px; }
 
-.staff-stat-value { font-family: var(--font-display); font-size: 1.7rem; font-weight: 700; }
+/* Revision A2 (implementation_plan.md) — Oswald 700 steps down to
+   --fw-semibold (600); Sora renders heavier at the same weight. */
+.staff-stat-value { font-family: var(--font-display); font-size: var(--fs-2xl); font-weight: var(--fw-semibold); }
 
-.staff-stat-label { font-size: 0.82rem; color: var(--color-ink-faint); }
+.staff-stat-label { font-size: var(--fs-sm); color: var(--color-ink-faint); }
 
 /* Generic card */
 .staff-card {
@@ -384,11 +419,11 @@ body.staff-sidebar-open .staff-toggle-bar:nth-child(3) {
     display: flex; align-items: center; justify-content: space-between; margin-bottom: 18px; gap: 14px; flex-wrap: wrap;
 }
 
-.staff-card-head h3 { font-family: var(--font-display); font-size: 1.05rem; font-weight: 600; }
+.staff-card-head h3 { font-family: var(--font-display); font-size: var(--fs-base); font-weight: 600; }
 
 .staff-link-btn {
     background: none; border: none; color: var(--color-primary);
-    font-family: var(--font-body); font-weight: 600; font-size: 0.85rem; cursor: pointer;
+    font-family: var(--font-body); font-weight: 600; font-size: var(--fs-md); cursor: pointer;
 }
 
 .staff-link-btn:hover { color: var(--color-primary-dim); text-decoration: underline; }
@@ -401,7 +436,7 @@ body.staff-sidebar-open .staff-toggle-bar:nth-child(3) {
 .staff-chip {
     padding: 8px 16px; border-radius: 999px; border: 1px solid var(--color-line);
     background: var(--color-bg-card); color: var(--color-ink-dim);
-    font-family: var(--font-body); font-weight: 600; font-size: 0.82rem; cursor: pointer;
+    font-family: var(--font-body); font-weight: 600; font-size: var(--fs-sm); cursor: pointer;
     transition: background 0.2s, color 0.2s, border-color 0.2s;
 }
 
@@ -421,7 +456,7 @@ body.staff-sidebar-open .staff-toggle-bar:nth-child(3) {
 .staff-search {
     width: 100%; background: var(--color-bg-elevated); border: 1px solid var(--color-line);
     border-radius: 999px; padding: 10px 14px 10px 36px; color: var(--color-ink);
-    font-family: var(--font-body); font-size: 0.86rem; transition: border-color 0.2s;
+    font-family: var(--font-body); font-size: var(--fs-md); transition: border-color 0.2s;
 }
 
 .staff-search:focus { outline: none; border-color: var(--color-primary); }
@@ -432,12 +467,14 @@ body.staff-sidebar-open .staff-toggle-bar:nth-child(3) {
 .staff-table { width: 100%; border-collapse: collapse; min-width: 720px; }
 
 .staff-table th {
-    text-align: left; font-family: var(--font-mono); font-size: 0.7rem; letter-spacing: 0.05em;
+    /* Revision A2 (implementation_plan.md) — column header label, so it
+       moves to --font-display, not --font-numeric. */
+    text-align: left; font-family: var(--font-display); font-size: var(--fs-xs); letter-spacing: 0.05em;
     text-transform: uppercase; color: var(--color-ink-faint); padding: 0 14px 12px; border-bottom: 1px solid var(--color-line);
 }
 
 .staff-table td {
-    padding: 14px; border-bottom: 1px solid var(--color-line); font-size: 0.88rem;
+    padding: 14px; border-bottom: 1px solid var(--color-line); font-size: var(--fs-md);
     color: var(--color-ink-dim); vertical-align: middle;
 }
 
@@ -445,15 +482,17 @@ body.staff-sidebar-open .staff-toggle-bar:nth-child(3) {
 
 .staff-table td.staff-cell-main { color: var(--color-ink); font-weight: 600; }
 
-.staff-table td.staff-cell-sub { font-size: 0.76rem; color: var(--color-ink-faint); display: block; margin-top: 2px; }
+.staff-table td.staff-cell-sub { font-size: var(--fs-xs); color: var(--color-ink-faint); display: block; margin-top: 2px; }
 
-.staff-table td.staff-cell-ref { font-family: var(--font-mono); font-size: 0.8rem; }
+/* Revision A2 (implementation_plan.md) — "#<booking_id>", so it takes
+   --font-numeric (tabular-nums) instead of the removed --font-mono. */
+.staff-table td.staff-cell-ref { font-family: var(--font-numeric); font-variant-numeric: tabular-nums; font-size: var(--fs-sm); }
 
 .staff-table-actions { display: flex; gap: 8px; flex-wrap: wrap; }
 
 .staff-mini-btn {
     padding: 7px 13px; border-radius: 999px; border: 1px solid var(--color-line); background: transparent;
-    color: var(--color-ink-dim); font-family: var(--font-body); font-weight: 600; font-size: 0.76rem; cursor: pointer;
+    color: var(--color-ink-dim); font-family: var(--font-body); font-weight: 600; font-size: var(--fs-xs); cursor: pointer;
     white-space: nowrap; transition: border-color 0.2s, color 0.2s, background 0.2s;
 }
 
@@ -467,7 +506,10 @@ body.staff-sidebar-open .staff-toggle-bar:nth-child(3) {
 
 /* Status badges */
 .staff-status {
-    font-family: var(--font-mono); font-size: 0.7rem; font-weight: 700; letter-spacing: 0.04em;
+    /* Revision A2 (implementation_plan.md) — label role (status badge), so
+       it moves to --font-display, not --font-numeric; Oswald 700 steps down
+       to --fw-semibold (600) since Sora renders heavier at the same weight. */
+    font-family: var(--font-display); font-size: var(--fs-xs); font-weight: var(--fw-semibold); letter-spacing: 0.04em;
     text-transform: uppercase; padding: 5px 11px; border-radius: 999px; white-space: nowrap; display: inline-block;
 }
 
@@ -499,7 +541,7 @@ body.staff-sidebar-open .staff-toggle-bar:nth-child(3) {
 .staff-notice {
     display: flex; gap: 10px; padding: 13px 14px; border-radius: 10px;
     background: rgba(255, 97, 21, 0.08); border: 1px solid rgba(255, 97, 21, 0.25);
-    font-size: 0.8rem; color: var(--color-ink-dim); line-height: 1.5;
+    font-size: var(--fs-sm); color: var(--color-ink-dim); line-height: 1.5;
 }
 
 .staff-notice svg { width: 17px; height: 17px; color: var(--color-primary); flex-shrink: 0; margin-top: 1px; }
@@ -516,13 +558,15 @@ body.staff-sidebar-open .staff-toggle-bar:nth-child(3) {
 .staff-form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
 
 .staff-form-label {
-    font-family: var(--font-mono); font-size: 0.72rem; letter-spacing: 0.06em; text-transform: uppercase;
+    /* Revision A2 (implementation_plan.md) — label role, so it moves to
+       --font-display, not --font-numeric. */
+    font-family: var(--font-display); font-size: var(--fs-xs); letter-spacing: 0.06em; text-transform: uppercase;
     color: var(--color-ink-faint);
 }
 
 .staff-select, .staff-input {
     width: 100%; background: var(--color-bg-elevated); border: 1px solid var(--color-line); border-radius: 10px;
-    padding: 12px 14px; color: var(--color-ink); font-family: var(--font-body); font-size: 0.92rem;
+    padding: 12px 14px; color: var(--color-ink); font-family: var(--font-body); font-size: var(--fs-md);
     transition: border-color 0.2s;
 }
 
@@ -556,15 +600,15 @@ body.staff-sidebar-open .staff-toggle-bar:nth-child(3) {
    "not just inert" treatment as Style/Dashboard.css's .dash-slot.is-unavailable. */
 .staff-payment-option.is-disabled { opacity: 0.5; cursor: not-allowed; }
 
-.staff-payment-option-head { display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: 0.86rem; }
+.staff-payment-option-head { display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: var(--fs-md); }
 
 .staff-payment-option-head input { accent-color: var(--color-primary); }
 
-.staff-payment-option p { font-size: 0.75rem; color: var(--color-ink-faint); margin-left: 22px; }
+.staff-payment-option p { font-size: var(--fs-xs); color: var(--color-ink-faint); margin-left: 22px; }
 
 .staff-summary { position: sticky; top: 100px; display: flex; flex-direction: column; gap: 16px; }
 
-.staff-summary-row { display: flex; align-items: center; justify-content: space-between; font-size: 0.88rem; color: var(--color-ink-dim); }
+.staff-summary-row { display: flex; align-items: center; justify-content: space-between; font-size: var(--fs-md); color: var(--color-ink-dim); }
 
 .staff-summary-row strong { color: var(--color-ink); font-weight: 600; }
 
@@ -572,13 +616,15 @@ body.staff-sidebar-open .staff-toggle-bar:nth-child(3) {
 
 .staff-summary-total { display: flex; align-items: baseline; justify-content: space-between; }
 
-.staff-summary-total span:first-child { font-family: var(--font-display); font-weight: 600; font-size: 1rem; }
+.staff-summary-total span:first-child { font-family: var(--font-display); font-weight: 600; font-size: var(--fs-base); }
 
-.staff-summary-total span:last-child { font-family: var(--font-mono); font-size: 1.35rem; color: var(--color-primary); }
+/* Revision A2 (implementation_plan.md) — the total price, so it takes
+   --font-numeric (tabular-nums) instead of the removed --font-mono. */
+.staff-summary-total span:last-child { font-family: var(--font-numeric); font-variant-numeric: tabular-nums; font-size: var(--fs-xl); color: var(--color-primary); }
 
 .staff-btn-primary {
     width: 100%; padding: 13px 0; border-radius: 999px; border: none; background: var(--color-primary);
-    color: #14110d; font-family: var(--font-body); font-weight: 700; font-size: 0.92rem; cursor: pointer;
+    color: #14110d; font-family: var(--font-body); font-weight: 700; font-size: var(--fs-md); cursor: pointer;
     transition: background 0.2s, transform 0.2s;
 }
 
@@ -588,7 +634,7 @@ body.staff-sidebar-open .staff-toggle-bar:nth-child(3) {
 
 .staff-btn-ghost {
     padding: 12px 22px; border-radius: 999px; border: 1px solid var(--color-line); background: transparent;
-    color: var(--color-ink-dim); font-family: var(--font-body); font-weight: 700; font-size: 0.9rem; cursor: pointer;
+    color: var(--color-ink-dim); font-family: var(--font-body); font-weight: 700; font-size: var(--fs-md); cursor: pointer;
 }
 
 .staff-btn-ghost:hover { border-color: var(--color-primary); color: var(--color-ink); }
@@ -611,16 +657,16 @@ body.staff-sidebar-open .staff-toggle-bar:nth-child(3) {
 
 .staff-recent-info { flex: 1; min-width: 0; }
 
-.staff-recent-info h4 { font-size: 0.88rem; font-weight: 600; }
+.staff-recent-info h4 { font-size: var(--fs-md); font-weight: 600; }
 
-.staff-recent-info p { font-size: 0.76rem; color: var(--color-ink-faint); margin-top: 2px; }
+.staff-recent-info p { font-size: var(--fs-xs); color: var(--color-ink-faint); margin-top: 2px; }
 
 /* ==========================================================================
    Court Schedule panel
    ========================================================================== */
 .staff-sport-tabs { display: flex; gap: 8px; flex-wrap: wrap; }
 
-.staff-legend { display: flex; gap: 18px; flex-wrap: wrap; font-size: 0.8rem; color: var(--color-ink-faint); }
+.staff-legend { display: flex; gap: 18px; flex-wrap: wrap; font-size: var(--fs-sm); color: var(--color-ink-faint); }
 
 .staff-legend span { display: inline-flex; align-items: center; gap: 6px; }
 
@@ -642,19 +688,27 @@ body.staff-sidebar-open .staff-toggle-bar:nth-child(3) {
     gap: 6px;
 }
 
+/* Revision A2 (implementation_plan.md) — the column head shows the court's
+   NAME (renderSchedule() in includes/staff_dashboard.js), a label, so it
+   moves to --font-display, not --font-numeric. */
 .staff-schedule-head {
-    font-family: var(--font-mono); font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.04em;
+    font-family: var(--font-display); font-size: var(--fs-xs); text-transform: uppercase; letter-spacing: 0.04em;
     color: var(--color-ink-faint); text-align: center; padding: 8px 4px;
 }
 
+/* Revision A2 (implementation_plan.md) — the row label is an hour
+   (formatHourLabel()), so it takes --font-numeric (tabular-nums). */
 .staff-schedule-time {
-    font-family: var(--font-mono); font-size: 0.75rem; color: var(--color-ink-faint);
+    font-family: var(--font-numeric); font-variant-numeric: tabular-nums; font-size: var(--fs-xs); color: var(--color-ink-faint);
     display: flex; align-items: center; padding: 0 6px;
 }
 
+/* Revision A2 (implementation_plan.md) — the cell shows a customer name or
+   "Open"/"Booked"/"Walk-in" (scheduleCellContent()), plain text, so it
+   inherits the body font. */
 .staff-schedule-cell {
     border-radius: 8px; min-height: 40px; display: flex; align-items: center; justify-content: center;
-    font-size: 0.7rem; font-family: var(--font-mono); color: var(--color-ink-faint);
+    font-size: var(--fs-xs); color: var(--color-ink-faint);
     background: var(--color-bg-elevated); border: 1px solid var(--color-line); cursor: pointer;
     transition: transform 0.15s, border-color 0.15s;
     text-align: center; padding: 4px;
@@ -673,22 +727,24 @@ body.staff-sidebar-open .staff-toggle-bar:nth-child(3) {
    ========================================================================== */
 .staff-profile-card { display: flex; align-items: center; gap: 22px; flex-wrap: wrap; }
 
-.staff-profile-card .staff-avatar { width: 76px; height: 76px; font-size: 1.6rem; }
+.staff-profile-card .staff-avatar { width: 76px; height: 76px; font-size: var(--fs-2xl); }
 
-.staff-profile-card-info h3 { font-family: var(--font-display); font-size: 1.25rem; font-weight: 600; }
+.staff-profile-card-info h3 { font-family: var(--font-display); font-size: var(--fs-lg); font-weight: 600; }
 
-.staff-profile-card-info p { color: var(--color-ink-faint); font-size: 0.88rem; margin-top: 3px; }
+.staff-profile-card-info p { color: var(--color-ink-faint); font-size: var(--fs-md); margin-top: 3px; }
 
 .staff-profile-meta { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-top: 24px; }
 
 .staff-profile-meta-item { display: flex; flex-direction: column; gap: 4px; }
 
 .staff-profile-meta-item span:first-child {
-    font-family: var(--font-mono); font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.05em;
+    /* Revision A2 (implementation_plan.md) — a field label, so it moves to
+       --font-display, not --font-numeric. */
+    font-family: var(--font-display); font-size: var(--fs-xs); text-transform: uppercase; letter-spacing: 0.05em;
     color: var(--color-ink-faint);
 }
 
-.staff-profile-meta-item span:last-child { font-size: 0.92rem; color: var(--color-ink); font-weight: 600; }
+.staff-profile-meta-item span:last-child { font-size: var(--fs-md); color: var(--color-ink); font-weight: 600; }
 
 /* ==========================================================================
    Theme toggle (topbar) — mirrors Style/LandingPage.css .theme-toggle
@@ -780,7 +836,7 @@ body.staff-sidebar-open .staff-toggle-bar:nth-child(3) {
     .staff-profile-card { flex-direction: column; align-items: flex-start; }
     .staff-profile-meta { grid-template-columns: 1fr; }
     .staff-clock { display: none; }
-    .staff-schedule-grid { grid-template-columns: 60px repeat(var(--staff-schedule-cols, 6), 1fr); font-size: 0.6rem; }
+    .staff-schedule-grid { grid-template-columns: 60px repeat(var(--staff-schedule-cols, 6), 1fr); font-size: var(--fs-xs); }
 }
 
 @media (max-width: 480px) {

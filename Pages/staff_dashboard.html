@@ -20,7 +20,9 @@
 
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Inter:wght@400;500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<!-- Revision A2 (implementation_plan.md) — Sora (display) + Inter (body); Space Mono removed. -->
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../Style/typography.css">
 <link rel="stylesheet" href="../Style/staff_dashboard.css">
 <link rel="stylesheet" href="../Style/Loading.css">
 <script src="../includes/loadingOverlay.js"></script>
@@ -35,8 +37,11 @@
 
     <!-- ================= SIDEBAR ================= -->
     <aside class="staff-sidebar" data-staff-sidebar>
+        <!-- Revision A1 (implementation_plan.md, decision A1) — the real
+             wordmark, replacing the "IS" text monogram (.staff-logo-dot),
+             same treatment as the owner dashboard's own sidebar brand. -->
         <div class="staff-sidebar-brand">
-            <div class="staff-logo-dot">IS</div>
+            <img src="../assets/Logo/WebLogo.png" alt="IñigoSync logo">
             <div class="staff-logo-text">IñigoSync</div>
         </div>
         <p class="staff-role-tag">Staff Portal</p>

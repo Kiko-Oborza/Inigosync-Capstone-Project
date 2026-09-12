@@ -20,7 +20,9 @@
 
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Inter:wght@400;500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+    <!-- Revision A2 (implementation_plan.md) — Sora (display) + Inter (body); Space Mono removed. -->
+    <link href="https://fonts.googleapis.com/css2?family=Sora:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="../Style/typography.css">
     <link rel="stylesheet" href="../Style/LandingPage.css">
     <link rel="stylesheet" href="../Style/Dashboard.css">
     <link rel="stylesheet" href="../Style/Loading.css">
@@ -1284,6 +1286,11 @@
          checks for window.html2canvas before using it and shows a toast
          instead of throwing. -->
     <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+    <!-- Shared image downscale/crop helpers (Revision A1, implementation_plan.md
+         decision A9) — Dashboard.js's avatar upload (downscaleImageToAvatarDataUrl)
+         is now a thin wrapper around window.InigoImageTools. Must load before
+         Dashboard.js. -->
+    <script src="../includes/imageTools.js"></script>
     <script src="../includes/Dashboard.js"></script>
 </body>
 </html>

@@ -2,6 +2,11 @@
    IñigoSync — Real loading overlay (auth + dashboard session checks)
    Uses the same design tokens defined in LandingPage.css :root, and follows
    the same overlay/[data-open]/[hidden] pattern as Auth.css's .auth-overlay.
+
+   Revision A2 (implementation_plan.md) — fonts/sizes/weights come from
+   Style/typography.css (linked before every other stylesheet on all five
+   pages). Every font-size below is an --fs-* token; this file never used
+   --font-mono, so there is nothing to re-home here.
    ========================================================================== */
 
 .inigo-loading-overlay {
@@ -73,7 +78,7 @@
 .inigo-loading-text {
     margin: 0;
     font-family: var(--font-body);
-    font-size: 0.95rem;
+    font-size: var(--fs-base);
     font-weight: 500;
     color: #f4efe6;
     letter-spacing: 0.01em;
@@ -104,7 +109,7 @@
     border: 1px solid var(--color-line);
     color: var(--color-ink);
     font-family: var(--font-body);
-    font-size: 0.88rem;
+    font-size: var(--fs-md);
     font-weight: 600;
     text-align: center;
     box-shadow: 0 12px 32px rgba(0, 0, 0, 0.4);

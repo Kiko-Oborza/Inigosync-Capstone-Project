@@ -24,6 +24,15 @@
    (dark mode) / darkest (light mode) surface it can land on. Do not lighten
    --color-ink-faint in light mode or darken it in dark mode without
    re-checking those ratios.
+
+   TYPE — Revision A2 (implementation_plan.md): Style/typography.css (linked
+   before this file on every page) is now the single owner of
+   --font-display/--font-body/--font-mono/--font-numeric, the --fs-* size
+   scale, --fw-* weights and --lh-*/--ls-* tokens. This file only consumes
+   them. Every font-size below is one of the --fs-* tokens (a handful of
+   deliberate clamp()s are kept for hero-scale fluid sizing — each says why
+   inline); --font-mono usages were re-homed to --font-display (labels) or
+   --font-numeric (numbers/prices) since Space Mono was removed.
    ========================================================================== */
 
 /* Dark mode (default) */
@@ -73,10 +82,10 @@
     --color-nav-bg: rgba(28, 23, 18, 0.75);
     --color-nav-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
 
-    /* Type */
-    --font-display: 'Oswald', 'Segoe UI', sans-serif;
-    --font-body: 'Inter', 'Segoe UI', sans-serif;
-    --font-mono: 'Space Mono', monospace;
+    /* Type — Revision A2 (implementation_plan.md): fonts/sizes/weights now
+       live in Style/typography.css, linked before this file on every page,
+       so --font-display/--font-body/--font-mono (and the --fs-*/--fw-*
+       scale) are defined once for the whole product instead of here. */
 }
 
 /* Light mode */
@@ -128,8 +137,10 @@ html {
 body {
     background-color: var(--surface-page);
     color: var(--color-ink);
-    font-family: var(--font-body);
-    line-height: 1.5;
+    /* font-family/font-size/line-height come from Style/typography.css's
+       base `body` rule (Revision A2) — not redeclared here so there is one
+       source of truth (was line-height: 1.5; typography.css's --lh-normal
+       is 1.55, a deliberate, in-scope typographic change). */
     transition: background-color 0.2s ease, color 0.2s ease;
 }
 
@@ -170,9 +181,12 @@ a {
 }
 
 .eyebrow {
-    font-family: var(--font-mono);
-    font-size: 0.8rem;
-    letter-spacing: 0.08em;
+    /* Revision A2 (implementation_plan.md) — Space Mono removed; this was a
+       label role (uppercase eyebrow caption), not numeric content, so it
+       moves to --font-display rather than --font-numeric. */
+    font-family: var(--font-display);
+    font-size: var(--fs-sm);
+    letter-spacing: var(--ls-eyebrow);
     text-transform: uppercase;
     color: var(--color-accent-text);
     margin-bottom: 14px;
@@ -180,15 +194,22 @@ a {
 
 .section-title {
     font-family: var(--font-display);
-    font-weight: 600;
+    font-weight: var(--fw-semibold);
+    /* Revision A2 (implementation_plan.md) — kept as its own clamp rather
+       than --fs-hero: this class is reused as every section's own header
+       (Courts, About, Pricing, …), one visual step below the page hero
+       (.hero-title, --fs-hero), and swapping in --fs-hero's larger range
+       would inflate every section title to hero size and flatten that
+       hierarchy. The clamp already gives it fluid, hero-style responsive
+       sizing on its own terms. */
     font-size: clamp(1.8rem, 3vw, 2.6rem);
-    letter-spacing: -0.01em;
-    line-height: 1.15;
+    letter-spacing: var(--ls-tight);
+    line-height: var(--lh-tight);
     margin-bottom: 20px;
 }
 
 .body-text {
-    font-size: 1.05rem;
+    font-size: var(--fs-base);
     line-height: 1.75;
     color: var(--color-ink-dim);
     max-width: 640px;
@@ -295,7 +316,7 @@ a {
 }
 
 .site-nav .logo-text {
-    font-size: 1.25rem;
+    font-size: var(--fs-lg);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -312,7 +333,7 @@ a {
     text-decoration: none;
     color: var(--color-ink);
     font-weight: 600;
-    font-size: 0.9rem;
+    font-size: var(--fs-md);
     padding: 9px 18px;
     border-radius: 999px;
     transition: background-color 0.2s ease, color 0.2s ease;
@@ -407,7 +428,7 @@ nav ul li a {
     text-decoration: none;
     color: var(--color-ink);
     font-weight: 600;
-    font-size: 1rem;
+    font-size: var(--fs-base);
     transition: color 0.25s;
 }
 
@@ -485,7 +506,7 @@ nav ul li a.active {
 
 .book-now {
     padding: 10px 22px;
-    font-size: 0.95rem;
+    font-size: var(--fs-base);
 }
 
 /* ==========================================================================
@@ -557,7 +578,12 @@ nav ul li a.active {
     position: relative;
     z-index: 1;
     font-family: var(--font-display);
-    font-weight: 700;
+    font-weight: var(--fw-semibold);
+    /* Revision A2 (implementation_plan.md) — kept as its own clamp, not
+       --fs-hero: this is a giant decorative background watermark letter
+       (opacity 0.16) behind a hero slide with no photo yet, not a heading —
+       --fs-hero's 3.5rem ceiling would shrink it drastically from its
+       current 13rem max. */
     font-size: clamp(6rem, 20vw, 13rem);
     line-height: 1;
     color: var(--color-primary);
@@ -618,9 +644,11 @@ nav ul li a.active {
 
 .hero-tag {
     display: inline-block;
-    font-family: var(--font-mono);
-    font-size: 0.72rem;
-    letter-spacing: 0.08em;
+    /* Revision A2 (implementation_plan.md) — label role (uppercase pill), so
+       it moves to --font-display, not --font-numeric. */
+    font-family: var(--font-display);
+    font-size: var(--fs-xs);
+    letter-spacing: var(--ls-eyebrow);
     text-transform: uppercase;
     color: #FFFCF4;
     background: var(--color-primary);
@@ -631,8 +659,14 @@ nav ul li a.active {
 
 .hero-title {
     font-family: var(--font-display);
-    font-weight: 700;
-    font-size: clamp(2rem, 4.5vw, 3.4rem);
+    /* Revision A2 (implementation_plan.md) — the page's real hero headline,
+       so it maps to --fs-hero (was its own clamp(2rem,4.5vw,3.4rem), now
+       clamp(2.25rem,5vw,3.5rem) — a near-identical fluid range). Sora renders
+       heavier/wider than Oswald at the same weight, so the former Oswald 700
+       steps down to --fw-semibold (600) to keep the same visual weight and
+       avoid extra wrapping in the hero's 640px-wide copy column. */
+    font-weight: var(--fw-semibold);
+    font-size: var(--fs-hero);
     letter-spacing: -0.02em;
     line-height: 1.08;
     margin-bottom: 10px;
@@ -640,8 +674,10 @@ nav ul li a.active {
 }
 
 .hero-meta {
-    font-family: var(--font-mono);
-    font-size: 0.88rem;
+    /* Revision A2 (implementation_plan.md) — a date + free-text sentence,
+       not a label or a number/ID/time value on its own, so it inherits the
+       body font rather than taking --font-numeric or --font-display. */
+    font-size: var(--fs-md);
     color: rgba(255, 252, 244, 0.86);
     margin-bottom: 26px;
 }
@@ -672,8 +708,9 @@ nav ul li a.active {
 }
 
 .hero-progress-caption {
-    font-family: var(--font-mono);
-    font-size: 0.72rem;
+    /* Revision A2 (implementation_plan.md) — plain sentence ("Photos change
+       every 5s"), inherits the body font. */
+    font-size: var(--fs-xs);
     color: rgba(255, 252, 244, 0.7);
     white-space: nowrap;
 }
@@ -741,8 +778,11 @@ nav ul li a.active {
     position: relative;
     z-index: 1;
     font-family: var(--font-display);
-    font-weight: 700;
-    font-size: 1.6rem;
+    /* Revision A2 (implementation_plan.md) — Sora renders visibly heavier/
+       wider than Oswald at the same weight, so display headings that were
+       Oswald 700 step down to --fw-semibold (600) rather than --fw-bold. */
+    font-weight: var(--fw-semibold);
+    font-size: var(--fs-2xl);
     letter-spacing: 0.02em;
     color: var(--color-accent-text);
     opacity: 0.55;
@@ -813,14 +853,16 @@ nav ul li a.active {
 .stat-number {
     display: block;
     font-family: var(--font-display);
-    font-size: 2.4rem;
-    font-weight: 700;
+    font-size: var(--fs-3xl);
+    /* Revision A2 (implementation_plan.md) — Oswald 700 steps down to
+       --fw-semibold (600); Sora renders heavier at the same weight. */
+    font-weight: var(--fw-semibold);
     color: var(--color-accent-text);
     line-height: 1;
 }
 
 .stat-label {
-    font-size: 0.9rem;
+    font-size: var(--fs-md);
     color: var(--color-ink-faint);
 }
 
@@ -920,8 +962,10 @@ nav ul li a.active {
     gap: 6px;
     margin-top: auto;
     padding-top: 12px;
-    font-family: var(--font-mono);
-    font-size: 0.72rem;
+    /* Revision A2 (implementation_plan.md) — label role ("View" affordance),
+       so it moves to --font-display, not --font-numeric. */
+    font-family: var(--font-display);
+    font-size: var(--fs-xs);
     letter-spacing: 0.06em;
     text-transform: uppercase;
     color: var(--color-accent-text);
@@ -945,14 +989,18 @@ nav ul li a.active {
 
 .court-card h3 {
     font-family: var(--font-display);
-    font-size: 1.2rem;
+    font-size: var(--fs-lg);
     font-weight: 600;
     margin-bottom: 6px;
 }
 
 .court-count {
-    font-family: var(--font-mono);
-    font-size: 1.25rem;
+    /* Revision A2 (implementation_plan.md) — leads with a number
+       (.court-count-value), so it takes --font-numeric (tabular-nums)
+       instead of the removed --font-mono. */
+    font-family: var(--font-numeric);
+    font-variant-numeric: tabular-nums;
+    font-size: var(--fs-lg);
     color: var(--color-accent-text);
     margin-bottom: 4px;
     display: flex;
@@ -962,12 +1010,12 @@ nav ul li a.active {
 
 .court-count-unit {
     font-family: var(--font-body);
-    font-size: 0.78rem;
+    font-size: var(--fs-xs);
     color: var(--color-ink-faint);
 }
 
 .court-note {
-    font-size: 0.88rem;
+    font-size: var(--fs-md);
     color: var(--color-ink-faint);
 }
 
@@ -976,21 +1024,24 @@ nav ul li a.active {
    here); rating doesn't exist until database/schema/003_court_rating.sql is
    applied and only shows once a court actually has one. */
 .court-rate {
-    font-family: var(--font-mono);
-    font-size: 1.05rem;
+    /* Revision A2 (implementation_plan.md) — a peso amount, so it takes
+       --font-numeric (tabular-nums) instead of the removed --font-mono. */
+    font-family: var(--font-numeric);
+    font-variant-numeric: tabular-nums;
+    font-size: var(--fs-base);
     color: var(--color-accent-text);
     margin-bottom: 4px;
 }
 
 .court-rate span {
     font-family: var(--font-body);
-    font-size: 0.78rem;
+    font-size: var(--fs-xs);
     color: var(--color-ink-faint);
 }
 
 .court-rate.is-tba {
     font-family: var(--font-body);
-    font-size: 0.85rem;
+    font-size: var(--fs-md);
     color: var(--color-ink-faint);
 }
 
@@ -998,7 +1049,7 @@ nav ul li a.active {
     display: flex;
     align-items: center;
     gap: 4px;
-    font-size: 0.8rem;
+    font-size: var(--fs-sm);
     color: var(--color-accent-text);
     margin-bottom: 4px;
 }
@@ -1135,6 +1186,9 @@ body.court-viewer-lock {
 }
 
 .court-viewer-media .media-slot-monogram {
+    /* Revision A2 (implementation_plan.md) — kept as its own clamp, not
+       --fs-hero: a larger decorative monogram for the bigger viewer modal
+       image, same reasoning as .hero-media-slot-monogram above. */
     font-size: clamp(2.6rem, 9vw, 4.4rem);
 }
 
@@ -1145,7 +1199,7 @@ body.court-viewer-lock {
 .court-viewer-title {
     font-family: var(--font-display);
     font-weight: 600;
-    font-size: 1.6rem;
+    font-size: var(--fs-2xl);
     line-height: 1.2;
     /* Was 10px, back when a data-court-viewer-count stat sat directly under
        this and supplied its own margin-bottom too. That line is gone (its
@@ -1181,9 +1235,11 @@ body.court-viewer-lock {
 
 .court-viewer-units-label {
     display: block;
-    font-family: var(--font-mono);
-    font-size: 0.72rem;
-    letter-spacing: 0.08em;
+    /* Revision A2 (implementation_plan.md) — uppercase label, not numeric
+       content, so it moves to --font-display. */
+    font-family: var(--font-display);
+    font-size: var(--fs-xs);
+    letter-spacing: var(--ls-eyebrow);
     text-transform: uppercase;
     color: var(--color-ink-faint);
     margin-bottom: 8px;
@@ -1228,7 +1284,7 @@ body.court-viewer-lock {
     width: 100%;
     padding: 11px 40px 11px 14px;
     font-family: var(--font-body);
-    font-size: 0.95rem;
+    font-size: var(--fs-base);
     line-height: 1.4;
     color: var(--color-ink);
     background: var(--surface-band);
@@ -1258,7 +1314,7 @@ body.court-viewer-lock {
 }
 
 .court-viewer-note {
-    font-size: 0.98rem;
+    font-size: var(--fs-base);
     line-height: 1.7;
     color: var(--color-ink-dim);
     margin-bottom: 14px;
@@ -1282,23 +1338,31 @@ body.court-viewer-lock {
 
 .court-viewer-price-label {
     display: block;
-    font-family: var(--font-mono);
-    font-size: 0.72rem;
-    letter-spacing: 0.08em;
+    /* Revision A2 (implementation_plan.md) — uppercase label, not numeric
+       content, so it moves to --font-display. */
+    font-family: var(--font-display);
+    font-size: var(--fs-xs);
+    letter-spacing: var(--ls-eyebrow);
     text-transform: uppercase;
     color: var(--color-ink-faint);
     margin-bottom: 4px;
 }
 
 .court-viewer-price-value {
-    font-family: var(--font-mono);
-    font-size: 0.95rem;
+    /* Revision A2 (implementation_plan.md) — "<quantity> <unit>" leads with
+       a number, so it takes --font-numeric (tabular-nums). */
+    font-family: var(--font-numeric);
+    font-variant-numeric: tabular-nums;
+    font-size: var(--fs-base);
     color: var(--color-ink-dim);
 }
 
 .court-viewer-rate {
-    font-family: var(--font-mono);
-    font-size: 1rem;
+    /* Revision A2 (implementation_plan.md) — a peso amount; the "Rate TBA"
+       sentence state overrides back to --font-body via .is-tba below. */
+    font-family: var(--font-numeric);
+    font-variant-numeric: tabular-nums;
+    font-size: var(--fs-base);
     color: var(--color-accent-text);
 }
 
@@ -1310,7 +1374,7 @@ body.court-viewer-lock {
 .court-viewer-rate.is-tba {
     display: inline-block;
     font-family: var(--font-body);
-    font-size: 0.8rem;
+    font-size: var(--fs-sm);
     font-weight: 600;
     letter-spacing: 0.02em;
     color: var(--color-ink-dim);
@@ -1321,7 +1385,7 @@ body.court-viewer-lock {
 }
 
 .court-viewer-photo-status {
-    font-size: 0.85rem;
+    font-size: var(--fs-md);
     color: var(--color-ink-faint);
     padding-top: 14px;
     border-top: 1px solid var(--border-soft);
@@ -1334,7 +1398,7 @@ body.court-viewer-lock {
     border-radius: 14px;
     box-shadow: var(--shadow-card);
     color: var(--color-ink-dim);
-    font-size: 0.95rem;
+    font-size: var(--fs-base);
 }
 
 /* ==========================================================================
@@ -1394,7 +1458,7 @@ body.court-viewer-lock {
 }
 
 .testimonial-quote {
-    font-size: 1rem;
+    font-size: var(--fs-base);
     font-style: italic;
     line-height: 1.7;
     color: var(--color-ink);
@@ -1409,21 +1473,23 @@ body.court-viewer-lock {
 }
 
 .testimonial-stars {
-    font-family: var(--font-mono);
+    /* Revision A2 (implementation_plan.md) — star glyphs (★), not numbers or
+       a label; inherits the body font, letter-spacing still does the even
+       spacing job Space Mono's fixed-width glyphs used to. */
     letter-spacing: 2px;
     color: var(--color-accent-text);
-    font-size: 0.95rem;
+    font-size: var(--fs-base);
     width: 100%;
 }
 
 .testimonial-author {
     font-family: var(--font-display);
     font-weight: 600;
-    font-size: 0.92rem;
+    font-size: var(--fs-md);
 }
 
 .testimonial-source {
-    font-size: 0.78rem;
+    font-size: var(--fs-xs);
     color: var(--color-ink-faint);
 }
 
@@ -1480,7 +1546,7 @@ body.court-viewer-lock {
 }
 
 .footer-tagline {
-    font-size: 0.84rem;
+    font-size: var(--fs-sm);
     color: var(--color-ink-dim);
     line-height: 1.5;
     max-width: 560px;
@@ -1512,7 +1578,7 @@ body.court-viewer-lock {
 
 .footer-card h3 {
     font-family: var(--font-display);
-    font-size: 0.86rem;
+    font-size: var(--fs-md);
     font-weight: 600;
     color: var(--color-accent-text);
     margin-bottom: 1px;
@@ -1520,7 +1586,7 @@ body.court-viewer-lock {
 
 .footer-card p,
 .footer-card a {
-    font-size: 0.8rem;
+    font-size: var(--fs-sm);
     color: var(--color-ink-dim);
     line-height: 1.45;
     text-decoration: none;
@@ -1563,7 +1629,7 @@ body.court-viewer-lock {
 
 .footer-map-label {
     margin: 0;
-    font-size: 0.8rem;
+    font-size: var(--fs-sm);
     font-weight: 600;
     color: var(--color-ink);
 }
@@ -1636,7 +1702,7 @@ body.court-viewer-lock {
     }
 
     .site-nav .logo-text {
-        font-size: 1.1rem;
+        font-size: var(--fs-lg);
     }
 
     .site-nav {
@@ -1670,7 +1736,7 @@ body.court-viewer-lock {
 
     .book-now {
         padding: 10px 18px;
-        font-size: 0.95rem;
+        font-size: var(--fs-base);
     }
 
     .nav-menu {
@@ -1715,7 +1781,7 @@ body.court-viewer-lock {
     }
 
     .nav-menu-brand .logo-text {
-        font-size: 1.1rem;
+        font-size: var(--fs-lg);
     }
 
     .nav-menu ul {
@@ -1733,7 +1799,7 @@ body.court-viewer-lock {
         display: block;
         padding: 16px 0;
         width: 100%;
-        font-size: 1rem;
+        font-size: var(--fs-base);
     }
 
     .nav-menu ul li + li {

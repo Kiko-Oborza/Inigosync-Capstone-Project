@@ -27,10 +27,39 @@ paste the file's contents → **Run**.
 | A4 | `database/schema/006_court_unit_images.sql` | Adds a nullable `unit_images` jsonb column to `court`, so one sport can carry a photo per individual court/lane/table | The landing page's court viewer still lists every unit (Court 1–9, Duckpin/Ten-Pin, Table 1–2) — they just all share the sport's single photo. Nothing breaks. |
 | A5 | `database/schema/007_app_settings.sql` | Creates the single-row `app_settings` table + RLS (admin read/write, staff/customer read-only), seeded with today's defaults (GCash + Cash on, 50% downpayment) | The owner dashboard's Payment Configuration Save button fails with a clear "needs a database update" message instead of a fake success toast; the customer booking and staff walk-in screens keep using the hardcoded 50%/GCash+Cash-on defaults exactly as they do today. Nothing breaks. |
 | A6 | `database/schema/013_profile_phone_verified.sql` | Adds a `phone_verified boolean not null default false` column to `profiles` | The customer dashboard's new mobile-number OTP verification (Account Settings) can still complete `verifyOtp()` and save the new number, but the "Verified" badge next to it never appears (the write silently drops just that one column — see item E5 below for the other half of this feature). Nothing breaks. |
+| A7 | `database/schema/014_admin_reset_staff_password.sql` | Adds a `admin_reset_staff_password(target_id)` function (SECURITY DEFINER) that resets a staff/admin account's password to the fixed default **`12345678`**. Requires `pgcrypto` (added automatically if missing). | The owner dashboard's Staff Management → **Reset Password** button fails with "needs a database update" instead of resetting anything. Nothing breaks — the old email-link reset path is gone either way (see below). |
+| A8 | `database/schema/015_media_bucket.sql` | Creates a **public** Storage bucket named `media` (5 MB/file limit, JPEG/PNG/WEBP only) plus row-level-security policies so **anyone can view** what's in it but **only an active admin can upload/replace/delete**. | Media Manager's "Upload photo" / "Replace photo" buttons (slideshow + Court Listings) show "Media storage isn't set up yet — run database/schema/015_media_bucket.sql" instead of uploading. Pasting a plain `https://` image URL into Court Listings still works either way — only file uploads need this. |
 
 > All frontend code is written to **work correctly before these are applied**.
 > Missing columns/tables degrade gracefully — they never break the app. Applying
 > them switches the corresponding features on.
+
+**About A7 — the default-password policy.** Clicking Reset Password on a
+staff/admin row asks for confirmation, then immediately sets that account's
+password to **`12345678`** — no email, no link, no waiting on SMTP. This is
+intentional: it means any active admin can always get a locked-out staff
+member back in on the spot. The trade-off (also intentional) is that the
+default is a fixed, publicly-documented value — **tell staff to change it
+themselves the moment they log back in** (Account Settings → Change
+Password on their own dashboard). The function refuses to run for anyone
+who isn't an active admin, and refuses to target a customer account or the
+admin's own account, no matter what the browser sends it — see the
+migration file's own comments for the exact checks.
+
+**About A8 — if the bucket insert is refused on your plan.** Some hosting
+tiers restrict direct `insert into storage.buckets` from the SQL Editor. If
+running `015_media_bucket.sql` errors out on that specific statement:
+1. Go to **Supabase Dashboard → Storage → New bucket**, name it exactly
+   `media`, and toggle **Public bucket** ON. Leave the file-size/MIME
+   restrictions to the dashboard UI's own fields if it offers them (5 MB,
+   `image/jpeg,image/png,image/webp`) — otherwise skip them, they're a nice-
+   to-have, not required for the feature to work.
+2. Re-run **only the policy statements** in `015_media_bucket.sql` — i.e.
+   everything from the `inigosync_is_active_admin()` function definition
+   down through the four `storage.objects` policies. The bucket-creation
+   `insert` at the top is safe to leave in (it will simply fail on that one
+   statement and you continue from the next), or delete just that one
+   statement before re-running.
 
 ---
 
@@ -424,6 +453,8 @@ Get the real answers and I'll drop them in, or edit the file directly.
 | Do this | Unlocks |
 |---|---|
 | **A1–A6** (run SQL) | Court ratings, staff Time-In/Out, audit trail, single-session, per-court photos, real Payment Configuration persistence, mobile "Verified" badge |
+| **A7** (`014_admin_reset_staff_password.sql`) | Staff Management's Reset Password button (instant default-password reset) |
+| **A8** (`015_media_bucket.sql`) | Media Manager slideshow uploads, Court Listings photo uploads — landing page + customer dashboard hero pick up the change immediately |
 | **B** (`pg_cron` check) | Lets me *design* auto-cancellation + reminders correctly |
 | **C** (PayMongo) | Payment Automation objective, receipts, payment loading phase |
 | **D** (Resend) | Gmail booking reminders |

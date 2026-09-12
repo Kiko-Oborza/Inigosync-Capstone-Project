@@ -1,10 +1,20 @@
 // IñigoSync — Owner Dashboard controller
 // Staff Management, Account Settings, Court Listings, the Booking Overview
-// stat tiles, and Payment Configuration all talk to the real Supabase
-// database. Media Manager's upload controls are honestly disabled (no
-// Supabase Storage bucket exists — see that section's comment below); court
-// photos are still fully editable via Court Listings' image_url field.
+// stat tiles/Recent bookings/Booking status breakdown, Media Manager, and
+// Payment Configuration all talk to the real Supabase database.
 // (Booking trend chart setup lives in event/chart.js, loaded below.)
+//
+// Revision A1 (implementation_plan.md) brought this page up to the same
+// standard as the customer dashboard: a real logo (A1), live Recent
+// bookings + Booking status this month replacing two hardcoded fake cards
+// (A3), an instant default-password Reset Password RPC + Activate for
+// disabled staff (A4), a real Media Manager against `public.event` + a
+// Storage bucket (A5), an Add/Edit court modal (A6), a real notifications
+// dropdown (A7), a topbar/settings avatar that renders profiles.avatar_url
+// (A8), and a Profile Photo card + editable email + a 2-step Change
+// Password wizard in Account Settings (A9). See that section of
+// implementation_plan.md for the full rationale; individual blocks below
+// cite the specific decision letter they implement.
 
 document.addEventListener('DOMContentLoaded', () => {
     // ------------------------------------------------------------------
@@ -18,7 +28,7 @@ document.addEventListener('DOMContentLoaded', () => {
         overview: { title: 'Booking Overview', subtitle: 'Reservation trends, staff activity, and business performance at a glance.' },
         staff: { title: 'Staff Management', subtitle: 'Add, update, or remove staff accounts and configure payment settings.' },
         courts: { title: 'Court Listings', subtitle: 'Add new courts, update details, or activate/deactivate existing ones.' },
-        media: { title: 'Media Manager', subtitle: "Whatever you upload here is what the website shows — home featured photos and each court's photo." },
+        media: { title: 'Media Manager', subtitle: "Whatever you upload here shows up on the website's home featured slideshow — both the landing page and the customer dashboard." },
         settings: { title: 'Account Settings', subtitle: 'Update your personal details and manage your owner password.' },
     };
 
@@ -41,6 +51,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         closeMobileSidebar();
         closeProfileMenu();
+        closeAdminNotifMenu();
         window.scrollTo({ top: 0, behavior: 'smooth' });
     }
 
@@ -80,6 +91,11 @@ document.addEventListener('DOMContentLoaded', () => {
     if (profileTrigger && profile) {
         profileTrigger.addEventListener('click', (e) => {
             e.stopPropagation();
+            // closeAdminNotifMenu is a hoisted function declaration defined
+            // further down this file (Notifications section) — safe to call
+            // from here regardless of source order, same reasoning
+            // includes/Dashboard.js documents for its own closeNotifMenu.
+            closeAdminNotifMenu();
             if (profile.hasAttribute('data-open')) {
                 profile.removeAttribute('data-open');
             } else {
@@ -142,14 +158,132 @@ document.addEventListener('DOMContentLoaded', () => {
     // a silent fake success. Same detector as staff_dashboard.js's
     // isSchemaMismatchError — duplicated rather than shared, matching how
     // every other helper in this file is self-contained (no shared module
-    // beyond escape.js/courtsData.js/appSettings.js).
+    // beyond escape.js/courtsData.js/appSettings.js/imageTools.js).
     function isSchemaMismatchError(error) {
         if (!error) return false;
         const code = error.code || '';
         const message = String(error.message || '').toLowerCase();
-        return code === 'PGRST204' || code === 'PGRST205' || code === '42703' || code === '42P01'
+        return code === 'PGRST204' || code === 'PGRST205' || code === '42703' || code === '42P01' || code === '42883'
             || message.includes('could not find') || message.includes('does not exist')
             || message.includes('schema cache');
+    }
+
+    // Revision A1 security requirement (implementation_plan.md) — only
+    // allow https:// URLs or the project's own relative paths into an
+    // <img src>/image_url column; rejects javascript:/data:/vbscript: etc.
+    // Applied both when SAVING a court/slide image URL and when RENDERING
+    // one, so a bad value already in the database (however it got there)
+    // never reaches an <img src> either. The avatar pipeline's data: URLs
+    // are the one deliberate exception — those are generated internally by
+    // includes/imageTools.js from a local file, never taken from a URL
+    // <input>, and are never run through this check.
+    function isSafeImageUrl(url) {
+        const value = String(url || '').trim();
+        if (!value) return false;
+        if (/^https:\/\//i.test(value)) return true;
+        if (/^[a-z][a-z0-9+.-]*:/i.test(value)) return false; // any other explicit scheme (javascript:, data:, ...)
+        if (value.startsWith('//')) return false; // protocol-relative — resolves to whatever scheme the browser likes
+        return true; // a relative project path, e.g. "../database/web/basketball.jpg"
+    }
+
+    // Shared by the Court modal's photo upload (Court Listings) and Media
+    // Manager's slide photos (A5/A6) — both write into the SAME public
+    // `media` Storage bucket created by database/schema/015_media_bucket.sql.
+    function isMediaBucketMissingError(error) {
+        if (!error) return false;
+        const message = String(error.message || '').toLowerCase();
+        const status = error.statusCode || error.status;
+        return message.includes('bucket not found') || String(status) === '404';
+    }
+
+    async function uploadToMedia(path, blob) {
+        if (!window.sb) throw new Error('Unable to reach the server right now. Please try again shortly.');
+        const { error } = await window.sb.storage.from('media').upload(path, blob, {
+            upsert: true,
+            contentType: 'image/jpeg',
+        });
+        if (error) {
+            if (isMediaBucketMissingError(error)) {
+                throw new Error("Media storage isn't set up yet — run database/schema/015_media_bucket.sql");
+            }
+            throw new Error(error.message || 'Could not upload that image.');
+        }
+        const { data } = window.sb.storage.from('media').getPublicUrl(path);
+        if (!data || !data.publicUrl) throw new Error('Upload succeeded, but no public URL was returned.');
+        return data.publicUrl;
+    }
+
+    // Best-effort cleanup of a REPLACED/REMOVED photo's old object in the
+    // `media` bucket — "best effort" because a stray orphaned object left
+    // behind on failure is a harmless storage-quota nit, not something
+    // worth surfacing to the admin as an error over. Silently no-ops for
+    // any URL that isn't one of our own uploads (e.g. a pasted external
+    // https:// URL, or a relative fallback path) — nothing to clean up.
+    function removeUploadedMediaBestEffort(url) {
+        if (!url || !window.sb) return;
+        const marker = '/storage/v1/object/public/media/';
+        const idx = url.indexOf(marker);
+        if (idx === -1) return;
+        const path = url.slice(idx + marker.length);
+        if (!path) return;
+        window.sb.storage.from('media').remove([path]).then(() => {}, () => {});
+    }
+
+    // Shared date/time formatter for Recent bookings + Notifications —
+    // "Sep 14, 9:00 AM – 11:00 AM" when an end time is known, "Sep 14,
+    // 9:00 AM" otherwise.
+    function formatAdminDateTime(startIso, endIso) {
+        const start = new Date(startIso);
+        if (Number.isNaN(start.getTime())) return '—';
+        const dateLabel = start.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+        const startLabel = start.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+        let timeLabel = startLabel;
+        if (endIso) {
+            const end = new Date(endIso);
+            if (!Number.isNaN(end.getTime())) {
+                timeLabel = `${startLabel} – ${end.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}`;
+            }
+        }
+        return `${dateLabel}, ${timeLabel}`;
+    }
+
+    // Derived "Unattended" status — same 30-minute-grace rule
+    // includes/Dashboard.js's displayStatusFor() uses (Revision 2, R4):
+    // more than 30 minutes past time_date, no checked_in_at, and still
+    // pending/confirmed. Duplicated rather than shared (this file has no
+    // dependency on Dashboard.js and never loads it) — see
+    // isSchemaMismatchError's own comment above for why every helper here
+    // is self-contained.
+    const ADMIN_UNATTENDED_GRACE_MINUTES = 30;
+    function adminDisplayStatusFor(booking) {
+        const rawStatus = String(booking.status || '').toLowerCase();
+        if (rawStatus !== 'pending' && rawStatus !== 'confirmed') return rawStatus;
+        if (booking.checked_in_at) return rawStatus;
+
+        const start = new Date(booking.time_date);
+        if (Number.isNaN(start.getTime())) return rawStatus;
+
+        const graceDeadline = start.getTime() + ADMIN_UNATTENDED_GRACE_MINUTES * 60000;
+        return Date.now() > graceDeadline ? 'unattended' : rawStatus;
+    }
+
+    // Shared by Recent bookings (customer_id → name) and Notifications
+    // (customer_id → name) — no PostgREST embed, since a real FK from
+    // booking.customer_id to profiles.id isn't confirmed in this
+    // repo-invisible table (see database/schema/004_staff_module.sql's own
+    // header note on `booking`).
+    async function fetchProfileNamesByIds(ids) {
+        const uniqueIds = Array.from(new Set((ids || []).filter(Boolean).map(String)));
+        const map = new Map();
+        if (!uniqueIds.length || !window.sb) return map;
+
+        const { data, error } = await window.sb.from('profiles').select('id, full_name').in('id', uniqueIds);
+        if (error) {
+            console.error('[admin] failed to load customer names', error);
+            return map;
+        }
+        (data || []).forEach((p) => map.set(String(p.id), p.full_name || 'Customer'));
+        return map;
     }
 
     // ------------------------------------------------------------------
@@ -233,7 +367,7 @@ document.addEventListener('DOMContentLoaded', () => {
         // getSports() falls back to a static SPORTS_FALLBACK array when the
         // real `sport` table can't be reached (includes/courtsData.js) —
         // isSportsFallback() reports that without changing getSports()'s own
-        // return shape, which the court-form sport dropdown below and
+        // return shape, which the court modal's sport dropdown below and
         // staff_dashboard.js's schedule tabs still expect to be a plain
         // array. A fallback count is a real number of *options*, not a real
         // count of listed sports, so it's shown as unknown too.
@@ -245,6 +379,137 @@ document.addEventListener('DOMContentLoaded', () => {
         setAdminStat('bookings-today', todayRes.error ? '—' : (todayRes.count || 0));
         setAdminStat('sports-listed', sportsIsFallback ? '—' : (sports || []).length);
         setAdminStat('active-staff', staffRes.error ? '—' : (staffRes.count || 0));
+
+        // Revision A1, decision A3 — both new Overview widgets refresh
+        // alongside the 4 stat tiles, from this SAME entry point (also
+        // triggered on 'inigosync:profile-ready' below), rather than a
+        // second listener elsewhere.
+        refreshRecentBookings();
+        refreshStatusBreakdown();
+    }
+
+    // ------------------------------------------------------------------
+    // Overview — Recent bookings (Revision A1, decision A3). Replaces the
+    // old hardcoded "Busiest courts this week" card: the real latest 8
+    // `booking` rows, newest first, with the customer's name (a SEPARATE
+    // `profiles` query by the collected customer_ids — no PostgREST embed,
+    // see fetchProfileNamesByIds's own comment) and the SAME derived
+    // "Unattended" status the customer dashboard shows.
+    // ------------------------------------------------------------------
+    async function refreshRecentBookings() {
+        const tableRoot = document.querySelector('[data-admin-recent-bookings]');
+        if (!tableRoot || !window.sb) return;
+        const tbody = tableRoot.querySelector('tbody');
+        if (!tbody) return;
+
+        let { data, error } = await window.sb
+            .from('booking')
+            .select('booking_id, customer_id, courts, time_date, end_at, status, checked_in_at')
+            .order('created_at', { ascending: false })
+            .limit(8);
+
+        if (error && isSchemaMismatchError(error)) {
+            // Pre-004/012 database — checked_in_at/end_at don't exist yet.
+            // Graceful degradation: still show the 4 columns the table
+            // asks for, just without the Unattended nuance or a time range.
+            ({ data, error } = await window.sb
+                .from('booking')
+                .select('booking_id, customer_id, courts, time_date, status')
+                .order('time_date', { ascending: false })
+                .limit(8));
+        }
+
+        if (error) {
+            console.error('[admin] failed to load recent bookings', error);
+            tbody.innerHTML = '<tr><td colspan="4" style="text-align:center; color: var(--color-ink-faint);">Could not load recent bookings.</td></tr>';
+            return;
+        }
+
+        const rows = data || [];
+        if (rows.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="4" style="text-align:center; color: var(--color-ink-faint);">No bookings yet.</td></tr>';
+            return;
+        }
+
+        const nameMap = await fetchProfileNamesByIds(rows.map((r) => r.customer_id));
+
+        // Every interpolated value here is either customer-entered (name,
+        // court) or derived from a fixed internal map (status) — escaped
+        // before touching innerHTML, same rule as every other table in
+        // this file.
+        tbody.innerHTML = rows.map((row) => {
+            const name = window.escapeHtml(nameMap.get(String(row.customer_id)) || '—');
+            const court = window.escapeHtml(row.courts || '—');
+            const when = window.escapeHtml(formatAdminDateTime(row.time_date, row.end_at));
+            const displayStatus = adminDisplayStatusFor(row) || 'pending';
+            const statusLabel = window.escapeHtml(displayStatus.charAt(0).toUpperCase() + displayStatus.slice(1));
+            return `
+                <tr>
+                    <td class="admin-cell-main">${name}</td>
+                    <td>${court}</td>
+                    <td>${when}</td>
+                    <td><span class="admin-status ${window.escapeHtml(displayStatus)}">${statusLabel}</span></td>
+                </tr>
+            `;
+        }).join('');
+    }
+
+    // ------------------------------------------------------------------
+    // Overview — Booking status this month (Revision A1, decision A3).
+    // Replaces the old hardcoded "Staff on shift" card: real counts of
+    // pending/confirmed/completed/cancelled/unattended for the current
+    // calendar month, rendered as the SAME label + count + proportional-bar
+    // rows (.admin-progress-*) the old fake card used.
+    // ------------------------------------------------------------------
+    const ADMIN_STATUS_LABELS = { pending: 'Pending', confirmed: 'Confirmed', completed: 'Completed', cancelled: 'Cancelled', unattended: 'Unattended' };
+
+    async function refreshStatusBreakdown() {
+        const listRoot = document.querySelector('[data-admin-status-breakdown]');
+        if (!listRoot || !window.sb) return;
+
+        const { start: monthStart, end: monthEnd } = monthRange();
+
+        let { data, error } = await window.sb
+            .from('booking')
+            .select('status, time_date, checked_in_at')
+            .gte('time_date', monthStart.toISOString())
+            .lt('time_date', monthEnd.toISOString());
+
+        if (error && isSchemaMismatchError(error)) {
+            ({ data, error } = await window.sb
+                .from('booking')
+                .select('status, time_date')
+                .gte('time_date', monthStart.toISOString())
+                .lt('time_date', monthEnd.toISOString()));
+        }
+
+        if (error) {
+            console.error('[admin] failed to load the booking status breakdown', error);
+            listRoot.innerHTML = '<p style="color: var(--color-ink-faint);">Could not load booking status this month.</p>';
+            return;
+        }
+
+        const counts = { pending: 0, confirmed: 0, completed: 0, cancelled: 0, unattended: 0 };
+        (data || []).forEach((row) => {
+            const key = adminDisplayStatusFor(row);
+            if (Object.prototype.hasOwnProperty.call(counts, key)) counts[key] += 1;
+        });
+
+        const maxCount = Math.max(1, ...Object.values(counts));
+
+        listRoot.innerHTML = Object.keys(ADMIN_STATUS_LABELS).map((key) => {
+            const count = counts[key];
+            const pct = Math.round((count / maxCount) * 100);
+            return `
+                <div class="admin-progress-item">
+                    <div class="admin-progress-row">
+                        <span>${ADMIN_STATUS_LABELS[key]}</span>
+                        <span class="admin-progress-count">${count} booking${count === 1 ? '' : 's'}</span>
+                    </div>
+                    <div class="admin-progress-track"><div class="admin-progress-fill" style="width: ${pct}%;"></div></div>
+                </div>
+            `;
+        }).join('');
     }
 
     refreshOverviewStats();
@@ -344,6 +609,10 @@ document.addEventListener('DOMContentLoaded', () => {
         // text in this admin session, not run. staffStatusBadge() only
         // returns markup built from a fixed internal map, not profile data,
         // so it's safe as-is.
+        //
+        // Revision A1, decision A4 — a disabled account additionally gets
+        // an Activate button (mirrors the court cards' Activate/Deactivate
+        // pair); an active/invited account keeps just Deactivate, unchanged.
         row.innerHTML = `
             <td class="admin-cell-main" data-admin-staff-name-cell>${window.escapeHtml(profile.full_name) || '—'}</td>
             <td data-admin-staff-email-cell>${window.escapeHtml(profile.email) || '—'}</td>
@@ -353,7 +622,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 <div class="admin-table-actions">
                     <button type="button" class="admin-mini-btn" data-admin-reset-password>Reset Password</button>
                     <button type="button" class="admin-mini-btn" data-admin-edit-staff>Edit</button>
-                    ${profile.status !== 'disabled' ? '<button type="button" class="admin-mini-btn is-danger" data-admin-delete-staff>Deactivate</button>' : ''}
+                    ${profile.status === 'disabled'
+                        ? '<button type="button" class="admin-mini-btn" data-admin-activate-staff>Activate</button>'
+                        : '<button type="button" class="admin-mini-btn is-danger" data-admin-delete-staff>Deactivate</button>'}
                 </div>
             </td>
         `;
@@ -383,20 +654,36 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function wireStaffRowActions(scope) {
+        // Revision A1, decision A4 — Reset Password now calls the
+        // SECURITY DEFINER RPC (database/schema/014_admin_reset_staff_password.sql)
+        // instead of emailing a reset link. confirm() first (this is
+        // immediate and irreversible from the target's point of view — their
+        // current password stops working the instant this runs), then a
+        // toast naming the account and the default password so the admin
+        // can pass it along right away.
         scope.querySelectorAll('[data-admin-reset-password]').forEach((btn) => {
             btn.addEventListener('click', async () => {
                 const row = btn.closest('tr');
-                const email = row?.querySelector('[data-admin-staff-email-cell]')?.textContent;
-                if (!email || !window.sb) return;
+                if (!row || !window.sb) return;
+                const name = row.querySelector('[data-admin-staff-name-cell]')?.textContent || 'this account';
+
+                if (!window.confirm(`Reset ${name}'s password to the default (12345678)? They will need to change it after logging in.`)) return;
 
                 btn.disabled = true;
-                const { error } = await window.sb.auth.resetPasswordForEmail(email);
+                const { error } = await window.sb.rpc('admin_reset_staff_password', { target_id: row.dataset.id });
                 btn.disabled = false;
 
-                window.InigoToast?.show(
-                    error ? (error.message || 'Could not send the reset email.') : `Password reset email sent to ${email}.`,
-                    Boolean(error)
-                );
+                if (error) {
+                    window.InigoToast?.show(
+                        isSchemaMismatchError(error)
+                            ? "This needs a database update that hasn't been applied yet (see database/schema/014_admin_reset_staff_password.sql)."
+                            : (error.message || 'Could not reset this password.'),
+                        true
+                    );
+                    return;
+                }
+
+                window.InigoToast?.show(`Password reset to the default (12345678). Ask ${name} to change it after logging in.`);
             });
         });
 
@@ -408,6 +695,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (!row) return;
                 const nameCell = row.querySelector('[data-admin-staff-name-cell]');
                 const positionCell = row.querySelector('[data-admin-staff-position-cell]');
+                // S6 (Revision A1 fix) — the static demo/fallback rows in
+                // Pages/owner_dashboard.html predate these two data-*
+                // hooks (only renderStaffRow() above adds them); now that
+                // this whole table gets wired at startup, bail out instead
+                // of crashing on nameCell/positionCell.textContent below.
+                if (!nameCell || !positionCell) return;
 
                 if (btn.dataset.editing !== 'true') {
                     const currentName = nameCell.textContent.trim();
@@ -467,8 +760,40 @@ document.addEventListener('DOMContentLoaded', () => {
                 refreshStaffList();
             });
         });
+
+        // Revision A1, decision A4 — Activate restores a deactivated staff
+        // account, mirroring the court cards' Activate/Deactivate pair.
+        scope.querySelectorAll('[data-admin-activate-staff]').forEach((btn) => {
+            btn.addEventListener('click', async () => {
+                const row = btn.closest('tr');
+                if (!row) return;
+                const name = row.querySelector('[data-admin-staff-name-cell]')?.textContent || 'this account';
+                if (!window.confirm(`Activate ${name}'s account? They will be able to log in again.`)) return;
+
+                btn.disabled = true;
+                const { error } = await window.sb.from('profiles').update({ status: 'active' }).eq('id', row.dataset.id);
+                btn.disabled = false;
+
+                if (error) {
+                    window.InigoToast?.show(error.message || 'Could not activate this account.', true);
+                    return;
+                }
+                window.InigoToast?.show(`${name} reactivated.`);
+                refreshStaffList();
+            });
+        });
     }
 
+    // S6 (Revision A1 fix) — Pages/owner_dashboard.html ships a few static
+    // demo <tr> rows in this table as its no-JS/pre-load baseline. Every
+    // row refreshStaffList() itself renders gets wired via its own
+    // wireStaffRowActions(row) call above, but those static rows never did
+    // — their buttons were completely inert. Wiring the whole table once
+    // here (before the first refreshStaffList() swaps them out) means the
+    // fallback rows behave like rendered rows for however long they're on
+    // screen (including if window.sb is unset and refreshStaffList()
+    // never gets to replace them at all).
+    if (staffTable) wireStaffRowActions(staffTable);
     refreshStaffList();
     document.addEventListener('inigosync:profile-ready', refreshStaffList);
 
@@ -576,11 +901,20 @@ document.addEventListener('DOMContentLoaded', () => {
     // Information + Booking Management panels, so an admin's edit here is
     // visible everywhere else on next load instead of a fourth hand-copied
     // list drifting from the rest.
+    //
+    // Revision A1, decision A6 — Add/Edit now happen in a modal
+    // ([data-admin-court-modal]) instead of an inline .admin-add-panel that
+    // scrolled into view. courtForm below now resolves to the MODAL's
+    // content element (it carries the same data-admin-court-form attribute
+    // the old inline panel did), so every field selector and the
+    // editingId-on-dataset trick are unchanged from before this revision.
     // ------------------------------------------------------------------
     const courtGrid = document.querySelector('[data-admin-court-grid]');
     const courtFormToggleBtns = document.querySelectorAll('[data-admin-toggle-court-form]');
     const courtForm = document.querySelector('[data-admin-court-form]');
     const courtSubmitBtn = document.querySelector('[data-admin-court-submit]');
+    const courtModal = document.querySelector('[data-admin-court-modal]');
+    const courtModalTitle = document.querySelector('[data-admin-court-modal-title]');
 
     // Last-fetched rows, kept so "Edit" can look up a court's full data
     // (rate, description, sport_id, ...) by id without a second round trip
@@ -604,14 +938,13 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     });
 
-    // Resets the Add/Edit form back to "add a new court" — clears the
-    // editingId marker Edit sets (see openCourtFormForEdit below), the
-    // heading, the submit button label, and every field.
+    // Resets the modal's form back to "add a new court" — clears the
+    // editingId marker Edit sets (see openCourtModal below), the heading,
+    // the submit button label, and every field.
     function resetCourtForm() {
         if (!courtForm) return;
         delete courtForm.dataset.editingId;
-        const heading = courtForm.querySelector('.admin-card-head h3');
-        if (heading) heading.textContent = 'New Court';
+        if (courtModalTitle) courtModalTitle.textContent = 'New Court';
         if (courtSubmitBtn) courtSubmitBtn.textContent = 'Add Court';
 
         courtForm.querySelectorAll('input[type="text"], input[type="number"], input[type="url"]').forEach((el) => { el.value = ''; });
@@ -625,32 +958,137 @@ document.addEventListener('DOMContentLoaded', () => {
         if (sportSelect && sportSelect.options.length) sportSelect.selectedIndex = 0;
     }
 
+    // ------------------------------------------------------------------
+    // Court modal open/close (Revision A1, decision A6) — same fade/focus
+    // idiom as the customer dashboard's generic .dash-modal-overlay dialogs
+    // (includes/Dashboard.js's openFeedbackModal()/closeFeedbackModal()):
+    // a `hidden` round-trip timed to the CSS opacity transition, focus
+    // moved into the dialog on open and restored to whatever triggered it
+    // on close.
+    // ------------------------------------------------------------------
+    const COURT_MODAL_CLOSE_DELAY_MS = 250;
+    let courtModalHideTimer = null;
+    let courtModalIsOpen = false;
+    let courtModalLastFocused = null;
+
+    function openCourtModal(court) {
+        if (!courtModal || !courtForm) return;
+        courtModalLastFocused = document.activeElement;
+        resetCourtForm();
+
+        if (court) {
+            courtForm.dataset.editingId = court.id;
+            if (courtModalTitle) courtModalTitle.textContent = `Edit — ${court.name}`;
+            if (courtSubmitBtn) courtSubmitBtn.textContent = 'Save Changes';
+
+            // .value assignment (never innerHTML) — a `"` or `<` in an
+            // existing name/description can't break out of an attribute or
+            // inject markup this way, same fix already applied to the
+            // staff-edit inputs (docs/QA_AUDIT_REPORT.md P2#2).
+            const setValue = (selector, value) => {
+                const el = courtForm.querySelector(selector);
+                if (el) el.value = value;
+            };
+            setValue('[data-admin-court-name]', court.name || '');
+            setValue('[data-admin-court-sport]', court.sportId || '');
+            setValue('[data-admin-court-quantity]', court.quantity || 1);
+            setValue('[data-admin-court-unit]', court.unit || 'courts');
+            setValue('[data-admin-court-rate]', court.rate !== null ? court.rate : '');
+            setValue('[data-admin-court-rate-unit]', court.rateUnit || '/hr');
+            setValue('[data-admin-court-description]', court.description || '');
+            setValue('[data-admin-court-op-status]', court.status || 'Available');
+            setValue('[data-admin-court-image-url]', court.imageUrl || '');
+        }
+
+        if (courtModalHideTimer) {
+            window.clearTimeout(courtModalHideTimer);
+            courtModalHideTimer = null;
+        }
+        courtModal.hidden = false;
+        // Force a synchronous layout flush so the browser commits the
+        // hidden->visible state before [data-open] flips opacity to 1 —
+        // same trick includes/Dashboard.js's modal dialogs use.
+        void courtModal.offsetWidth;
+        courtModal.setAttribute('data-open', '');
+        courtModalIsOpen = true;
+
+        const firstField = courtForm.querySelector('input, select');
+        if (firstField) firstField.focus();
+    }
+
+    function closeCourtModal() {
+        if (!courtModalIsOpen || !courtModal) return;
+        courtModalIsOpen = false;
+
+        courtModal.removeAttribute('data-open');
+        if (courtModalHideTimer) window.clearTimeout(courtModalHideTimer);
+        courtModalHideTimer = window.setTimeout(() => {
+            courtModal.hidden = true;
+            courtModalHideTimer = null;
+        }, COURT_MODAL_CLOSE_DELAY_MS);
+
+        if (courtModalLastFocused && typeof courtModalLastFocused.focus === 'function' && document.contains(courtModalLastFocused)) {
+            courtModalLastFocused.focus();
+        }
+        courtModalLastFocused = null;
+    }
+
+    // "+ Add New Court" always opens the modal fresh (add mode) — the hook
+    // is unchanged from before this revision even though what it does
+    // (open a modal, not toggle an inline panel) has changed.
     courtFormToggleBtns.forEach((btn) => {
-        btn.addEventListener('click', () => {
-            if (!courtForm) return;
-            const opening = !courtForm.classList.contains('is-open');
-            courtForm.classList.toggle('is-open');
-            // Whenever the form ends up closed (Cancel, or re-clicking
-            // "+ Add New Court" while it was already open) — or opens fresh
-            // via "+ Add New Court" while NOT mid-edit — reset it to
-            // add-mode. Edit mode is entered explicitly by
-            // wireCourtCardActions' Edit handler below, which opens the
-            // form itself and runs independently of this shared toggle.
-            if (!opening || !courtForm.dataset.editingId) resetCourtForm();
+        btn.addEventListener('click', () => openCourtModal(null));
+    });
+
+    document.querySelectorAll('[data-admin-court-modal-close]').forEach((btn) => {
+        btn.addEventListener('click', closeCourtModal);
+    });
+
+    // S1 (Revision A1 fix) — a plain 'click' listener on the overlay also
+    // fires when a drag STARTS inside a field (e.g. selecting text in the
+    // Description textarea, or a slow click that drifts) and ENDS on the
+    // backdrop once the mouse is released there — the resulting click
+    // event's target is the overlay even though the user never intended to
+    // close the modal. Tracked via 'mousedown' on the overlay instead: only
+    // treat it as a real backdrop click when BOTH the mousedown and the
+    // click landed on the overlay element itself, not a descendant.
+    // (This is the only overlay-close modal in this file at the moment —
+    // apply the same pair of listeners to any future one.)
+    let courtModalMouseDownOnBackdrop = false;
+    if (courtModal) {
+        courtModal.addEventListener('mousedown', (e) => {
+            courtModalMouseDownOnBackdrop = e.target === courtModal;
         });
+        courtModal.addEventListener('click', (e) => {
+            if (e.target === courtModal && courtModalMouseDownOnBackdrop) closeCourtModal();
+            courtModalMouseDownOnBackdrop = false;
+        });
+    }
+
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && courtModalIsOpen) closeCourtModal();
     });
 
     // Escapes every interpolated field — a court name/description written
     // by any staff-or-admin session (RLS lets staff write `court` too, see
     // database/schema/002_content_tables.sql's "court_staff_write" policy)
     // must render as literal text here, not run.
+    //
+    // Revision A1, decision A6 — card redesign parity with the customer
+    // dashboard's .dash-court-card: media block + status badge, name,
+    // sport chip + "N units" chip + description tags (unchanged from
+    // before this revision — this file already built that same tags
+    // array), rate line, and a consistent Edit/Activate-Deactivate action
+    // row (Deactivate now carries .is-danger, matching the court's own
+    // "this is a consequential action" convention elsewhere on this page).
     function renderAdminCourtCard(court) {
         const isActive = court.isActive !== false;
         const statusCls = isActive ? 'active' : 'inactive';
         const statusLabel = isActive ? 'Active' : 'Deactivated';
         const monogram = window.InigoCourtsData ? window.InigoCourtsData.monogramFor(court.sportSlug, court.name) : '?';
-        const media = court.imageUrl
-            ? `<img src="${window.escapeHtml(court.imageUrl)}" alt="${window.escapeHtml(court.name)}" loading="lazy">`
+        const safeImageUrl = court.imageUrl && isSafeImageUrl(court.imageUrl) ? court.imageUrl : null;
+        const media = safeImageUrl
+            ? `<img src="${window.escapeHtml(safeImageUrl)}" alt="${window.escapeHtml(court.name)}" loading="lazy">`
             : `<span class="admin-court-monogram" aria-hidden="true">${window.escapeHtml(monogram)}</span>`;
         // Rate rendering: ₱<rate><rate_unit> when non-null, an honest "Rate
         // TBA" placeholder when null — every court's rate is NULL in the
@@ -676,7 +1114,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     <div class="admin-court-tags">${tagsHtml}</div>
                     <div class="admin-court-actions">
                         <button type="button" class="admin-btn-secondary" data-admin-court-edit>Edit</button>
-                        <button type="button" class="admin-btn-secondary" data-admin-court-toggle-status>${isActive ? 'Deactivate' : 'Activate'}</button>
+                        <button type="button" class="admin-btn-secondary${isActive ? ' is-danger' : ''}" data-admin-court-toggle-status>${isActive ? 'Deactivate' : 'Activate'}</button>
                     </div>
                 </div>
             </article>
@@ -696,35 +1134,6 @@ document.addEventListener('DOMContentLoaded', () => {
             : '<p style="color: var(--color-ink-faint); padding: 8px 4px;">No courts yet — add one above.</p>';
         wireCourtCardActions(courtGrid);
         applyCourtFilter();
-    }
-
-    function openCourtFormForEdit(court) {
-        if (!courtForm) return;
-        courtForm.dataset.editingId = court.id;
-        const heading = courtForm.querySelector('.admin-card-head h3');
-        if (heading) heading.textContent = `Edit — ${court.name}`;
-        if (courtSubmitBtn) courtSubmitBtn.textContent = 'Save Changes';
-
-        // .value assignment (never innerHTML) — a `"` or `<` in an existing
-        // name/description can't break out of an attribute or inject
-        // markup this way, same fix already applied to the staff-edit
-        // inputs (docs/QA_AUDIT_REPORT.md P2#2).
-        const setValue = (selector, value) => {
-            const el = courtForm.querySelector(selector);
-            if (el) el.value = value;
-        };
-        setValue('[data-admin-court-name]', court.name || '');
-        setValue('[data-admin-court-sport]', court.sportId || '');
-        setValue('[data-admin-court-quantity]', court.quantity || 1);
-        setValue('[data-admin-court-unit]', court.unit || 'courts');
-        setValue('[data-admin-court-rate]', court.rate !== null ? court.rate : '');
-        setValue('[data-admin-court-rate-unit]', court.rateUnit || '/hr');
-        setValue('[data-admin-court-description]', court.description || '');
-        setValue('[data-admin-court-op-status]', court.status || 'Available');
-        setValue('[data-admin-court-image-url]', court.imageUrl || '');
-
-        courtForm.classList.add('is-open');
-        courtForm.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
 
     if (courtSubmitBtn) {
@@ -772,6 +1181,18 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             const rate = rateRaw === '' ? null : Number(rateRaw);
 
+            // Revision A1 security requirement — the URL input is the ONE
+            // remaining free-text path into an <img src>; reject anything
+            // that isn't https:// or a relative project path before it
+            // ever reaches the database (renderAdminCourtCard() also
+            // re-checks this on render, as defense in depth).
+            const imageUrlRaw = imageUrlInput ? imageUrlInput.value.trim() : '';
+            if (imageUrlRaw && !isSafeImageUrl(imageUrlRaw)) {
+                window.InigoToast?.show('Image URL must start with https:// (or be left blank).', true);
+                imageUrlInput?.focus();
+                return;
+            }
+
             const payload = {
                 name,
                 sport_id: sportId,
@@ -781,7 +1202,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 rate,
                 rate_unit: rateUnitSelect ? rateUnitSelect.value : '/hr',
                 status: opStatusSelect ? opStatusSelect.value : 'Available',
-                image_url: (imageUrlInput && imageUrlInput.value.trim()) ? imageUrlInput.value.trim() : null,
+                image_url: imageUrlRaw || null,
             };
 
             const editingId = courtForm.dataset.editingId;
@@ -829,8 +1250,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
 
             window.InigoToast?.show(editingId ? 'Court updated.' : 'Court added.');
-            resetCourtForm();
-            courtForm.classList.remove('is-open');
+            closeCourtModal();
             loadAndRenderCourts();
         });
     }
@@ -842,7 +1262,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 const id = card ? card.dataset.courtId : null;
                 const court = currentCourts.find((c) => String(c.id) === String(id));
                 if (!court) return;
-                openCourtFormForEdit(court);
+                openCourtModal(court);
             });
         });
 
@@ -883,6 +1303,54 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
+    // Court modal's Photo field — Upload (to the `media` bucket, path
+    // `courts/<slug>-<ts>.jpg`) alongside the existing URL input. Uses the
+    // court's real slug when editing, or derives one from whatever's
+    // currently typed in the Name field when adding (courtsData.js's own
+    // slugify(), same helper the Add/Edit save handler above would use for
+    // a brand-new court's `slug` column).
+    const courtImageFileInput = document.querySelector('[data-admin-court-image-file]');
+    const courtImageUploadBtn = document.querySelector('[data-admin-court-image-upload-trigger]');
+
+    if (courtImageUploadBtn && courtImageFileInput) {
+        courtImageUploadBtn.addEventListener('click', () => courtImageFileInput.click());
+    }
+
+    if (courtImageFileInput) {
+        courtImageFileInput.addEventListener('change', async () => {
+            const file = courtImageFileInput.files && courtImageFileInput.files[0];
+            courtImageFileInput.value = '';
+            if (!file) return;
+
+            if (!window.InigoImageTools || !window.sb) {
+                window.InigoToast?.show('Unable to reach the server right now. Please try again shortly.', true);
+                return;
+            }
+
+            const imageUrlInput = document.querySelector('[data-admin-court-image-url]');
+            const originalLabel = courtImageUploadBtn.textContent;
+            courtImageUploadBtn.disabled = true;
+            courtImageUploadBtn.textContent = 'Uploading…';
+
+            try {
+                const blob = await window.InigoImageTools.downscaleImageToBlob(file, { maxW: 1600, maxH: 900, quality: 0.85 });
+                const nameInput = document.querySelector('[data-admin-court-name]');
+                const editingId = courtForm ? courtForm.dataset.editingId : null;
+                const editingCourt = editingId ? currentCourts.find((c) => String(c.id) === String(editingId)) : null;
+                const slugSource = (editingCourt && editingCourt.slug) || window.InigoCourtsData.slugify(nameInput ? nameInput.value : '');
+                const path = `courts/${slugSource}-${Date.now()}.jpg`;
+                const url = await uploadToMedia(path, blob);
+                if (imageUrlInput) imageUrlInput.value = url;
+                window.InigoToast?.show('Photo uploaded.');
+            } catch (err) {
+                window.InigoToast?.show(err.message || 'Could not upload that image.', true);
+            } finally {
+                courtImageUploadBtn.disabled = false;
+                courtImageUploadBtn.textContent = originalLabel;
+            }
+        });
+    }
+
     if (window.InigoCourtsData) {
         window.InigoCourtsData.getSports().then((sports) => {
             const sportSelect = document.querySelector('[data-admin-court-sport]');
@@ -898,7 +1366,526 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // ------------------------------------------------------------------
-    // Account Settings — password visibility toggles + save placeholders
+    // Media Manager — real slideshow against `public.event` (Revision A1,
+    // decision A5). Lists every row (published or not) ordered by
+    // display_order, so an admin can stage an unpublished slide before it
+    // goes live. Uploads go to the same public `media` Storage bucket the
+    // Court modal uses above, path `slides/<event id>-<ts>.jpg`. The old
+    // "Court photos" card (a second, redundant path to the SAME
+    // court.image_url the Court Listings modal already edits) is removed
+    // outright rather than ported.
+    // ------------------------------------------------------------------
+    // W2 (Revision A1 fix) — this used to be 6, but both places that
+    // actually render the hero slideshow cap themselves at 5:
+    // includes/Dashboard.js's HERO_MAX_SLIDES (.limit(HERO_MAX_SLIDES) on
+    // its `event` query) and includes/home-showcase.js's MAX_HERO_SLIDES
+    // (.slice(0, MAX_HERO_SLIDES)). A 6th staged/published slide was
+    // accepted here but silently never shown anywhere, so the cap below
+    // now matches both consumers instead of promising a slot that doesn't
+    // exist.
+    const MAX_SLIDES = 5;
+    let currentSlides = [];
+
+    function slideMediaMarkup(slide) {
+        const safeUrl = slide.image_url && isSafeImageUrl(slide.image_url) ? slide.image_url : null;
+        if (safeUrl) {
+            return `<img src="${window.escapeHtml(safeUrl)}" alt="${window.escapeHtml(slide.title || '')}" loading="lazy">`;
+        }
+        return '<span class="admin-slide-photo-soon" aria-hidden="true">No photo yet</span>';
+    }
+
+    function renderSlideCard(slide, index, total) {
+        const media = slideMediaMarkup(slide);
+        const isFirst = index === 0;
+        const isLast = index === total - 1;
+        const isOn = slide.is_published !== false;
+        return `
+            <div class="admin-slide-card" data-admin-slide data-slide-id="${window.escapeHtml(slide.id)}">
+                <div class="admin-slide-thumb">
+                    ${media}
+                    <span class="admin-slide-badge">Slide ${index + 1}</span>
+                </div>
+                <div class="admin-slide-body">
+                    <div class="admin-form-group">
+                        <span class="admin-form-label">Title</span>
+                        <input type="text" class="admin-input admin-slide-title" data-admin-slide-title value="${window.escapeHtml(slide.title || '')}">
+                    </div>
+                    <div class="admin-form-group">
+                        <span class="admin-form-label">Caption</span>
+                        <input type="text" class="admin-input admin-slide-caption" data-admin-slide-caption value="${window.escapeHtml(slide.meta || '')}">
+                    </div>
+                    <div class="admin-form-group">
+                        <span class="admin-form-label">Tag <span class="admin-form-label-hint">(optional)</span></span>
+                        <input type="text" class="admin-input" data-admin-slide-tag value="${window.escapeHtml(slide.tag || '')}">
+                    </div>
+                    <div class="admin-slide-publish-row">
+                        <span>Published</span>
+                        <button type="button" class="admin-switch${isOn ? ' is-on' : ''}" data-admin-slide-publish aria-label="Toggle published" aria-pressed="${isOn}"></button>
+                    </div>
+                    <div class="admin-slide-actions">
+                        <button type="button" class="admin-btn-chip-primary" data-admin-slide-replace>Replace photo</button>
+                    </div>
+                    <div class="admin-slide-actions admin-slide-actions-row2">
+                        <button type="button" class="admin-btn-chip-secondary" data-admin-slide-move-up${isFirst ? ' disabled' : ''}>↑ Move up</button>
+                        <button type="button" class="admin-btn-chip-secondary" data-admin-slide-move-down${isLast ? ' disabled' : ''}>↓ Move down</button>
+                        <button type="button" class="admin-btn-chip-danger" data-admin-slide-remove>Remove</button>
+                    </div>
+                    <input type="file" accept="image/jpeg,image/png,image/webp" class="admin-visually-hidden" data-admin-slide-file>
+                </div>
+            </div>
+        `;
+    }
+
+    function renderSlides() {
+        const slidesGrid = document.querySelector('[data-admin-slides]');
+        if (!slidesGrid) return;
+
+        slidesGrid.innerHTML = currentSlides.length
+            ? currentSlides.map((slide, i) => renderSlideCard(slide, i, currentSlides.length)).join('')
+            : '<p style="color: var(--color-ink-faint); padding: 8px 4px;">No slides yet — add one below.</p>';
+        wireSlideCardActions(slidesGrid);
+
+        const subEl = document.querySelector('[data-admin-slides-sub]');
+        if (subEl) subEl.textContent = `${currentSlides.length} of ${MAX_SLIDES} slots used. Recommended 1600×900 — larger photos are resized automatically.`;
+
+        const addBtn = document.querySelector('[data-admin-slide-add]');
+        if (addBtn) addBtn.disabled = currentSlides.length >= MAX_SLIDES;
+    }
+
+    async function loadSlides() {
+        const slidesGrid = document.querySelector('[data-admin-slides]');
+        if (!slidesGrid || !window.sb) return;
+
+        const { data, error } = await window.sb
+            .from('event')
+            .select('id, sport_id, tag, title, meta, event_date, image_url, display_order, is_published, created_at')
+            .order('display_order', { ascending: true })
+            .order('created_at', { ascending: true });
+
+        if (error) {
+            console.error('[admin] failed to load slides', error);
+            slidesGrid.innerHTML = isSchemaMismatchError(error)
+                ? '<p style="color: var(--color-ink-faint); padding: 8px 4px;">This needs a database update that hasn\'t been applied yet.</p>'
+                : '<p style="color: var(--color-ink-faint); padding: 8px 4px;">Could not load slides. Please try again.</p>';
+            return;
+        }
+
+        currentSlides = data || [];
+        renderSlides();
+    }
+
+    function wireSlideCardActions(scope) {
+        scope.querySelectorAll('[data-admin-slide]').forEach((card) => {
+            const slideId = card.dataset.slideId;
+            const slide = currentSlides.find((s) => String(s.id) === String(slideId));
+            if (!slide || !window.sb) return;
+
+            // Text fields save on blur (single-row update) — Title is
+            // required (the `event.title` column is NOT NULL); an empty
+            // Title reverts to the last-saved value instead of attempting
+            // a write that would fail the NOT NULL constraint anyway.
+            const titleInput = card.querySelector('[data-admin-slide-title]');
+            if (titleInput) {
+                titleInput.addEventListener('blur', async () => {
+                    const value = titleInput.value.trim();
+                    if (!value) {
+                        window.InigoToast?.show('Title is required.', true);
+                        titleInput.value = slide.title || '';
+                        return;
+                    }
+                    if (value === (slide.title || '')) return;
+                    const { error } = await window.sb.from('event').update({ title: value }).eq('id', slideId);
+                    if (error) {
+                        window.InigoToast?.show(error.message || 'Could not save the title.', true);
+                        titleInput.value = slide.title || '';
+                        return;
+                    }
+                    slide.title = value;
+                });
+            }
+
+            const captionInput = card.querySelector('[data-admin-slide-caption]');
+            if (captionInput) {
+                captionInput.addEventListener('blur', async () => {
+                    const value = captionInput.value.trim();
+                    if (value === (slide.meta || '')) return;
+                    const { error } = await window.sb.from('event').update({ meta: value || null }).eq('id', slideId);
+                    if (error) {
+                        window.InigoToast?.show(error.message || 'Could not save the caption.', true);
+                        captionInput.value = slide.meta || '';
+                        return;
+                    }
+                    slide.meta = value || null;
+                });
+            }
+
+            const tagInput = card.querySelector('[data-admin-slide-tag]');
+            if (tagInput) {
+                tagInput.addEventListener('blur', async () => {
+                    const value = tagInput.value.trim();
+                    if (value === (slide.tag || '')) return;
+                    const { error } = await window.sb.from('event').update({ tag: value || null }).eq('id', slideId);
+                    if (error) {
+                        window.InigoToast?.show(error.message || 'Could not save the tag.', true);
+                        tagInput.value = slide.tag || '';
+                        return;
+                    }
+                    slide.tag = value || null;
+                });
+            }
+
+            const publishBtn = card.querySelector('[data-admin-slide-publish]');
+            if (publishBtn) {
+                publishBtn.addEventListener('click', async () => {
+                    const next = !publishBtn.classList.contains('is-on');
+                    publishBtn.disabled = true;
+                    const { error } = await window.sb.from('event').update({ is_published: next }).eq('id', slideId);
+                    publishBtn.disabled = false;
+                    if (error) {
+                        window.InigoToast?.show(error.message || 'Could not update the publish state.', true);
+                        return;
+                    }
+                    slide.is_published = next;
+                    publishBtn.classList.toggle('is-on', next);
+                    publishBtn.setAttribute('aria-pressed', String(next));
+                    window.InigoToast?.show(next ? 'Slide published.' : 'Slide unpublished.');
+                });
+            }
+
+            const replaceBtn = card.querySelector('[data-admin-slide-replace]');
+            const fileInput = card.querySelector('[data-admin-slide-file]');
+            if (replaceBtn && fileInput) {
+                replaceBtn.addEventListener('click', () => fileInput.click());
+                fileInput.addEventListener('change', async () => {
+                    const file = fileInput.files && fileInput.files[0];
+                    fileInput.value = '';
+                    if (!file || !window.InigoImageTools) return;
+
+                    const originalLabel = replaceBtn.textContent;
+                    replaceBtn.disabled = true;
+                    replaceBtn.textContent = 'Uploading…';
+                    try {
+                        const blob = await window.InigoImageTools.downscaleImageToBlob(file, { maxW: 1600, maxH: 900, quality: 0.85 });
+                        const path = `slides/${slideId}-${Date.now()}.jpg`;
+                        const url = await uploadToMedia(path, blob);
+                        const { error } = await window.sb.from('event').update({ image_url: url }).eq('id', slideId);
+                        if (error) throw error;
+                        const oldUrl = slide.image_url;
+                        slide.image_url = url;
+                        removeUploadedMediaBestEffort(oldUrl);
+                        renderSlides();
+                        window.InigoToast?.show('Photo updated.');
+                    } catch (err) {
+                        window.InigoToast?.show(err.message || 'Could not upload that image.', true);
+                        replaceBtn.disabled = false;
+                        replaceBtn.textContent = originalLabel;
+                    }
+                });
+            }
+
+            const removeBtn = card.querySelector('[data-admin-slide-remove]');
+            if (removeBtn) {
+                removeBtn.addEventListener('click', async () => {
+                    if (!window.confirm('Remove this slide? This cannot be undone.')) return;
+                    removeBtn.disabled = true;
+                    const { error } = await window.sb.from('event').delete().eq('id', slideId);
+                    removeBtn.disabled = false;
+                    if (error) {
+                        window.InigoToast?.show(error.message || 'Could not remove this slide.', true);
+                        return;
+                    }
+                    removeUploadedMediaBestEffort(slide.image_url);
+                    window.InigoToast?.show('Slide removed.');
+                    loadSlides();
+                });
+            }
+
+            const moveUpBtn = card.querySelector('[data-admin-slide-move-up]');
+            if (moveUpBtn) moveUpBtn.addEventListener('click', () => moveSlide(slideId, -1));
+            const moveDownBtn = card.querySelector('[data-admin-slide-move-down]');
+            if (moveDownBtn) moveDownBtn.addEventListener('click', () => moveSlide(slideId, 1));
+        });
+    }
+
+    // W3 (Revision A1 fix) — true when two-or-more slides in the
+    // last-fetched array already share the same display_order (seen with
+    // data that predates ordering being enforced, e.g. several rows all at
+    // 0). Swapping two EQUAL values is a silent no-op: each row is written
+    // back the exact value it already had, so Move up/down does nothing
+    // and gives no error either.
+    function hasDuplicateDisplayOrder(slides) {
+        const seen = new Set();
+        for (const slide of slides) {
+            if (seen.has(slide.display_order)) return true;
+            seen.add(slide.display_order);
+        }
+        return false;
+    }
+
+    // Swaps display_order with the slide immediately before/after it in the
+    // last-fetched (already display_order-sorted) array, then reloads —
+    // simpler and safer than renumbering the whole list, and immune to any
+    // gaps already present in display_order.
+    async function moveSlide(slideId, direction) {
+        if (!window.sb) return;
+        const index = currentSlides.findIndex((s) => String(s.id) === String(slideId));
+        const targetIndex = index + direction;
+        if (index === -1 || targetIndex < 0 || targetIndex >= currentSlides.length) return;
+
+        let a = currentSlides[index];
+        let b = currentSlides[targetIndex];
+
+        // W3 (Revision A1 fix) — the pair being swapped shares a value, OR
+        // a duplicate exists elsewhere in the list (left alone, that
+        // duplicate would just relocate this same bug to a future move
+        // instead of fixing it now). Renumber the WHOLE list to its
+        // current, already display_order-sorted array positions first (one
+        // `update` per row via Promise.all) so every value is unique, then
+        // re-read the fresh values below before doing the actual swap.
+        if (a.display_order === b.display_order || hasDuplicateDisplayOrder(currentSlides)) {
+            const renumberResults = await Promise.all(currentSlides.map((slide, i) =>
+                window.sb.from('event').update({ display_order: i + 1 }).eq('id', slide.id)
+            ));
+            const renumberFailure = renumberResults.find((r) => r.error);
+            if (renumberFailure) {
+                window.InigoToast?.show(renumberFailure.error.message || 'Could not reorder slides.', true);
+                return;
+            }
+            currentSlides.forEach((slide, i) => { slide.display_order = i + 1; });
+            a = currentSlides[index];
+            b = currentSlides[targetIndex];
+        }
+
+        const [{ error: err1 }, { error: err2 }] = await Promise.all([
+            window.sb.from('event').update({ display_order: b.display_order }).eq('id', a.id),
+            window.sb.from('event').update({ display_order: a.display_order }).eq('id', b.id),
+        ]);
+
+        if (err1 || err2) {
+            window.InigoToast?.show((err1 || err2).message || 'Could not reorder slides.', true);
+            return;
+        }
+        loadSlides();
+    }
+
+    const addSlideBtn = document.querySelector('[data-admin-slide-add]');
+    if (addSlideBtn) {
+        addSlideBtn.addEventListener('click', async () => {
+            if (!window.sb || currentSlides.length >= MAX_SLIDES) return;
+
+            const maxOrder = currentSlides.reduce((max, s) => Math.max(max, Number(s.display_order) || 0), 0);
+            addSlideBtn.disabled = true;
+            // W1 (Revision A1 fix) — event.is_published defaults to true at
+            // the DB level, so a bare insert here went live on the public
+            // landing page/customer dashboard the instant this button was
+            // clicked, before the admin ever typed a title or picked a
+            // photo. Explicit is_published: false keeps the placeholder
+            // staged (renderSlideCard's Published toggle already reads
+            // Off for any slide whose is_published is exactly false) until
+            // the admin turns it on deliberately via that same toggle.
+            const { error } = await window.sb.from('event').insert({ title: 'New slide', display_order: maxOrder + 1, is_published: false });
+            addSlideBtn.disabled = currentSlides.length >= MAX_SLIDES;
+
+            if (error) {
+                window.InigoToast?.show(
+                    isSchemaMismatchError(error)
+                        ? "This needs a database update that hasn't been applied yet."
+                        : (error.message || 'Could not add a new slide.'),
+                    true
+                );
+                return;
+            }
+            window.InigoToast?.show('Slide added — edit its title and photo below.');
+            loadSlides();
+        });
+    }
+
+    loadSlides();
+
+    // ------------------------------------------------------------------
+    // Notifications (Revision A1, decision A7) — ported from the customer
+    // dashboard's [data-dash-notif*] dropdown (includes/Dashboard.js) under
+    // admin-* names. Items are the latest 10 PENDING bookings + latest 5
+    // feedback rows, merged and sorted newest-first. Unread dot = the
+    // newest item is newer than localStorage's last-seen marker; opening
+    // the menu updates that marker and hides the dot. Clicking a booking
+    // item jumps to Overview (Recent bookings); feedback items are
+    // informational only (no Feedback panel exists yet to jump to).
+    // ------------------------------------------------------------------
+    const adminNotif = document.querySelector('[data-admin-notif]');
+    const adminNotifTrigger = document.querySelector('[data-admin-notif-trigger]');
+    const adminNotifList = document.querySelector('[data-admin-notif-list]');
+    const adminNotifDot = document.querySelector('[data-admin-notif-dot]');
+    const ADMIN_NOTIF_SEEN_KEY = 'inigosync-admin-notif-seen';
+    const ADMIN_NOTIF_REFRESH_MS = 60000;
+
+    function closeAdminNotifMenu() {
+        if (adminNotif) adminNotif.removeAttribute('data-open');
+        if (adminNotifTrigger) adminNotifTrigger.setAttribute('aria-expanded', 'false');
+    }
+
+    let adminNotifLatestAt = null;
+
+    function markAdminNotifSeen() {
+        if (!adminNotifLatestAt) return;
+        try { localStorage.setItem(ADMIN_NOTIF_SEEN_KEY, adminNotifLatestAt); } catch (_) { /* best-effort only */ }
+        if (adminNotifDot) adminNotifDot.hidden = true;
+    }
+
+    if (adminNotifTrigger && adminNotif) {
+        adminNotifTrigger.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const isOpen = adminNotif.hasAttribute('data-open');
+            closeProfileMenu();
+            if (isOpen) {
+                closeAdminNotifMenu();
+            } else {
+                adminNotif.setAttribute('data-open', '');
+                adminNotifTrigger.setAttribute('aria-expanded', 'true');
+                markAdminNotifSeen();
+            }
+        });
+
+        document.addEventListener('click', (e) => {
+            if (!adminNotif.contains(e.target)) closeAdminNotifMenu();
+        });
+
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') closeAdminNotifMenu();
+        });
+    }
+
+    // "★★★★☆" style rating string — 5 chars total, filled stars first.
+    function adminStarString(rating) {
+        const r = Math.max(0, Math.min(5, Number(rating) || 0));
+        return '★'.repeat(r) + '☆'.repeat(5 - r);
+    }
+
+    function renderAdminNotificationItem(item) {
+        const dotClass = item.type === 'feedback' ? 'feedback' : 'pending';
+        const body = `
+            <span class="admin-notif-dot ${dotClass}"></span>
+            <span class="admin-notif-item-body">
+                <strong>${window.escapeHtml(item.title)}</strong>
+                <span>${window.escapeHtml(item.body)}</span>
+            </span>
+        `;
+        if (item.type === 'booking') {
+            return `<button type="button" class="admin-notif-item" data-admin-notif-booking="${window.escapeHtml(String(item.bookingId))}">${body}</button>`;
+        }
+        return `<div class="admin-notif-item">${body}</div>`;
+    }
+
+    async function refreshAdminNotifications() {
+        if (!adminNotifList || !window.sb) return;
+
+        let bookingRows = [];
+        let feedbackRows = [];
+        // W4 (Revision A1 fix) — set when the booking half of this fetch
+        // still errors after the schema-mismatch retry below, so it can be
+        // surfaced explicitly further down instead of just quietly
+        // rendering feedback-only (or empty) notifications.
+        let bookingLoadFailed = false;
+
+        try {
+            let [bookingRes, feedbackRes] = await Promise.all([
+                window.sb.from('booking')
+                    .select('booking_id, customer_id, courts, time_date, end_at, created_at')
+                    .eq('status', 'pending')
+                    .order('created_at', { ascending: false })
+                    .limit(10),
+                window.sb.from('feedback')
+                    .select('id, profile_id, rating, message, created_at')
+                    .order('created_at', { ascending: false })
+                    .limit(5),
+            ]);
+
+            if (bookingRes.error && isSchemaMismatchError(bookingRes.error)) {
+                // Mirrors refreshRecentBookings()'s own retry above —
+                // pre-012 database, end_at doesn't exist yet.
+                bookingRes = await window.sb.from('booking')
+                    .select('booking_id, customer_id, courts, time_date, created_at')
+                    .eq('status', 'pending')
+                    .order('created_at', { ascending: false })
+                    .limit(10);
+            }
+
+            if (!bookingRes.error) {
+                bookingRows = bookingRes.data || [];
+            } else {
+                console.error('[admin] failed to load pending-booking notifications', bookingRes.error);
+                bookingLoadFailed = true;
+            }
+            if (!feedbackRes.error) feedbackRows = feedbackRes.data || [];
+            if (feedbackRes.error && !isSchemaMismatchError(feedbackRes.error)) console.error('[admin] failed to load feedback notifications', feedbackRes.error);
+        } catch (err) {
+            console.error('[admin] failed to load notifications', err);
+            adminNotifList.innerHTML = '<p class="admin-notif-empty">Could not load notifications.</p>';
+            return;
+        }
+
+        const nameMap = await fetchProfileNamesByIds([
+            ...bookingRows.map((b) => b.customer_id),
+            ...feedbackRows.map((f) => f.profile_id),
+        ]);
+
+        const bookingItems = bookingRows.map((b) => ({
+            type: 'booking',
+            bookingId: b.booking_id,
+            createdAt: b.created_at || b.time_date,
+            title: `${nameMap.get(String(b.customer_id)) || 'A customer'} booked ${b.courts || 'a court'}`,
+            body: formatAdminDateTime(b.time_date, b.end_at),
+        }));
+
+        const MAX_FEEDBACK_EXCERPT = 80;
+        const feedbackItems = feedbackRows.map((f) => {
+            const name = nameMap.get(String(f.profile_id)) || 'A customer';
+            const message = String(f.message || '');
+            const excerpt = message.length > MAX_FEEDBACK_EXCERPT ? `${message.slice(0, MAX_FEEDBACK_EXCERPT).trimEnd()}…` : message;
+            return {
+                type: 'feedback',
+                createdAt: f.created_at,
+                title: f.rating ? `${adminStarString(f.rating)} ${name}` : `${name} left feedback`,
+                body: excerpt || '(no message)',
+            };
+        });
+
+        const items = [...bookingItems, ...feedbackItems].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+
+        // W4 (Revision A1 fix) — a still-failing booking-alerts load no
+        // longer disappears silently: it gets its own line in the list,
+        // shown alongside whatever feedback items (if any) DID load, rather
+        // than only ever showing either the full list or "No notifications
+        // yet."
+        const bookingErrorHtml = bookingLoadFailed ? '<p class="admin-notif-empty">Couldn\'t load booking alerts.</p>' : '';
+        adminNotifList.innerHTML = items.length || bookingLoadFailed
+            ? `${bookingErrorHtml}${items.map(renderAdminNotificationItem).join('')}`
+            : '<p class="admin-notif-empty">No notifications yet.</p>';
+
+        adminNotifLatestAt = items.length ? items[0].createdAt : null;
+
+        let lastSeen = null;
+        try { lastSeen = localStorage.getItem(ADMIN_NOTIF_SEEN_KEY); } catch (_) { /* ignore */ }
+
+        const hasUnread = Boolean(adminNotifLatestAt) && (!lastSeen || new Date(adminNotifLatestAt) > new Date(lastSeen));
+        if (adminNotifDot) adminNotifDot.hidden = !hasUnread;
+    }
+
+    if (adminNotifList) {
+        adminNotifList.addEventListener('click', (e) => {
+            const item = e.target.closest('[data-admin-notif-booking]');
+            if (!item) return;
+            closeAdminNotifMenu();
+            setActivePanel('overview');
+        });
+    }
+
+    refreshAdminNotifications();
+    document.addEventListener('inigosync:profile-ready', refreshAdminNotifications);
+    window.setInterval(refreshAdminNotifications, ADMIN_NOTIF_REFRESH_MS);
+
+    // ------------------------------------------------------------------
+    // Account Settings — password visibility toggles
     // ------------------------------------------------------------------
     document.querySelectorAll('[data-admin-toggle-password]').forEach((btn) => {
         btn.addEventListener('click', () => {
@@ -910,70 +1897,347 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     });
 
-    // Owner Profile — prefill from the real signed-in profile. The
-    // "Username" field has no backing column (profiles has no username) —
-    // it's now `disabled` in the markup and relabeled "not available yet"
-    // rather than a typeable field whose value silently never saves.
-    function renderAdminProfile(profile) {
+    // ------------------------------------------------------------------
+    // Account Settings — avatar upload/remove (Revision A1, decision A9).
+    // Same pipeline as the customer dashboard's Profile Photo card
+    // (Pages/user_dashboard.html, includes/Dashboard.js), via the shared
+    // includes/imageTools.js: a 256×256 center-cropped JPEG data URL
+    // written straight into profiles.avatar_url — no Storage bucket needed
+    // for avatars (only Media Manager/Court photos use Storage).
+    // ------------------------------------------------------------------
+    const AVATAR_MAX_RAW_BYTES = 5 * 1024 * 1024;
+    const AVATAR_OUTPUT_SIZE = 256;
+    const AVATAR_JPEG_QUALITY = 0.82;
+
+    const adminAvatarFileInput = document.querySelector('[data-admin-avatar-file]');
+    const adminAvatarUploadBtn = document.querySelector('[data-admin-avatar-upload-trigger]');
+    const adminAvatarRemoveBtn = document.querySelector('[data-admin-avatar-remove]');
+
+    async function saveAdminAvatarUrl(avatarUrl) {
+        if (!window.sb || !window.inigosyncProfile) {
+            window.InigoToast?.show('Unable to reach the server right now. Please try again shortly.', true);
+            return false;
+        }
+        const { error } = await window.sb.from('profiles').update({ avatar_url: avatarUrl }).eq('id', window.inigosyncProfile.id);
+        if (error) {
+            console.error('[admin] avatar_url update failed', error);
+            window.InigoToast?.show(error.message || 'Could not save your photo. Please try again.', true);
+            return false;
+        }
+        window.inigosyncProfile.avatar_url = avatarUrl;
+        renderAdminProfile(window.inigosyncProfile);
+        return true;
+    }
+
+    if (adminAvatarUploadBtn && adminAvatarFileInput) {
+        adminAvatarUploadBtn.addEventListener('click', () => adminAvatarFileInput.click());
+    }
+
+    if (adminAvatarFileInput) {
+        adminAvatarFileInput.addEventListener('change', async () => {
+            const file = adminAvatarFileInput.files && adminAvatarFileInput.files[0];
+            adminAvatarFileInput.value = '';
+            if (!file) return;
+
+            if (!file.type || !file.type.startsWith('image/')) {
+                window.InigoToast?.show('Please choose an image file.', true);
+                return;
+            }
+            if (file.size > AVATAR_MAX_RAW_BYTES) {
+                window.InigoToast?.show('That image is too large — please choose one under 5 MB.', true);
+                return;
+            }
+            if (!window.InigoImageTools) return;
+
+            const originalLabel = adminAvatarUploadBtn.textContent;
+            adminAvatarUploadBtn.disabled = true;
+            adminAvatarUploadBtn.textContent = 'Uploading…';
+
+            try {
+                const dataUrl = await window.InigoImageTools.downscaleImageToDataUrl(file, { size: AVATAR_OUTPUT_SIZE, quality: AVATAR_JPEG_QUALITY });
+                const ok = await saveAdminAvatarUrl(dataUrl);
+                if (ok) window.InigoToast?.show('Profile photo updated.');
+            } catch (err) {
+                console.error('[admin] avatar downscale failed', err);
+                window.InigoToast?.show('Could not process that image. Please try a different file.', true);
+            } finally {
+                adminAvatarUploadBtn.disabled = false;
+                adminAvatarUploadBtn.textContent = originalLabel;
+            }
+        });
+    }
+
+    if (adminAvatarRemoveBtn) {
+        adminAvatarRemoveBtn.addEventListener('click', async () => {
+            adminAvatarRemoveBtn.disabled = true;
+            const ok = await saveAdminAvatarUrl(null);
+            adminAvatarRemoveBtn.disabled = false;
+            if (ok) window.InigoToast?.show('Profile photo removed.');
+        });
+    }
+
+    // Owner Profile — prefill from the real signed-in profile. Revision A1,
+    // decision A8 — the ONE place that paints every .admin-avatar (topbar,
+    // Settings' profile card, Settings' own upload preview): an <img> when
+    // avatar_url is set, initials otherwise (unchanged default look/
+    // behaviour). Decision A9 — Personal Information's name/email inputs
+    // are addressed by their own data-admin-settings-* hooks now, rather
+    // than positional NodeList indexing (fragile after the old "Username"
+    // placeholder field was removed).
+    // S2 (Revision A1 fix) — small "pending confirmation" hint painted next
+    // to the email field, created once here (lazily, on first call) rather
+    // than in Pages/owner_dashboard.html — this fix pass is scoped to this
+    // file. Reuses the already-styled .admin-form-hint class instead of a
+    // new one this pass has no matching CSS change for.
+    function getAdminEmailPendingHint(emailInput) {
+        let hint = document.querySelector('[data-admin-settings-email-pending]');
+        if (!hint && emailInput) {
+            hint = document.createElement('p');
+            hint.className = 'admin-form-hint';
+            hint.setAttribute('data-admin-settings-email-pending', '');
+            hint.textContent = 'Pending confirmation — check your inbox.';
+            hint.hidden = true;
+            emailInput.insertAdjacentElement('afterend', hint);
+        }
+        return hint;
+    }
+
+    // `options.skipEmailRepaint` — S2 (Revision A1 fix). A successful
+    // sb.auth.updateUser({ email }) does NOT change window.inigosyncProfile
+    // (see the Personal Information save handler below — profiles.email
+    // only follows a CONFIRMED change), so the default repaint below used
+    // to immediately overwrite whatever the admin just typed back to the
+    // old address, as if the save had silently failed. The one call right
+    // after that specific save passes skipEmailRepaint: true to leave the
+    // typed value in place and show the pending-confirmation hint instead;
+    // every other call site (initial load, Cancel, a real profile change)
+    // omits it, so those still correctly repaint/revert the field.
+    function renderAdminProfile(profile, options) {
+        const skipEmailRepaint = Boolean(options && options.skipEmailRepaint);
         const initials = (profile.full_name || profile.email || '?')
             .split(' ').map((p) => p[0]).slice(0, 2).join('').toUpperCase();
 
-        document.querySelectorAll('.admin-avatar').forEach((el) => { el.textContent = initials; });
+        const avatarUrl = profile.avatar_url || null;
+        document.querySelectorAll('.admin-avatar').forEach((el) => {
+            if (avatarUrl) {
+                el.innerHTML = `<img class="admin-avatar-img" src="${window.escapeHtml(avatarUrl)}" alt="Profile photo">`;
+            } else {
+                el.textContent = initials;
+            }
+        });
+        if (adminAvatarRemoveBtn) adminAvatarRemoveBtn.hidden = !avatarUrl;
+
         document.querySelectorAll('[data-admin-profile-name]').forEach((el) => { el.textContent = profile.full_name || 'Owner'; });
 
         const cardInfo = document.querySelector('[data-admin-panel="settings"] .admin-profile-card-info h3');
         if (cardInfo) cardInfo.textContent = profile.full_name || 'Owner';
 
-        const settingsPanel = document.querySelector('[data-admin-panel="settings"]');
-        if (settingsPanel) {
-            const inputs = settingsPanel.querySelectorAll('.admin-settings-grid .admin-input');
-            if (inputs[0]) inputs[0].value = profile.full_name || '';
-            if (inputs[2]) inputs[2].value = profile.email || '';
+        const nameInput = document.querySelector('[data-admin-settings-name]');
+        const emailInput = document.querySelector('[data-admin-settings-email]');
+        if (nameInput) nameInput.value = profile.full_name || '';
+        if (emailInput) {
+            if (!skipEmailRepaint) emailInput.value = profile.email || '';
+            const hint = getAdminEmailPendingHint(emailInput);
+            if (hint) hint.hidden = !skipEmailRepaint;
         }
     }
 
     document.addEventListener('inigosync:profile-ready', (e) => renderAdminProfile(e.detail));
     if (window.inigosyncProfile) renderAdminProfile(window.inigosyncProfile);
 
+    // ------------------------------------------------------------------
+    // Account Settings — Personal Information save (Revision A1, decision
+    // A9). Full name saves straight to profiles.full_name, unchanged. Email
+    // is NEW: sb.auth.updateUser({ email }) sends a confirmation link to
+    // the new address — profiles.email is deliberately NOT written here;
+    // it only follows once Supabase actually confirms the change (see the
+    // onAuthStateChange/session-sync block below), so the app never shows
+    // an email as "saved" before it truly is.
+    // ------------------------------------------------------------------
+    const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
     const adminProfileSaveBtn = document.querySelector('[data-admin-settings-save="profile"]');
     if (adminProfileSaveBtn) {
         adminProfileSaveBtn.addEventListener('click', async () => {
             if (!window.sb || !window.inigosyncProfile) return;
-            const settingsPanel = document.querySelector('[data-admin-panel="settings"]');
-            const inputs = settingsPanel.querySelectorAll('.admin-settings-grid .admin-input');
-            const full_name = inputs[0]?.value.trim();
 
-            adminProfileSaveBtn.disabled = true;
-            const { error } = await window.sb.from('profiles').update({ full_name }).eq('id', window.inigosyncProfile.id);
-            adminProfileSaveBtn.disabled = false;
+            const nameInput = document.querySelector('[data-admin-settings-name]');
+            const emailInput = document.querySelector('[data-admin-settings-email]');
+            const newName = nameInput ? nameInput.value.trim() : '';
+            const newEmail = emailInput ? emailInput.value.trim() : '';
 
-            if (error) {
-                window.InigoToast?.show(error.message || 'Could not save your changes.', true);
+            if (!newName) {
+                window.InigoToast?.show('Enter your full name.', true);
+                nameInput?.focus();
+                return;
+            }
+            if (!EMAIL_RE.test(newEmail)) {
+                window.InigoToast?.show('Enter a valid email address.', true);
+                emailInput?.focus();
                 return;
             }
 
-            window.inigosyncProfile.full_name = full_name;
-            renderAdminProfile(window.inigosyncProfile);
-            window.InigoToast?.show('Profile updated.');
+            const nameChanged = newName !== (window.inigosyncProfile.full_name || '');
+            const emailChanged = newEmail !== (window.inigosyncProfile.email || '');
+            if (!nameChanged && !emailChanged) {
+                window.InigoToast?.show('Nothing to save.');
+                return;
+            }
+
+            adminProfileSaveBtn.disabled = true;
+            try {
+                if (nameChanged) {
+                    const { error } = await window.sb.from('profiles').update({ full_name: newName }).eq('id', window.inigosyncProfile.id);
+                    if (error) throw error;
+                    window.inigosyncProfile.full_name = newName;
+                }
+
+                if (emailChanged) {
+                    const { error } = await window.sb.auth.updateUser({ email: newEmail });
+                    if (error) throw error;
+                }
+
+                // S2 (Revision A1 fix) — skip the email repaint on THIS
+                // specific call only, when a new address was just
+                // submitted: window.inigosyncProfile.email is still the
+                // OLD (confirmed) address at this point (see this
+                // function's own comment above), so a normal repaint would
+                // silently swap the input back to it, looking exactly like
+                // the save had failed.
+                renderAdminProfile(window.inigosyncProfile, { skipEmailRepaint: emailChanged });
+                window.InigoToast?.show(
+                    emailChanged
+                        ? `Confirmation link sent to ${newEmail} (check the old inbox too) — the change applies after you click it.`
+                        : 'Profile updated.'
+                );
+            } catch (err) {
+                window.InigoToast?.show(err.message || 'Could not save your changes.', true);
+            } finally {
+                adminProfileSaveBtn.disabled = false;
+            }
         });
     }
 
+    // ------------------------------------------------------------------
+    // Email confirmation → profiles.email sync (Revision A1, decision A9).
+    // profiles.email only ever follows the AUTH session's confirmed email,
+    // never the other way around. Checked two ways so this is correct
+    // regardless of load-order races between this file and
+    // includes/authGuard.js's own async profile fetch:
+    //   1. On every 'inigosync:profile-ready' (i.e. once window.inigosyncProfile
+    //      is guaranteed set) — re-reads the CURRENT session and syncs if
+    //      it's already ahead of profiles.email (covers "on load", including
+    //      a confirmation clicked in a previous visit).
+    //   2. Live, via onAuthStateChange — covers a confirmation link clicked
+    //      DURING this session (Supabase's auth client broadcasts session
+    //      changes across tabs in the same browser).
+    // ------------------------------------------------------------------
+    function syncConfirmedAdminEmail(sessionEmail) {
+        if (!sessionEmail || !window.sb || !window.inigosyncProfile) return;
+        if (sessionEmail === window.inigosyncProfile.email) return;
+
+        window.sb.from('profiles').update({ email: sessionEmail }).eq('id', window.inigosyncProfile.id).then(({ error }) => {
+            if (error) {
+                console.error('[admin] failed to sync confirmed email to profiles', error);
+                return;
+            }
+            window.inigosyncProfile.email = sessionEmail;
+            renderAdminProfile(window.inigosyncProfile);
+        });
+    }
+
+    document.addEventListener('inigosync:profile-ready', () => {
+        window.sb?.auth.getSession().then(({ data }) => syncConfirmedAdminEmail(data?.session?.user?.email));
+    });
+
+    if (window.sb) {
+        window.sb.auth.onAuthStateChange((event, session) => {
+            if (event === 'INITIAL_SESSION' || event === 'SIGNED_IN' || event === 'USER_UPDATED') {
+                syncConfirmedAdminEmail(session?.user?.email);
+            }
+        });
+    }
+
+    // ------------------------------------------------------------------
+    // Change Password — 2-step wizard (Revision A1, decision A9), ported
+    // from the customer dashboard's own (includes/Dashboard.js) under
+    // data-admin-pw-* names. Step 1 collects only the current password
+    // (Next disabled until non-empty); Step 2 collects the new password
+    // twice, with a minimum length + match check this file adds on top of
+    // the customer version (Supabase's own server-side minimum still
+    // applies regardless). Re-verifies the current password via
+    // signInWithPassword() before calling updateUser() — unchanged
+    // reasoning from the single-form version this replaces.
+    // ------------------------------------------------------------------
+    const ADMIN_PW_MIN_LENGTH = 8;
+    const pwStepPanels = document.querySelectorAll('[data-admin-pw-step]');
+    const pwStepIndicators = document.querySelectorAll('[data-admin-pw-step-indicator]');
+    const pwBackBtn = document.querySelector('[data-admin-pw-back]');
+    const pwNextBtn = document.querySelector('[data-admin-pw-next]');
     const adminPasswordSaveBtn = document.querySelector('[data-admin-settings-save="password"]');
+    const pwCurrentInput = document.querySelector('[data-admin-pw-current]');
+    const pwNewInput = document.querySelector('[data-admin-pw-new]');
+    const pwConfirmInput = document.querySelector('[data-admin-pw-confirm]');
+
+    let adminPwWizardStep = 1;
+
+    function renderAdminPwWizard() {
+        pwStepPanels.forEach((panel) => {
+            panel.classList.toggle('is-active', Number(panel.dataset.adminPwStep) === adminPwWizardStep);
+        });
+        pwStepIndicators.forEach((el) => {
+            const n = Number(el.dataset.adminPwStepIndicator);
+            el.classList.toggle('is-current', n === adminPwWizardStep);
+            el.classList.toggle('is-done', n < adminPwWizardStep);
+            el.setAttribute('aria-current', n === adminPwWizardStep ? 'step' : 'false');
+        });
+
+        if (pwBackBtn) pwBackBtn.hidden = adminPwWizardStep !== 2;
+        if (adminPasswordSaveBtn) adminPasswordSaveBtn.hidden = adminPwWizardStep !== 2;
+        if (pwNextBtn) {
+            pwNextBtn.hidden = adminPwWizardStep !== 1;
+            pwNextBtn.disabled = !(pwCurrentInput && pwCurrentInput.value !== '');
+        }
+    }
+
+    function goToAdminPwStep(step) {
+        adminPwWizardStep = step === 2 ? 2 : 1;
+        renderAdminPwWizard();
+    }
+
+    function resetAdminPwWizard() {
+        [pwCurrentInput, pwNewInput, pwConfirmInput].forEach((input) => { if (input) input.value = ''; });
+        goToAdminPwStep(1);
+    }
+
+    if (pwCurrentInput) pwCurrentInput.addEventListener('input', renderAdminPwWizard);
+    if (pwNextBtn) {
+        pwNextBtn.addEventListener('click', () => {
+            if (pwNextBtn.disabled) return;
+            goToAdminPwStep(2);
+        });
+    }
+    if (pwBackBtn) pwBackBtn.addEventListener('click', () => goToAdminPwStep(1));
+
+    // Establishes the correct initial hidden/disabled state for the nav
+    // buttons (matching the `disabled`/`hidden` attributes already baked
+    // into the markup as a no-JS baseline) and paints the step-1 indicator.
+    renderAdminPwWizard();
+
     if (adminPasswordSaveBtn) {
         adminPasswordSaveBtn.addEventListener('click', async () => {
             if (!window.sb || !window.inigosyncProfile) return;
-            const settingsPanel = document.querySelector('[data-admin-panel="settings"]');
-            const passwordInputs = settingsPanel.querySelectorAll('.admin-form-group input[type="password"]');
-            const currentPassword = passwordInputs[0]?.value;
-            const newPassword = passwordInputs[1]?.value;
-            const confirmPassword = passwordInputs[2]?.value;
+            const currentPassword = pwCurrentInput?.value;
+            const newPassword = pwNewInput?.value;
+            const confirmPassword = pwConfirmInput?.value;
 
             if (!currentPassword) {
                 window.InigoToast?.show('Enter your current password.', true);
+                goToAdminPwStep(1);
                 return;
             }
-            if (!newPassword) {
-                window.InigoToast?.show('Enter a new password.', true);
+            if (!newPassword || newPassword.length < ADMIN_PW_MIN_LENGTH) {
+                window.InigoToast?.show(`New password must be at least ${ADMIN_PW_MIN_LENGTH} characters.`, true);
                 return;
             }
             if (newPassword !== confirmPassword) {
@@ -983,20 +2247,30 @@ document.addEventListener('DOMContentLoaded', () => {
 
             adminPasswordSaveBtn.disabled = true;
 
-            // "Current password" used to be collected and never checked —
-            // any hijacked or left-open owner/staff session could silently
-            // take over the account via updateUser(). Re-authenticating
-            // with it first (Supabase has no separate "verify password"
-            // call) confirms the person at the keyboard actually knows it
-            // before the password is changed.
+            // S3 (Revision A1 fix) — re-verify against the AUTH session's
+            // OWN current email first, falling back to profiles.email only
+            // if no session email is available. profiles.email can lag a
+            // just-confirmed email change (see syncConfirmedAdminEmail
+            // above, and S2's own note on this same lag) or simply be
+            // stale from before this session loaded; signInWithPassword()
+            // against a stale address would fail with "Current password is
+            // incorrect" even when the password typed is exactly right.
+            const { data: pwSessionData } = await window.sb.auth.getSession();
+            const verifyEmail = pwSessionData?.session?.user?.email || window.inigosyncProfile.email;
+
+            // "Current password" re-verified via signInWithPassword() before
+            // anything changes — Supabase has no separate "verify password"
+            // call, and this confirms the person at the keyboard actually
+            // knows it before the password is changed.
             const { error: verifyError } = await window.sb.auth.signInWithPassword({
-                email: window.inigosyncProfile.email,
+                email: verifyEmail,
                 password: currentPassword,
             });
 
             if (verifyError) {
                 adminPasswordSaveBtn.disabled = false;
                 window.InigoToast?.show('Current password is incorrect.', true);
+                goToAdminPwStep(1);
                 return;
             }
 
@@ -1008,15 +2282,17 @@ document.addEventListener('DOMContentLoaded', () => {
                 return;
             }
 
-            passwordInputs.forEach((input) => { input.value = ''; });
+            resetAdminPwWizard();
             window.InigoToast?.show('Password updated.');
         });
     }
 
     // ------------------------------------------------------------------
-    // Account Settings — Cancel buttons (previously unwired: clicking them
-    // did nothing). Discards in-progress edits back to the last-saved
-    // values instead of leaving a button that has no effect.
+    // Account Settings — Cancel buttons. Profile discards in-progress edits
+    // back to the last-saved values; Password resets the wizard to step 1
+    // and clears every field (Revision A1, decision A9 — this button was
+    // kept from the pre-wizard markup rather than dropped, since the
+    // customer dashboard's own wizard has no exact equivalent to port).
     // ------------------------------------------------------------------
     document.querySelectorAll('[data-admin-settings-cancel]').forEach((btn) => {
         btn.addEventListener('click', () => {
@@ -1024,27 +2300,8 @@ document.addEventListener('DOMContentLoaded', () => {
             if (mode === 'profile') {
                 if (window.inigosyncProfile) renderAdminProfile(window.inigosyncProfile);
             } else if (mode === 'password') {
-                const settingsPanel = document.querySelector('[data-admin-panel="settings"]');
-                settingsPanel?.querySelectorAll('.admin-form-group input[type="password"]').forEach((input) => {
-                    input.value = '';
-                });
+                resetAdminPwWizard();
             }
         });
     });
-
-    // ------------------------------------------------------------------
-    // Media Manager — upload is intentionally NOT wired here. Real file
-    // upload needs a Supabase Storage bucket + RLS policies — new
-    // owner-provisioned infrastructure that's out of scope this pass
-    // (implementation_plan.md E4). The old handlers (client-side preview
-    // only, via URL.createObjectURL; nothing was ever uploaded or
-    // persisted) have been removed rather than left dead behind disabled
-    // controls — every Replace/Remove/Add control in
-    // Pages/owner_dashboard.html's Media Manager panel is now a real
-    // `disabled` form control with an explanatory note next to it, so
-    // nothing there still looks interactive while silently doing nothing.
-    // Court photos remain fully editable today via Court Listings → Edit →
-    // Image URL, which writes straight to `court.image_url` (see the Court
-    // Listings section above).
-    // ------------------------------------------------------------------
 });

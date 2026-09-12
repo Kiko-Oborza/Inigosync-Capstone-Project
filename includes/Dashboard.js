@@ -170,67 +170,171 @@ document.addEventListener('DOMContentLoaded', () => {
     // crossfade / pause-on-hover / reduced-motion pattern as the landing
     // page's includes/home-showcase.js carousel, reimplemented here since
     // this markup is scoped to the dashboard).
+    //
+    // Revision A1 (implementation_plan.md, decision A5) — slides now come
+    // from the SAME `public.event` rows the owner dashboard's Media Manager
+    // edits and the landing page's hero already reads (via
+    // includes/landingPage.js's window.InigoContent), so an owner's slide
+    // edit shows up here too. This file does NOT load includes/landingPage.js
+    // (that file wires the landing page's own theme toggle/nav/scroll-spy —
+    // pulling it in here would double-register those against markup that
+    // doesn't exist on this page) — it runs one small, self-contained
+    // fetch instead. The 3 static `<article data-dash-hero-slide>` articles
+    // already in Pages/user_dashboard.html are the no-JS/fetch-failed/
+    // zero-rows fallback: wireHeroCarousel() below runs against whatever is
+    // in the DOM at the time it's called, static or fetched, with the exact
+    // same dot/auto-advance/pause-on-hover behaviour either way.
     // ------------------------------------------------------------------
     const heroEl = document.querySelector('[data-dash-hero]');
 
     if (heroEl) {
-        const heroSlides = heroEl.querySelectorAll('[data-dash-hero-slide]');
-        const heroDots = heroEl.querySelectorAll('[data-dash-hero-dot]');
+        const heroContainer = heroEl.querySelector('.dash-hero-container');
+        const heroDotsContainer = heroEl.querySelector('.dash-hero-dots');
         const heroPrefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
         let heroIndex = 0;
         let heroTimer = null;
 
-        function updateHeroSlide(newIndex, skipTimer = false) {
-            if (newIndex >= heroSlides.length) newIndex = 0;
-            if (newIndex < 0) newIndex = heroSlides.length - 1;
+        // Re-queried on every call rather than captured once at parse time —
+        // renderHeroSlidesFromEvents() below may have just replaced
+        // heroContainer/heroDotsContainer's entire innerHTML with real data,
+        // and this is only ever wired up ONCE regardless of which content
+        // (static fallback or fetched) ends up in the DOM (see
+        // loadHeroSlides() at the bottom of this block), so there's no risk
+        // of double-registering the hover/focus listeners below.
+        function wireHeroCarousel() {
+            const heroSlides = heroEl.querySelectorAll('[data-dash-hero-slide]');
+            const heroDots = heroEl.querySelectorAll('[data-dash-hero-dot]');
+            if (heroSlides.length === 0) return;
 
-            heroSlides.forEach((s) => s.classList.remove('is-active'));
-            heroDots.forEach((d) => {
-                d.classList.remove('is-active');
-                d.setAttribute('aria-current', 'false');
+            function updateHeroSlide(newIndex, skipTimer = false) {
+                if (newIndex >= heroSlides.length) newIndex = 0;
+                if (newIndex < 0) newIndex = heroSlides.length - 1;
+
+                heroSlides.forEach((s) => s.classList.remove('is-active'));
+                heroDots.forEach((d) => {
+                    d.classList.remove('is-active');
+                    d.setAttribute('aria-current', 'false');
+                });
+
+                heroSlides[newIndex].classList.add('is-active');
+                heroDots[newIndex].classList.add('is-active');
+                heroDots[newIndex].setAttribute('aria-current', 'true');
+
+                heroIndex = newIndex;
+
+                if (!skipTimer) {
+                    clearHeroAutoplay();
+                    startHeroAutoplay();
+                }
+            }
+
+            function startHeroAutoplay() {
+                if (heroPrefersReducedMotion) return;
+                heroTimer = setInterval(() => {
+                    updateHeroSlide(heroIndex + 1, true);
+                }, 5000);
+            }
+
+            function clearHeroAutoplay() {
+                if (heroTimer) {
+                    clearInterval(heroTimer);
+                    heroTimer = null;
+                }
+            }
+
+            heroDots.forEach((dot, index) => {
+                dot.addEventListener('click', () => updateHeroSlide(index));
             });
 
-            heroSlides[newIndex].classList.add('is-active');
-            heroDots[newIndex].classList.add('is-active');
-            heroDots[newIndex].setAttribute('aria-current', 'true');
+            heroEl.addEventListener('mouseenter', clearHeroAutoplay);
+            heroEl.addEventListener('mouseleave', startHeroAutoplay);
+            heroEl.addEventListener('focusin', clearHeroAutoplay);
+            heroEl.addEventListener('focusout', () => {
+                setTimeout(() => {
+                    if (!heroEl.contains(document.activeElement)) startHeroAutoplay();
+                }, 0);
+            });
 
-            heroIndex = newIndex;
+            startHeroAutoplay();
+        }
 
-            if (!skipTimer) {
-                clearHeroAutoplay();
-                startHeroAutoplay();
+        // Same "only allow https:// or the project's own relative paths"
+        // rule includes/owner_dashboard.js's court/slide renderers apply
+        // (implementation_plan.md's security requirements) — event.image_url
+        // is admin-supplied (Media Manager), so this is defense in depth
+        // against a javascript:/data: URL ever reaching an <img src> here,
+        // even though the only writers today (the owner dashboard's own
+        // upload/URL-paste flow) already gate this on their own side too.
+        function isSafeHeroImageUrl(url) {
+            const value = String(url || '').trim();
+            if (!value) return false;
+            if (/^https:\/\//i.test(value)) return true;
+            if (/^[a-z][a-z0-9+.-]*:/i.test(value)) return false;
+            if (value.startsWith('//')) return false;
+            return true;
+        }
+
+        function renderHeroSlidesFromEvents(events) {
+            if (!heroContainer || !heroDotsContainer) return;
+
+            heroContainer.innerHTML = events.map((ev, i) => {
+                const activeClass = i === 0 ? ' is-active' : '';
+                const title = window.escapeHtml(ev.title || '');
+                const tag = window.escapeHtml(ev.tag || 'Featured');
+                const meta = window.escapeHtml(ev.meta || '');
+                const media = (ev.image_url && isSafeHeroImageUrl(ev.image_url))
+                    ? `<img src="${window.escapeHtml(ev.image_url)}" alt="${title}" class="dash-hero-image" loading="${i === 0 ? 'eager' : 'lazy'}">`
+                    : `<div class="dash-hero-image" aria-hidden="true" style="background: linear-gradient(135deg, var(--color-bg-elevated), var(--color-bg-card));"></div>`;
+                return `
+                    <article class="dash-hero-slide${activeClass}" data-dash-hero-slide="${i}">
+                        ${media}
+                        <div class="dash-hero-scrim">
+                            <div class="dash-hero-text">
+                                <span class="dash-hero-tag">${tag}</span>
+                                <h3 class="dash-hero-title">${title}</h3>
+                                <p class="dash-hero-meta">${meta}</p>
+                            </div>
+                        </div>
+                    </article>
+                `;
+            }).join('');
+
+            heroDotsContainer.innerHTML = events.map((_, i) => {
+                const activeClass = i === 0 ? ' is-active' : '';
+                return `<button type="button" class="dash-hero-dot${activeClass}" data-dash-hero-dot="${i}" aria-label="Slide ${i + 1}" aria-current="${i === 0 ? 'true' : 'false'}"></button>`;
+            }).join('');
+        }
+
+        const HERO_MAX_SLIDES = 5;
+
+        function loadHeroSlides() {
+            if (!window.sb) {
+                wireHeroCarousel();
+                return;
             }
+            window.sb.from('event')
+                .select('id,title,meta,tag,image_url,display_order')
+                .eq('is_published', true)
+                .order('display_order')
+                .limit(HERO_MAX_SLIDES)
+                .then(({ data, error }) => {
+                    if (error) {
+                        console.error('[dashboard] failed to load hero slides — showing the built-in fallback instead.', error);
+                    } else if (data && data.length > 0) {
+                        renderHeroSlidesFromEvents(data);
+                    }
+                    // Zero rows (or an error above) — the 3 static
+                    // <article data-dash-hero-slide> fallback slides already
+                    // in the page are left exactly as they are.
+                    wireHeroCarousel();
+                }, (err) => {
+                    console.error('[dashboard] hero slides request failed — showing the built-in fallback instead.', err);
+                    wireHeroCarousel();
+                });
         }
 
-        function startHeroAutoplay() {
-            if (heroPrefersReducedMotion) return;
-            heroTimer = setInterval(() => {
-                updateHeroSlide(heroIndex + 1, true);
-            }, 5000);
-        }
-
-        function clearHeroAutoplay() {
-            if (heroTimer) {
-                clearInterval(heroTimer);
-                heroTimer = null;
-            }
-        }
-
-        heroDots.forEach((dot, index) => {
-            dot.addEventListener('click', () => updateHeroSlide(index));
-        });
-
-        heroEl.addEventListener('mouseenter', clearHeroAutoplay);
-        heroEl.addEventListener('mouseleave', startHeroAutoplay);
-        heroEl.addEventListener('focusin', clearHeroAutoplay);
-        heroEl.addEventListener('focusout', () => {
-            setTimeout(() => {
-                if (!heroEl.contains(document.activeElement)) startHeroAutoplay();
-            }, 0);
-        });
-
-        startHeroAutoplay();
+        loadHeroSlides();
     }
 
     // ------------------------------------------------------------------
@@ -3137,42 +3241,19 @@ document.addEventListener('DOMContentLoaded', () => {
     const avatarUploadBtn = document.querySelector('[data-dash-avatar-upload-trigger]');
     const avatarRemoveBtn = document.querySelector('[data-dash-avatar-remove]');
 
-    // Center-crops `file` (already validated as an image under the size
-    // ceiling by the `change` handler below) into an AVATAR_OUTPUT_SIZE
-    // square and resolves a JPEG data URL. The crop SOURCE square is the
-    // smaller of the image's own width/height, centered, so a portrait or
-    // landscape photo both crop to their visual center instead of being
-    // squashed to fit — the "CENTER-CROPPED" half of the spec, not just the
-    // "256x256" half.
+    // Revision A1 (implementation_plan.md, decision A9) — the actual
+    // center-crop/downscale/encode algorithm moved to the shared
+    // includes/imageTools.js (window.InigoImageTools.downscaleImageToDataUrl),
+    // which the owner dashboard's own Account Settings avatar upload now
+    // uses too, so there is exactly one implementation instead of two
+    // copies drifting apart. This is a THIN WRAPPER ONLY — same name, same
+    // signature, same AVATAR_OUTPUT_SIZE/AVATAR_JPEG_QUALITY constants
+    // passed through — so every caller below and the behaviour a customer
+    // sees are byte-identical to before this file existed.
     function downscaleImageToAvatarDataUrl(file) {
-        return new Promise((resolve, reject) => {
-            const img = new Image();
-            const objectUrl = URL.createObjectURL(file);
-
-            img.onload = () => {
-                URL.revokeObjectURL(objectUrl);
-                try {
-                    const size = AVATAR_OUTPUT_SIZE;
-                    const canvas = document.createElement('canvas');
-                    canvas.width = size;
-                    canvas.height = size;
-                    const ctx = canvas.getContext('2d');
-
-                    const cropSize = Math.min(img.naturalWidth, img.naturalHeight);
-                    const sx = (img.naturalWidth - cropSize) / 2;
-                    const sy = (img.naturalHeight - cropSize) / 2;
-                    ctx.drawImage(img, sx, sy, cropSize, cropSize, 0, 0, size, size);
-
-                    resolve(canvas.toDataURL('image/jpeg', AVATAR_JPEG_QUALITY));
-                } catch (err) {
-                    reject(err);
-                }
-            };
-            img.onerror = () => {
-                URL.revokeObjectURL(objectUrl);
-                reject(new Error('Could not read the selected image.'));
-            };
-            img.src = objectUrl;
+        return window.InigoImageTools.downscaleImageToDataUrl(file, {
+            size: AVATAR_OUTPUT_SIZE,
+            quality: AVATAR_JPEG_QUALITY,
         });
     }
 

@@ -20,7 +20,9 @@
 
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Inter:wght@400;500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<!-- Revision A2 (implementation_plan.md) — Sora (display) + Inter (body); Space Mono removed. -->
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../Style/typography.css">
 <link rel="stylesheet" href="../Style/owner_dashboard.css">
 <link rel="stylesheet" href="../Style/Loading.css">
 <script src="../includes/loadingOverlay.js"></script>
@@ -38,8 +40,16 @@
 
     <!-- ================= SIDEBAR ================= -->
     <aside class="admin-sidebar" data-admin-sidebar>
+        <!-- Revision A1 (implementation_plan.md, decision A1) — the real
+             wordmark, same markup/sizing idea as the customer dashboard's
+             .dash-sidebar-brand (Pages/user_dashboard.html), replacing the
+             "IS" text monogram that used to render here
+             (.admin-logo-dot). .admin-logo-text keeps its own styling
+             (font-display, primary color) rather than switching to the
+             customer page's plain .logo-text class, which relies on
+             Style/LandingPage.css rules this page never loads. -->
         <div class="admin-sidebar-brand">
-            <div class="admin-logo-dot">IS</div>
+            <img src="../assets/Logo/WebLogo.png" alt="IñigoSync logo">
             <div class="admin-logo-text">IñigoSync</div>
         </div>
         <p class="admin-role-tag">Owner Portal</p>
@@ -124,10 +134,28 @@
                     </svg>
                 </button>
 
-                <button type="button" class="admin-icon-btn" aria-label="Notifications">
-                    <svg viewBox="0 0 24 24" fill="none"><path d="M18 8.5c0-3.5-2.7-6-6-6s-6 2.5-6 6c0 6-2.5 7.5-2.5 7.5h17S18 14.5 18 8.5z" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><path d="M9.7 19a2.3 2.3 0 0 0 4.6 0" stroke="currentColor" stroke-width="1.7"/></svg>
-                    <span class="admin-badge-dot"></span>
-                </button>
+                <!-- Notifications (Revision A1, decision A7) — ported from the
+                     customer dashboard's [data-dash-notif*] dropdown
+                     (Pages/user_dashboard.html/includes/Dashboard.js) under
+                     data-admin-notif* names. Replaces the old dead bell
+                     (no dropdown, badge dot permanently visible). Populated
+                     by includes/owner_dashboard.js's refreshAdminNotifications()
+                     from real pending bookings + feedback rows — the dot
+                     starts `hidden` and is only revealed once there's a real
+                     unread item. -->
+                <div class="admin-notif" data-admin-notif>
+                    <button type="button" class="admin-icon-btn" data-admin-notif-trigger aria-label="Notifications" aria-haspopup="true" aria-expanded="false">
+                        <svg viewBox="0 0 24 24" fill="none"><path d="M18 8.5c0-3.5-2.7-6-6-6s-6 2.5-6 6c0 6-2.5 7.5-2.5 7.5h17S18 14.5 18 8.5z" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><path d="M9.7 19a2.3 2.3 0 0 0 4.6 0" stroke="currentColor" stroke-width="1.7"/></svg>
+                        <span class="admin-badge-dot" data-admin-notif-dot hidden></span>
+                    </button>
+
+                    <div class="admin-notif-menu" data-admin-notif-menu role="menu" aria-label="Notifications">
+                        <div class="admin-notif-menu-head">Notifications</div>
+                        <div class="admin-notif-list" data-admin-notif-list>
+                            <p class="admin-notif-empty">Loading…</p>
+                        </div>
+                    </div>
+                </div>
 
                 <div class="admin-profile" data-admin-profile>
                     <button type="button" class="admin-profile-trigger" data-admin-profile-trigger>
@@ -220,81 +248,48 @@
                     </div>
                 </div>
 
+                <!-- Revision A1 (implementation_plan.md, decision A3) —
+                     replaces the two hardcoded fake cards that used to live
+                     here ("Busiest courts this week", "Staff on shift") with
+                     live data: the latest 8 real `booking` rows, and this
+                     month's booking-status counts (including the same
+                     client-derived "Unattended" rule the customer dashboard
+                     uses — see includes/owner_dashboard.js's
+                     adminDisplayStatusFor()). Both are refreshed by
+                     refreshOverviewStats() → refreshRecentBookings() /
+                     refreshStatusBreakdown(). -->
                 <div class="admin-grid-2">
                     <div class="admin-card">
                         <div class="admin-card-head">
-                            <h3>Busiest courts this week</h3>
+                            <h3>Recent bookings</h3>
                         </div>
-                        <div class="admin-progress-list">
-                            <div class="admin-progress-item">
-                                <div class="admin-progress-row">
-                                    <span>Badminton (9 courts)</span>
-                                    <span class="admin-progress-count">48 bookings</span>
-                                </div>
-                                <div class="admin-progress-track"><div class="admin-progress-fill" style="width: 100%;"></div></div>
-                            </div>
-                            <div class="admin-progress-item">
-                                <div class="admin-progress-row">
-                                    <span>Bowling (20 lanes)</span>
-                                    <span class="admin-progress-count">35 bookings</span>
-                                </div>
-                                <div class="admin-progress-track"><div class="admin-progress-fill" style="width: 73%;"></div></div>
-                            </div>
-                            <div class="admin-progress-item">
-                                <div class="admin-progress-row">
-                                    <span>Basketball (2 courts)</span>
-                                    <span class="admin-progress-count">22 bookings</span>
-                                </div>
-                                <div class="admin-progress-track"><div class="admin-progress-fill" style="width: 46%;"></div></div>
-                            </div>
-                            <div class="admin-progress-item">
-                                <div class="admin-progress-row">
-                                    <span>Lawn Tennis (3 courts)</span>
-                                    <span class="admin-progress-count">18 bookings</span>
-                                </div>
-                                <div class="admin-progress-track"><div class="admin-progress-fill" style="width: 38%;"></div></div>
-                            </div>
+                        <div class="admin-table-wrap">
+                            <table class="admin-table" data-admin-recent-bookings>
+                                <thead>
+                                    <tr>
+                                        <th>Customer</th>
+                                        <th>Court</th>
+                                        <th>Date &amp; time</th>
+                                        <th>Status</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr><td colspan="4" style="text-align:center; color: var(--color-ink-faint);">Loading…</td></tr>
+                                </tbody>
+                            </table>
                         </div>
                     </div>
 
                     <div class="admin-card">
                         <div class="admin-card-head">
-                            <h3>Staff on shift</h3>
-                            <button type="button" class="admin-link-btn" data-admin-nav="staff">Manage staff</button>
+                            <h3>Booking status this month</h3>
                         </div>
-                        <div class="admin-staff-list">
-                            <div class="admin-staff-row">
-                                <div class="admin-staff-avatar-sm">RD</div>
-                                <div class="admin-staff-row-info">
-                                    <h4>Rosalinda Driz</h4>
-                                    <p>Front Desk / Secretary</p>
-                                </div>
-                                <span class="admin-online-dot is-online"><span></span>Online</span>
-                            </div>
-                            <div class="admin-staff-row">
-                                <div class="admin-staff-avatar-sm">MC</div>
-                                <div class="admin-staff-row-info">
-                                    <h4>Marco Cruz</h4>
-                                    <p>Court Attendant</p>
-                                </div>
-                                <span class="admin-online-dot is-online"><span></span>Online</span>
-                            </div>
-                            <div class="admin-staff-row">
-                                <div class="admin-staff-avatar-sm">JT</div>
-                                <div class="admin-staff-row-info">
-                                    <h4>Jasmine Tolentino</h4>
-                                    <p>Court Attendant</p>
-                                </div>
-                                <span class="admin-online-dot"><span></span>Offline</span>
-                            </div>
-                            <div class="admin-staff-row">
-                                <div class="admin-staff-avatar-sm">EP</div>
-                                <div class="admin-staff-row-info">
-                                    <h4>Edgar Panganiban</h4>
-                                    <p>Weekend Relief Staff</p>
-                                </div>
-                                <span class="admin-online-dot"><span></span>Offline</span>
-                            </div>
+                        <!-- Reuses .admin-progress-* (label + count + bar) —
+                             the exact same classes the old "Busiest courts"
+                             fake card used, now driven by real counts
+                             instead of hardcoded widths. -->
+                        <div class="admin-progress-list" data-admin-status-breakdown>
+                            <p style="color: var(--color-ink-faint);">Loading…</p>
                         </div>
                     </div>
                 </div>
@@ -349,6 +344,12 @@
                             <input type="text" class="admin-search" placeholder="Search staff by name or role…" data-admin-staff-search>
                         </div>
                     </div>
+
+                    <!-- Reset Password now sets the account's password to a
+                         fixed default immediately (Revision A1, decision A4)
+                         instead of emailing a reset link — see
+                         includes/owner_dashboard.js's wireStaffRowActions(). -->
+                    <p class="admin-form-hint" style="margin: -6px 0 4px;">Reset Password sets the account's password to a default (<strong>12345678</strong>) right away — ask them to change it the moment they log back in.</p>
 
                     <div class="admin-table-wrap">
                         <table class="admin-table" data-admin-staff-table>
@@ -409,7 +410,7 @@
                                         <div class="admin-table-actions">
                                             <button type="button" class="admin-mini-btn" data-admin-reset-password>Reset Password</button>
                                             <button type="button" class="admin-mini-btn" data-admin-edit-staff>Edit</button>
-                                            <button type="button" class="admin-mini-btn is-danger" data-admin-delete-staff>Deactivate</button>
+                                            <button type="button" class="admin-mini-btn" data-admin-activate-staff>Activate</button>
                                         </div>
                                     </td>
                                 </tr>
@@ -467,81 +468,11 @@
                             <button type="button" class="admin-chip" data-admin-chip data-admin-court-filter="active">Active</button>
                             <button type="button" class="admin-chip" data-admin-chip data-admin-court-filter="inactive">Deactivated</button>
                         </div>
+                        <!-- Revision A1 (decision A6) — opens the modal below
+                             instead of toggling an inline panel. Hook kept
+                             unchanged so nothing else about this button
+                             (styling, position) needed to change. -->
                         <button type="button" class="admin-btn-primary" data-admin-toggle-court-form>+ Add New Court</button>
-                    </div>
-                </div>
-
-                <div class="admin-card admin-add-panel" data-admin-court-form>
-                    <div class="admin-card-head"><h3>New Court</h3></div>
-                    <div class="admin-form-row">
-                        <div class="admin-form-group">
-                            <span class="admin-form-label">Court name</span>
-                            <input type="text" class="admin-input" placeholder="e.g. Badminton — Court 3" data-admin-court-name>
-                        </div>
-                        <div class="admin-form-group">
-                            <span class="admin-form-label">Sport type</span>
-                            <!-- Options rendered by includes/owner_dashboard.js
-                                 from window.InigoCourtsData.getSports() (the
-                                 real `sport` table, all 8 rows) — no
-                                 hardcoded/incomplete sport list here anymore. -->
-                            <select class="admin-select" data-admin-court-sport>
-                                <option value="">Loading sports…</option>
-                            </select>
-                        </div>
-                    </div>
-                    <div class="admin-form-row">
-                        <div class="admin-form-group">
-                            <span class="admin-form-label">Quantity</span>
-                            <input type="number" class="admin-input" placeholder="2" min="1" step="1" value="1" data-admin-court-quantity>
-                        </div>
-                        <div class="admin-form-group">
-                            <span class="admin-form-label">Unit</span>
-                            <select class="admin-select" data-admin-court-unit>
-                                <option value="courts">Courts</option>
-                                <option value="lanes">Lanes</option>
-                                <option value="tables">Tables</option>
-                                <option value="court">Court (singular)</option>
-                            </select>
-                        </div>
-                    </div>
-                    <div class="admin-form-row">
-                        <div class="admin-form-group">
-                            <span class="admin-form-label">Rate (optional — leave blank until confirmed)</span>
-                            <input type="number" class="admin-input" placeholder="e.g. 300" min="0" step="0.01" data-admin-court-rate>
-                        </div>
-                        <div class="admin-form-group">
-                            <span class="admin-form-label">Billing unit</span>
-                            <select class="admin-select" data-admin-court-rate-unit>
-                                <option value="/hr">Per hour</option>
-                                <option value="/game">Per game</option>
-                            </select>
-                        </div>
-                    </div>
-                    <div class="admin-form-group">
-                        <span class="admin-form-label">Description</span>
-                        <input type="text" class="admin-input" placeholder="e.g. Full court · Indoor · Scoreboard" data-admin-court-description>
-                    </div>
-                    <div class="admin-form-row">
-                        <div class="admin-form-group">
-                            <span class="admin-form-label">Status</span>
-                            <select class="admin-select" data-admin-court-op-status>
-                                <option value="Available">Available</option>
-                                <option value="Maintenance">Maintenance</option>
-                            </select>
-                        </div>
-                        <div class="admin-form-group">
-                            <span class="admin-form-label">Image URL (optional)</span>
-                            <!-- Storage upload is out of scope this phase —
-                                 see includes/owner_dashboard.js's Media
-                                 Manager note. A URL still flows straight
-                                 into `court.image_url` and renders on every
-                                 card (landing, customer, admin). -->
-                            <input type="url" class="admin-input" placeholder="https://…" data-admin-court-image-url>
-                        </div>
-                    </div>
-                    <div class="admin-form-actions">
-                        <button type="button" class="admin-btn-ghost" data-admin-toggle-court-form>Cancel</button>
-                        <button type="button" class="admin-btn-save" data-admin-court-submit>Add Court</button>
                     </div>
                 </div>
 
@@ -562,198 +493,36 @@
                 <div class="admin-panel-head">
                     <div>
                         <h2>Media Manager</h2>
-                        <p>Whatever you upload here is what the website shows — home featured photos and each court's photo.</p>
+                        <p>Whatever you upload here shows up on the website's home featured slideshow — both the landing page and the customer dashboard.</p>
                     </div>
                 </div>
 
+                <!-- Revision A1 (implementation_plan.md, decision A5) — the
+                     slideshow is now real, against `public.event`: every
+                     row (published or not) is listed, ordered by
+                     display_order; photo/title/caption/tag/publish/order/
+                     remove all persist. Uploads go to the new public
+                     Storage bucket `media`
+                     (database/schema/015_media_bucket.sql) via
+                     includes/owner_dashboard.js's uploadToMedia(). The old
+                     static, `disabled`-everything card (and the separate
+                     "Court photos" card, which duplicated Court Listings'
+                     own Image field for no reason) are both gone. -->
                 <div class="admin-card">
                     <div class="admin-card-head">
                         <div>
                             <h3>Home featured slideshow</h3>
-                            <p class="admin-card-sub">4 of 6 slots used. Recommended 1600×900, JPG or PNG, under 3 MB.</p>
+                            <p class="admin-card-sub" data-admin-slides-sub>Loading…</p>
                         </div>
                         <span class="admin-media-hint">rotates every 5s</span>
                     </div>
-                    <!-- Upload is disabled here — no Supabase Storage bucket
-                         exists yet (implementation_plan.md E4). Unlike Court
-                         photos below, these slides have no existing admin
-                         edit form to redirect to (the `event` table they'd
-                         map to is public-read-only today, see
-                         includes/landingPage.js), so the honest note is
-                         "not available", not a URL-paste workaround. -->
-                    <p class="admin-media-disabled-note" style="color: var(--color-ink-faint); font-size: 0.82rem; margin: -6px 0 4px;">Photo/caption upload isn't available from this dashboard yet — ask your developer to update these directly.</p>
 
-                    <div class="admin-slide-grid" data-admin-slide-grid>
-                        <div class="admin-slide-card" data-admin-slide>
-                            <div class="admin-slide-thumb">
-                                <img src="../database/web/basketball.jpg" alt="" data-admin-slide-img>
-                                <span class="admin-slide-badge">Slide 1</span>
-                            </div>
-                            <div class="admin-slide-body">
-                                <input type="text" class="admin-input admin-slide-title" value="Bocohan Summer Basketball League" disabled>
-                                <input type="text" class="admin-input admin-slide-caption" value="Finals night · Aug 24 · Court 1" disabled>
-                                <div class="admin-slide-actions">
-                                    <button type="button" class="admin-btn-chip-primary" data-admin-slide-replace disabled>Replace photo</button>
-                                    <button type="button" class="admin-btn-chip-danger" data-admin-slide-remove disabled>Remove</button>
-                                </div>
-                                <input type="file" accept="image/*" class="admin-visually-hidden" data-admin-slide-file disabled>
-                            </div>
-                        </div>
-
-                        <div class="admin-slide-card" data-admin-slide>
-                            <div class="admin-slide-thumb">
-                                <img src="../database/web/announcement.jpg" alt="" data-admin-slide-img>
-                                <span class="admin-slide-badge">Slide 2</span>
-                            </div>
-                            <div class="admin-slide-body">
-                                <input type="text" class="admin-input admin-slide-title" value="Weekend Open Play" disabled>
-                                <input type="text" class="admin-input admin-slide-caption" value="Sat &amp; Sun · 8:00 AM – 10:00 PM · all courts" disabled>
-                                <div class="admin-slide-actions">
-                                    <button type="button" class="admin-btn-chip-primary" data-admin-slide-replace disabled>Replace photo</button>
-                                    <button type="button" class="admin-btn-chip-danger" data-admin-slide-remove disabled>Remove</button>
-                                </div>
-                                <input type="file" accept="image/*" class="admin-visually-hidden" data-admin-slide-file disabled>
-                            </div>
-                        </div>
-
-                        <div class="admin-slide-card" data-admin-slide>
-                            <div class="admin-slide-thumb">
-                                <img src="../database/web/badminton.jpg" alt="" data-admin-slide-img>
-                                <span class="admin-slide-badge">Slide 3</span>
-                            </div>
-                            <div class="admin-slide-body">
-                                <input type="text" class="admin-input admin-slide-title" value="Four New Badminton Courts Open" disabled>
-                                <input type="text" class="admin-input admin-slide-caption" value="9 courts total · book any slot online" disabled>
-                                <div class="admin-slide-actions">
-                                    <button type="button" class="admin-btn-chip-primary" data-admin-slide-replace disabled>Replace photo</button>
-                                    <button type="button" class="admin-btn-chip-danger" data-admin-slide-remove disabled>Remove</button>
-                                </div>
-                                <input type="file" accept="image/*" class="admin-visually-hidden" data-admin-slide-file disabled>
-                            </div>
-                        </div>
-
-                        <div class="admin-slide-card" data-admin-slide>
-                            <div class="admin-slide-thumb">
-                                <img src="../database/web/bowling.jpg" alt="" data-admin-slide-img>
-                                <span class="admin-slide-badge">Slide 4</span>
-                            </div>
-                            <div class="admin-slide-body">
-                                <input type="text" class="admin-input admin-slide-title" value="Duckpin &amp; Ten-Pin Nights" disabled>
-                                <input type="text" class="admin-input admin-slide-caption" value="8 duckpin + 12 ten-pin lanes · Mon–Thu" disabled>
-                                <div class="admin-slide-actions">
-                                    <button type="button" class="admin-btn-chip-primary" data-admin-slide-replace disabled>Replace photo</button>
-                                    <button type="button" class="admin-btn-chip-danger" data-admin-slide-remove disabled>Remove</button>
-                                </div>
-                                <input type="file" accept="image/*" class="admin-visually-hidden" data-admin-slide-file disabled>
-                            </div>
-                        </div>
-
-                        <!-- Not a real button anymore (no tabindex/role) —
-                             upload has no backend to receive it yet
-                             (implementation_plan.md E4). .is-disabled fades
-                             it so it doesn't look clickable; see
-                             Style/owner_dashboard.css. -->
-                        <div class="admin-slide-dropzone is-disabled" data-admin-slide-dropzone aria-disabled="true" aria-label="Adding a new slide is not available yet">
-                            <div class="admin-dropzone-icon">
-                                <svg viewBox="0 0 24 24" fill="none"><path d="M12 16V5m0 0L8 9m4-4l4 4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><path d="M4 17v2a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
-                            </div>
-                            <strong>Upload not available yet</strong>
-                            <span>ask your developer to add a new slide</span>
-                            <span class="admin-dropzone-meta">JPG · PNG · MP4 up to 20 MB</span>
-                            <input type="file" accept="image/*,video/mp4" class="admin-visually-hidden" data-admin-slide-add-file disabled>
-                        </div>
+                    <div class="admin-slide-grid" data-admin-slides>
+                        <p class="admin-court-loading-note" style="color: var(--color-ink-faint); padding: 8px 4px;">Loading slides…</p>
                     </div>
-                </div>
 
-                <div class="admin-card">
-                    <div class="admin-card-head">
-                        <div>
-                            <h3>Court photos</h3>
-                            <p class="admin-card-sub">One photo per sport — shown on court listings and the booking flow.</p>
-                        </div>
-                    </div>
-                    <!-- Upload is disabled here — no Supabase Storage bucket
-                         exists yet (implementation_plan.md E4). Unlike the
-                         slideshow above, a court's photo already has a real
-                         edit path: the `image_url` field on Court Listings →
-                         Edit writes straight to `court.image_url`
-                         (includes/owner_dashboard.js:~530-600), so admins
-                         are pointed there instead of a dead upload button. -->
-                    <p class="admin-media-disabled-note" style="color: var(--color-ink-faint); font-size: 0.82rem; margin: -6px 0 4px;">Photo upload isn't available here yet — paste an image URL instead: <strong>Court Listings → Edit → Image URL</strong>. It updates the photo everywhere on the site immediately.</p>
-
-                    <div class="admin-mediacourt-grid">
-                        <div class="admin-mediacourt-card" data-admin-mediacourt>
-                            <div class="admin-mediacourt-thumb"><img src="../database/web/basketball.jpg" alt="" data-admin-mediacourt-img></div>
-                            <div class="admin-mediacourt-body">
-                                <h4>Basketball</h4>
-                                <p>updated Aug 2</p>
-                                <button type="button" data-admin-mediacourt-replace disabled>Replace photo</button>
-                                <input type="file" accept="image/*" class="admin-visually-hidden" data-admin-mediacourt-file disabled>
-                            </div>
-                        </div>
-                        <div class="admin-mediacourt-card" data-admin-mediacourt>
-                            <div class="admin-mediacourt-thumb"><img src="../database/web/badminton.jpg" alt="" data-admin-mediacourt-img></div>
-                            <div class="admin-mediacourt-body">
-                                <h4>Badminton</h4>
-                                <p>updated Jul 28</p>
-                                <button type="button" data-admin-mediacourt-replace disabled>Replace photo</button>
-                                <input type="file" accept="image/*" class="admin-visually-hidden" data-admin-mediacourt-file disabled>
-                            </div>
-                        </div>
-                        <div class="admin-mediacourt-card" data-admin-mediacourt>
-                            <div class="admin-mediacourt-thumb"><img src="../database/web/bowling.jpg" alt="" data-admin-mediacourt-img></div>
-                            <div class="admin-mediacourt-body">
-                                <h4>Bowling</h4>
-                                <p>updated Jul 12</p>
-                                <button type="button" data-admin-mediacourt-replace disabled>Replace photo</button>
-                                <input type="file" accept="image/*" class="admin-visually-hidden" data-admin-mediacourt-file disabled>
-                            </div>
-                        </div>
-                        <div class="admin-mediacourt-card" data-admin-mediacourt>
-                            <div class="admin-mediacourt-thumb"><img src="../database/web/pickleball.jpg" alt="" data-admin-mediacourt-img></div>
-                            <div class="admin-mediacourt-body">
-                                <h4>Pickleball</h4>
-                                <p>updated Aug 9</p>
-                                <button type="button" data-admin-mediacourt-replace disabled>Replace photo</button>
-                                <input type="file" accept="image/*" class="admin-visually-hidden" data-admin-mediacourt-file disabled>
-                            </div>
-                        </div>
-                        <div class="admin-mediacourt-card" data-admin-mediacourt>
-                            <div class="admin-mediacourt-thumb"><img src="../database/web/volleyball.jpg" alt="" data-admin-mediacourt-img></div>
-                            <div class="admin-mediacourt-body">
-                                <h4>Volleyball</h4>
-                                <p>updated Jun 30</p>
-                                <button type="button" data-admin-mediacourt-replace disabled>Replace photo</button>
-                                <input type="file" accept="image/*" class="admin-visually-hidden" data-admin-mediacourt-file disabled>
-                            </div>
-                        </div>
-                        <div class="admin-mediacourt-card" data-admin-mediacourt>
-                            <div class="admin-mediacourt-thumb"><img src="../database/web/announcement.jpg" alt="" data-admin-mediacourt-img></div>
-                            <div class="admin-mediacourt-body">
-                                <h4>Lawn Tennis</h4>
-                                <p>no photo yet — never updated</p>
-                                <button type="button" data-admin-mediacourt-replace disabled>Replace photo</button>
-                                <input type="file" accept="image/*" class="admin-visually-hidden" data-admin-mediacourt-file disabled>
-                            </div>
-                        </div>
-                        <div class="admin-mediacourt-card" data-admin-mediacourt>
-                            <div class="admin-mediacourt-thumb"><img src="../database/web/announcement%201.jpg" alt="" data-admin-mediacourt-img></div>
-                            <div class="admin-mediacourt-body">
-                                <h4>Billiards</h4>
-                                <p>no photo yet — never updated</p>
-                                <button type="button" data-admin-mediacourt-replace disabled>Replace photo</button>
-                                <input type="file" accept="image/*" class="admin-visually-hidden" data-admin-mediacourt-file disabled>
-                            </div>
-                        </div>
-                        <div class="admin-mediacourt-card" data-admin-mediacourt>
-                            <div class="admin-mediacourt-thumb"><img src="../database/web/announcement.jpg" alt="" data-admin-mediacourt-img></div>
-                            <div class="admin-mediacourt-body">
-                                <h4>Table Tennis</h4>
-                                <p>no photo yet — never updated</p>
-                                <button type="button" data-admin-mediacourt-replace disabled>Replace photo</button>
-                                <input type="file" accept="image/*" class="admin-visually-hidden" data-admin-mediacourt-file disabled>
-                            </div>
-                        </div>
+                    <div class="admin-form-actions" style="justify-content: flex-start; margin-top: 18px;">
+                        <button type="button" class="admin-btn-primary" data-admin-slide-add>+ Add slide</button>
                     </div>
                 </div>
             </section>
@@ -779,50 +548,96 @@
                     </div>
                 </div>
 
+                <!-- Profile Photo — Revision A1 (decision A9). Same
+                     upload/downscale/store pipeline as the customer
+                     dashboard's own Profile Photo card
+                     (Pages/user_dashboard.html), via the shared
+                     includes/imageTools.js — a 256×256 center-cropped JPEG
+                     data URL written straight to profiles.avatar_url (no
+                     Storage bucket needed for avatars). renderAdminProfile()
+                     paints this SAME .admin-avatar element as the topbar and
+                     the card above. -->
+                <div class="admin-card">
+                    <div class="admin-card-head"><h3>Profile Photo</h3></div>
+                    <div class="admin-avatar-upload-row">
+                        <div class="admin-avatar admin-avatar-upload-preview">RD</div>
+                        <div class="admin-avatar-upload-controls">
+                            <div class="admin-avatar-upload-actions">
+                                <button type="button" class="admin-btn-save" data-admin-avatar-upload-trigger>Upload Photo</button>
+                                <button type="button" class="admin-btn-ghost" data-admin-avatar-remove hidden>Remove Photo</button>
+                                <input type="file" accept="image/*" class="admin-visually-hidden" data-admin-avatar-file>
+                            </div>
+                            <p class="admin-form-hint">Any image file, up to 5&nbsp;MB — we'll resize and crop it automatically.</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Personal Information — Revision A1 (decision A9). Full
+                     name AND email are both now genuinely editable and
+                     genuinely saved (previously email had a value= but no
+                     write path at all). The old "Username · not available
+                     yet" field is removed outright — profiles has no
+                     username column, and a permanently-disabled field
+                     explaining that added nothing a comment couldn't. -->
                 <div class="admin-card">
                     <div class="admin-card-head"><h3>Personal Information</h3></div>
                     <div class="admin-settings-grid">
                         <div class="admin-form-group">
                             <span class="admin-form-label">Full name</span>
-                            <input type="text" class="admin-input" value="Rosalinda Driz">
-                        </div>
-                        <div class="admin-form-group">
-                            <!-- No `username` column exists on `profiles` — this
-                                 field used to be typeable and silently discarded
-                                 on Save (nothing read or wrote it). Disabled +
-                                 relabeled instead of removed, same "cannot be
-                                 changed here" pattern user_dashboard.html already
-                                 uses for the read-only email field. -->
-                            <span class="admin-form-label">Username · not available yet</span>
-                            <input type="text" class="admin-input" placeholder="Not available yet" disabled>
+                            <input type="text" class="admin-input" data-admin-settings-name>
                         </div>
                         <div class="admin-form-group">
                             <span class="admin-form-label">Email address</span>
-                            <input type="email" class="admin-input" value="tsrosem8@gmail.com">
+                            <input type="email" class="admin-input" data-admin-settings-email>
                         </div>
                     </div>
+                    <p class="admin-form-hint">Changing your email sends a confirmation link to the new address — the change only applies after you click it.</p>
                     <div class="admin-form-actions">
                         <button type="button" class="admin-btn-ghost" data-admin-settings-cancel="profile">Cancel</button>
                         <button type="button" class="admin-btn-save" data-admin-settings-save="profile">Save Changes</button>
                     </div>
                 </div>
 
-                <div class="admin-card">
+                <!-- Change Password — Revision A1 (decision A9): a 2-step
+                     guided wizard identical in shape to the customer
+                     dashboard's own (Pages/user_dashboard.html,
+                     includes/Dashboard.js) under data-admin-pw-* names,
+                     replacing the old single 3-field form. Cancel (kept from
+                     the old markup, same hook) resets the wizard back to
+                     step 1 and clears every field. -->
+                <div class="admin-card admin-wizard-card">
                     <div class="admin-card-head"><h3>Change Password</h3></div>
-                    <div class="admin-form-group">
-                        <span class="admin-form-label">Current password</span>
-                        <div class="admin-input-wrap">
-                            <input type="password" class="admin-input" placeholder="••••••••">
-                            <button type="button" class="admin-toggle-visibility" data-admin-toggle-password aria-label="Show password">
-                                <svg viewBox="0 0 24 24" width="18" height="18"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7z" fill="none" stroke="currentColor" stroke-width="1.6"/><circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="1.6"/></svg>
-                            </button>
+
+                    <div class="admin-wizard-steps" data-admin-pw-steps role="list" aria-label="Change password steps">
+                        <div class="admin-wizard-step is-current" data-admin-pw-step-indicator="1" role="listitem">
+                            <span class="admin-wizard-step-num">1</span>
+                            <span class="admin-wizard-step-label">Verify</span>
+                        </div>
+                        <div class="admin-wizard-step" data-admin-pw-step-indicator="2" role="listitem">
+                            <span class="admin-wizard-step-num">2</span>
+                            <span class="admin-wizard-step-label">New password</span>
                         </div>
                     </div>
-                    <div class="admin-settings-grid">
+
+                    <!-- STEP 1 — current password only. -->
+                    <div class="admin-wizard-panel is-active" data-admin-pw-step="1">
+                        <div class="admin-form-group">
+                            <span class="admin-form-label">Current password</span>
+                            <div class="admin-input-wrap">
+                                <input type="password" class="admin-input" placeholder="••••••••" data-admin-pw-current>
+                                <button type="button" class="admin-toggle-visibility" data-admin-toggle-password aria-label="Show password">
+                                    <svg viewBox="0 0 24 24" width="18" height="18"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7z" fill="none" stroke="currentColor" stroke-width="1.6"/><circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="1.6"/></svg>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- STEP 2 — new password + confirm. -->
+                    <div class="admin-wizard-panel" data-admin-pw-step="2">
                         <div class="admin-form-group">
                             <span class="admin-form-label">New password</span>
                             <div class="admin-input-wrap">
-                                <input type="password" class="admin-input" placeholder="Create a new password">
+                                <input type="password" class="admin-input" placeholder="Min. 8 characters" data-admin-pw-new>
                                 <button type="button" class="admin-toggle-visibility" data-admin-toggle-password aria-label="Show password">
                                     <svg viewBox="0 0 24 24" width="18" height="18"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7z" fill="none" stroke="currentColor" stroke-width="1.6"/><circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="1.6"/></svg>
                                 </button>
@@ -831,21 +646,113 @@
                         <div class="admin-form-group">
                             <span class="admin-form-label">Confirm new password</span>
                             <div class="admin-input-wrap">
-                                <input type="password" class="admin-input" placeholder="Re-enter new password">
+                                <input type="password" class="admin-input" placeholder="Re-enter new password" data-admin-pw-confirm>
                                 <button type="button" class="admin-toggle-visibility" data-admin-toggle-password aria-label="Show password">
                                     <svg viewBox="0 0 24 24" width="18" height="18"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7z" fill="none" stroke="currentColor" stroke-width="1.6"/><circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="1.6"/></svg>
                                 </button>
                             </div>
                         </div>
                     </div>
-                    <div class="admin-form-actions">
-                        <button type="button" class="admin-btn-ghost" data-admin-settings-cancel="password">Cancel</button>
-                        <button type="button" class="admin-btn-save" data-admin-settings-save="password">Update Password</button>
+
+                    <div class="admin-wizard-nav">
+                        <button type="button" class="admin-btn-ghost admin-wizard-cancel" data-admin-settings-cancel="password">Cancel</button>
+                        <button type="button" class="admin-btn-ghost admin-wizard-back" data-admin-pw-back hidden>Go Back</button>
+                        <button type="button" class="admin-btn-save admin-wizard-next" data-admin-pw-next disabled>Next</button>
+                        <button type="button" class="admin-btn-save" data-admin-settings-save="password" hidden>Save Password</button>
                     </div>
                 </div>
             </section>
 
         </main>
+    </div>
+</div>
+
+<!-- ================================================================
+     COURT ADD/EDIT MODAL — Revision A1 (decision A6). Sits outside
+     .admin-shell (same reasoning as the customer dashboard's Feedback/
+     Mobile-OTP dialogs in Pages/user_dashboard.html) so its position:fixed
+     overlay is never affected by the sidebar's own transform on mobile.
+     data-admin-court-form is kept on the dialog itself (rather than a
+     dropped inline .admin-add-panel) so includes/owner_dashboard.js's
+     existing "read the form fields, remember editingId on this element"
+     code keeps working unchanged — only HOW this shows/hides changed. -->
+<div class="admin-modal-overlay" data-admin-court-modal hidden>
+    <div class="admin-modal" role="dialog" aria-modal="true" aria-labelledby="adminCourtModalTitle" tabindex="-1" data-admin-court-form data-admin-court-dialog>
+        <button type="button" class="admin-modal-close" data-admin-court-modal-close aria-label="Close">
+            <svg viewBox="0 0 24 24" fill="none"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+        </button>
+
+        <h3 id="adminCourtModalTitle" data-admin-court-modal-title>New Court</h3>
+
+        <div class="admin-form-row">
+            <div class="admin-form-group">
+                <span class="admin-form-label">Court name</span>
+                <input type="text" class="admin-input" placeholder="e.g. Badminton — Court 3" data-admin-court-name>
+            </div>
+            <div class="admin-form-group">
+                <span class="admin-form-label">Sport type</span>
+                <!-- Options rendered by includes/owner_dashboard.js
+                     from window.InigoCourtsData.getSports() (the
+                     real `sport` table, all 8 rows) — no
+                     hardcoded/incomplete sport list here anymore. -->
+                <select class="admin-select" data-admin-court-sport>
+                    <option value="">Loading sports…</option>
+                </select>
+            </div>
+        </div>
+        <div class="admin-form-row">
+            <div class="admin-form-group">
+                <span class="admin-form-label">Quantity</span>
+                <input type="number" class="admin-input" placeholder="2" min="1" step="1" value="1" data-admin-court-quantity>
+            </div>
+            <div class="admin-form-group">
+                <span class="admin-form-label">Unit</span>
+                <select class="admin-select" data-admin-court-unit>
+                    <option value="courts">Courts</option>
+                    <option value="lanes">Lanes</option>
+                    <option value="tables">Tables</option>
+                    <option value="court">Court (singular)</option>
+                </select>
+            </div>
+        </div>
+        <div class="admin-form-row">
+            <div class="admin-form-group">
+                <span class="admin-form-label">Rate (optional — leave blank until confirmed)</span>
+                <input type="number" class="admin-input" placeholder="e.g. 300" min="0" step="0.01" data-admin-court-rate>
+            </div>
+            <div class="admin-form-group">
+                <span class="admin-form-label">Billing unit</span>
+                <select class="admin-select" data-admin-court-rate-unit>
+                    <option value="/hr">Per hour</option>
+                    <option value="/game">Per game</option>
+                </select>
+            </div>
+        </div>
+        <div class="admin-form-group">
+            <span class="admin-form-label">Description</span>
+            <input type="text" class="admin-input" placeholder="e.g. Full court · Indoor · Scoreboard" data-admin-court-description>
+        </div>
+        <div class="admin-form-row">
+            <div class="admin-form-group">
+                <span class="admin-form-label">Status</span>
+                <select class="admin-select" data-admin-court-op-status>
+                    <option value="Available">Available</option>
+                    <option value="Maintenance">Maintenance</option>
+                </select>
+            </div>
+            <div class="admin-form-group">
+                <span class="admin-form-label">Photo</span>
+                <div class="admin-image-field">
+                    <input type="url" class="admin-input" placeholder="https://…" data-admin-court-image-url>
+                    <button type="button" class="admin-btn-ghost" data-admin-court-image-upload-trigger>Upload photo</button>
+                </div>
+                <input type="file" accept="image/jpeg,image/png,image/webp" class="admin-visually-hidden" data-admin-court-image-file>
+            </div>
+        </div>
+        <div class="admin-form-actions">
+            <button type="button" class="admin-btn-ghost" data-admin-court-modal-close>Cancel</button>
+            <button type="button" class="admin-btn-save" data-admin-court-submit>Add Court</button>
+        </div>
     </div>
 </div>
 
@@ -871,6 +778,12 @@
      fetch-with-fallback shape as courtsData.js above. Must load before
      owner_dashboard.js, which reads AND writes it (Payment Configuration). -->
 <script src="../includes/appSettings.js"></script>
+
+<!-- Shared image downscale/crop helpers (Revision A1, decision A5/A6/A9) —
+     Media Manager slides, Court Listings photos, and the Account Settings
+     avatar upload all use window.InigoImageTools. Must load before
+     owner_dashboard.js. -->
+<script src="../includes/imageTools.js"></script>
 
 <!-- Script for owner dashboard functionality -->
 <script src="../includes/owner_dashboard.js"></script>

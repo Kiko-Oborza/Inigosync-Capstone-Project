@@ -1,6 +1,12 @@
 /* ==========================================================================
    IñigoSync — Auth Modal (Login / Sign Up / Verify OTP / Admin)
    Uses the same design tokens defined in LandingPage.css :root
+
+   Revision A2 (implementation_plan.md) — fonts/sizes/weights come from
+   Style/typography.css (linked before LandingPage.css, before this file, on
+   every page that loads Auth.css). Every font-size below is an --fs-* token;
+   --font-mono usages were re-homed to --font-display (labels) or
+   --font-numeric (OTP digits/countdowns) since Space Mono was removed.
    ========================================================================== */
 
 .auth-overlay {
@@ -84,7 +90,7 @@ body.auth-lock {
 /* --------------------------------------------------------------------------
    Brand lockup — mark tile, then the wordmark with the strapline under it,
    closed off by a short accent rule that separates the header from the tabs.
-   Same visual language as the landing page: Oswald display face, the #FF6115
+   Same visual language as the landing page: Sora display face, the #FF6115
    accent, and the surface/border/shadow token set.
 
    Set side by side rather than stacked so the whole header stays the same
@@ -163,7 +169,7 @@ body.auth-lock {
 .auth-brand .logo-text {
     font-family: var(--font-display);
     font-weight: 600;
-    font-size: 1.45rem;
+    font-size: var(--fs-xl);
     line-height: 1.15;
     letter-spacing: -0.01em;
     color: var(--color-ink);
@@ -173,7 +179,7 @@ body.auth-lock {
 }
 
 .auth-tagline {
-    font-size: 0.85rem;
+    font-size: var(--fs-md);
     color: var(--color-ink-faint);
     margin-top: 4px;
 }
@@ -185,7 +191,7 @@ body.auth-lock {
 .auth-brand .auth-tagline {
     display: block;
     margin-top: 0;
-    font-size: 0.8rem;
+    font-size: var(--fs-sm);
     line-height: 1.35;
     color: var(--color-ink-dim);
 }
@@ -217,7 +223,7 @@ body.auth-lock {
     color: var(--color-ink-faint);
     font-family: var(--font-body);
     font-weight: 600;
-    font-size: 0.92rem;
+    font-size: var(--fs-md);
     cursor: pointer;
     transition: background 0.2s, color 0.2s;
 }
@@ -348,8 +354,10 @@ body.auth-lock {
 }
 
 .auth-step-indicator {
-    font-family: var(--font-mono);
-    font-size: 0.72rem;
+    /* Revision A2 (implementation_plan.md) — "Step N of 3" reads as a label
+       (uppercase, letter-spaced), so it takes --font-display. */
+    font-family: var(--font-display);
+    font-size: var(--fs-xs);
     line-height: 1.25;
     letter-spacing: 0.06em;
     text-transform: uppercase;
@@ -405,14 +413,15 @@ body.auth-lock {
    say. */
 .auth-step-error {
     margin-top: -8px;
-    /* Must be >= the line box this reserves (0.78rem x 1.35 = 16.85px, i.e.
-       1.053rem), or filling the line in makes the step ~0.05px taller than
-       the empty reservation. That used to be invisible; since increment 8
-       the tallest signup step is what sets the card height, and the two
-       rounded-up lines on step 1 were enough to tip .auth-modal.offsetHeight
-       from 849 to 850 the moment a message appeared. */
+    /* Must be >= the line box this reserves. Originally tuned against a
+       0.78rem font-size (0.78 x 1.35 = 16.85px); Revision A2
+       (implementation_plan.md) maps that to --fs-xs (0.75rem), whose line
+       box (0.75 x 1.35 = 16.2px) is smaller, not larger, so the existing
+       1.06rem (16.96px) reservation below still safely bounds it (more
+       slack than before, never less) — filling the line in still can't tip
+       .auth-modal.offsetHeight the way an under-sized reservation would. */
     min-height: 1.06rem;
-    font-size: 0.78rem;
+    font-size: var(--fs-xs);
     line-height: 1.35;
     /* Not --color-alert: that measures 4.20:1 on the dark modal surface.
        See the token's comment in LandingPage.css. */
@@ -441,7 +450,7 @@ body.auth-lock {
     color: var(--color-ink-dim);
     font-family: var(--font-body);
     font-weight: 600;
-    font-size: 0.95rem;
+    font-size: var(--fs-base);
     cursor: pointer;
     transition: background 0.2s, color 0.2s, border-color 0.2s;
 }
@@ -512,7 +521,7 @@ body.auth-lock {
     display: flex;
     align-items: center;
     gap: 8px;
-    font-size: 0.78rem;
+    font-size: var(--fs-xs);
     line-height: 1.3;
     color: var(--color-ink-faint);
 }
@@ -534,7 +543,7 @@ body.auth-lock {
        own contrast (5.7:1 dark / 4.6:1 light) without making it shout. */
     border: 1px solid currentColor;
     border-radius: 50%;
-    font-size: 0.6rem;
+    font-size: var(--fs-xs);
     font-weight: 700;
     line-height: 1;
     transition: background 0.2s ease, border-color 0.2s ease;
@@ -571,10 +580,11 @@ body.auth-lock {
 .auth-heading {
     font-family: var(--font-display);
     font-weight: 600;
-    font-size: 1.3rem;
+    font-size: var(--fs-xl);
     /* Tight, like every other display-face heading on the site. The
-       inherited body 1.5 wrapped a 21px single-line heading in a 31px
-       line box. */
+       inherited body line-height (--lh-normal, 1.55) would wrap this
+       22px single-line heading in a ~34px line box — too loose for a
+       heading — so it is explicitly tightened here instead. */
     line-height: 1.2;
 }
 
@@ -596,26 +606,52 @@ body.auth-lock {
    nothing at all: 262px before this change, 262px after.
 
    The track floor is measured, not guessed, exactly as .auth-password-rules'
-   is below: 86px is the narrowest track "MIDDLE NAME" — the longest of the
-   three labels, 85.16px in Space Mono at 0.72rem/0.06em (77.28px in the
-   monospace fallback) — cannot wrap in. So wherever three columns render,
-   they are wrap-proof by construction rather than by measurement.
+   is below: it must be >= "MIDDLE NAME" — the longest of the three labels —
+   rendered width, so wherever three columns render, they are wrap-proof by
+   construction rather than by measurement.
+
+   Revision A2 (implementation_plan.md) update: .auth-label moved from
+   Space Mono (85.16px measured for "MIDDLE NAME" at 0.72rem/0.06em, 86px
+   floor) to --font-display (Sora) — Space Mono no longer loads at all, so
+   the old measurement is gone regardless of which remaining token this rule
+   picks. Re-measured live (real Chrome, the actual Google Fonts Sora file,
+   document.fonts.ready awaited): "MIDDLE NAME" at 0.72rem/0.06em/uppercase
+   renders at 92.39px at the effective weight (Sora only ships 500/600/700 —
+   a requested 400 resolves to 500 — confirmed both compute to the same
+   92.39px) and 93.44px if something ever forces weight 700 on it. The floor
+   below is now 96px (>= the 700-weight worst case, ~3.6px of margin —
+   proportionally similar to the old ~0.84px margin on a monospace face,
+   sized up because a proportional face's cross-platform text-rendering
+   variance is larger than a monospace one's). Re-verified with a live sweep
+   of row widths 238–500px (2px steps) plus this comment's own named row
+   widths below: zero wrapped labels anywhere.
 
    auto-fit off the ROW's own width, not a viewport media query, for the same
    reason the checklist uses it: the modal sheds side padding at 480px and
    again at 360px, so one viewport width does not map to one row width (346px
    at 1440/1024/768, 374 at 480, 296 at 390, 281 at 375, 278 at 360, 267 at
-   361, 238 at 320). Swept a viewport pixel at a time from 320 to 480: three
-   columns at ≥372 and again at exactly 360, two columns at 361–371 and at
-   ≤359 — the same non-monotone band the checklist has, for the same reason
-   (the ≤360 padding drop widens the row by 11px right where the viewport
-   narrows), and no real device sits in it. Every real width lands on the
-   sensible side: 320 → two columns of 114px, 360/375/390/393/412/430 → three
-   of 86–92px. Zero wrapped labels and zero horizontal overflow at any width
-   from 320 to 1920, and the narrowest box measured anywhere is 86 x 45px, so
-   increment 10's 44px touch-target floor holds throughout. Four tracks are
-   unreachable — a fourth needs 4x86 + 3x10 = 374px against a 374px maximum,
-   and auto-fit (not auto-fill) collapses the empty one regardless.
+   361, 238 at 320). Pre-A2 (86px floor, Space Mono), a swept-pixel check
+   from 320 to 480 found three columns at ≥372 and again at exactly 360, two
+   columns at 361–371 and at ≤359 — a non-monotone band caused by the ≤360
+   padding drop widening the row by 11px right where the viewport narrows.
+   Post-A2 (96px floor, Sora — a wider face needs a wider floor, so the
+   crossover point moves): 346/374 (1440/1024/768/480) still render three
+   columns; 296/281/267/238 (390/375/361/320) still render two. The one cell
+   that changes is exactly 278 (viewport 360): it now renders two columns
+   instead of three, because 86px was only ever "just barely" enough for
+   Space Mono at that one exact row width, and 96px no longer fits three
+   tracks in 278px (3x96 + 2x10 = 308 > 278) — there is no floor that is
+   simultaneously >= Sora's rendered width (needed to avoid wrapping) and
+   <= 86px (needed to keep 278 in the three-column band), so this one real
+   width now uses the same two-column fallback 359px-and-below already used
+   safely. Every other real width is unaffected: 320 → two columns of ~113px
+   (was 114px), 375/390/412/430/480+ → the same column count as before, and
+   zero wrapped labels or horizontal overflow anywhere. Four tracks are
+   still unreachable — a fourth now needs 4x96 + 3x10 = 414px against a
+   374px maximum (was 4x86 + 3x10 = 374px, already exactly unreachable), and
+   auto-fit (not auto-fill) collapses the empty one regardless. The
+   narrowest a real track can render is now 96px (was 86px), still well
+   above increment 10's 44px touch-target floor.
 
    Falling back to two columns rather than to one keeps the two-row form well
    inside step 2's headroom: the step is 262px against step 1's 392px, and
@@ -635,16 +671,27 @@ body.auth-lock {
    -------------------------------------------------------------------------- */
 .auth-field-row {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(86px, 1fr));
+    /* 96px, not the original 86px — see the comment above (Revision A2,
+       implementation_plan.md: .auth-label's font changed from Space Mono to
+       Sora, which renders "MIDDLE NAME" wider, so the wrap-proof floor grew
+       to match). */
+    grid-template-columns: repeat(auto-fit, minmax(96px, 1fr));
     gap: 10px;
 }
 
 .auth-label {
-    font-family: var(--font-mono);
+    /* Revision A2 (implementation_plan.md) — label role, so the removed
+       --font-mono is replaced with --font-display, not --font-numeric.
+       font-size is deliberately kept as the literal 0.72rem (NOT mapped to
+       an --fs-* token): the "Name-row top alignment fix" below computes an
+       exact `min-height: 29.2px` from this exact value (0.72rem * 1.25
+       line-height = 14.4px) plus .auth-label-hint's 0.64rem (also kept
+       literal, same reason). Both --fs-xs (0.75rem) would round to the SAME
+       token and erase the deliberate primary/secondary size difference,
+       silently breaking that measured sum — see the comment above
+       .auth-field-row .auth-label's min-height rule. */
+    font-family: var(--font-display);
     font-size: 0.72rem;
-    /* One line of uppercase mono with no descenders: the inherited body
-       1.5 reserved 17px around a 12px glyph box. Type size and colour are
-       unchanged, so contrast is unchanged. */
     line-height: 1.25;
     letter-spacing: 0.06em;
     text-transform: uppercase;
@@ -685,6 +732,9 @@ body.auth-lock {
     display: block;
     text-transform: none;
     font-family: var(--font-body);
+    /* Revision A2 (implementation_plan.md) — kept as the literal 0.64rem,
+       not an --fs-* token; see .auth-label's comment above (this value is
+       the other half of the exact-pixel min-height sum below). */
     font-size: 0.64rem;
     letter-spacing: normal;
     margin-top: 2px;
@@ -748,7 +798,7 @@ body.auth-lock {
     padding: 12px 14px;
     color: var(--color-ink);
     font-family: var(--font-body);
-    font-size: 0.95rem;
+    font-size: var(--fs-base);
     transition: border-color 0.2s;
 }
 
@@ -871,14 +921,14 @@ body.auth-lock {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    font-size: 0.85rem;
+    font-size: var(--fs-md);
 }
 
 .auth-checkbox {
     display: flex;
     align-items: flex-start;
     gap: 8px;
-    font-size: 0.85rem;
+    font-size: var(--fs-md);
     color: var(--color-ink-dim);
     cursor: pointer;
 }
@@ -919,7 +969,7 @@ body.auth-lock {
     color: #14110d;
     font-family: var(--font-body);
     font-weight: 700;
-    font-size: 1rem;
+    font-size: var(--fs-base);
     cursor: pointer;
     transition: background 0.2s, transform 0.2s;
 }
@@ -931,7 +981,7 @@ body.auth-lock {
 
 .auth-switch {
     text-align: center;
-    font-size: 0.88rem;
+    font-size: var(--fs-md);
     color: var(--color-ink-faint);
 }
 
@@ -942,7 +992,7 @@ body.auth-lock {
     gap: 12px;
     margin: -6px 0;
     color: var(--color-ink-faint);
-    font-size: 0.78rem;
+    font-size: var(--fs-xs);
     line-height: 1.2;
     text-transform: uppercase;
     letter-spacing: 0.04em;
@@ -977,7 +1027,7 @@ body.auth-lock {
     background: var(--color-bg-card);
     color: var(--color-ink);
     font-family: var(--font-body);
-    font-size: 0.95rem;
+    font-size: var(--fs-base);
     font-weight: 700;
     cursor: pointer;
     transition: transform 0.2s ease, background 0.2s ease, border-color 0.2s ease;
@@ -1023,7 +1073,7 @@ body.auth-lock {
     border: 1px solid var(--color-line);
     color: var(--color-ink);
     font-family: var(--font-body);
-    font-size: 0.88rem;
+    font-size: var(--fs-md);
     font-weight: 600;
     text-align: center;
     box-shadow: 0 12px 32px rgba(0, 0, 0, 0.4);
@@ -1053,7 +1103,7 @@ body.auth-lock {
 }
 
 .auth-field-error {
-    font-size: 0.78rem;
+    font-size: var(--fs-xs);
     /* Text, so --color-alert-text rather than --color-alert. */
     color: var(--color-alert-text);
     display: none;
@@ -1076,8 +1126,11 @@ body.auth-lock {
     width: 100%;
     aspect-ratio: 1;
     text-align: center;
-    font-family: var(--font-mono);
-    font-size: 1.4rem;
+    /* Revision A2 (implementation_plan.md) — a single OTP digit, so it takes
+       --font-numeric (tabular-nums) instead of the removed --font-mono. */
+    font-family: var(--font-numeric);
+    font-variant-numeric: tabular-nums;
+    font-size: var(--fs-xl);
     background: var(--color-bg-card);
     border: 1px solid var(--color-line);
     border-radius: 10px;
@@ -1097,7 +1150,7 @@ body.auth-lock {
 
 .auth-otp-error {
     display: none;
-    font-size: 0.82rem;
+    font-size: var(--fs-sm);
     /* Text, so --color-alert-text rather than --color-alert. */
     color: var(--color-alert-text);
     margin-top: -8px;
@@ -1109,8 +1162,12 @@ body.auth-lock {
 
 .auth-switch [data-otp-timer] {
     color: var(--color-ink-faint);
-    font-family: var(--font-mono);
-    font-size: 0.82rem;
+    /* Revision A2 (implementation_plan.md) — a "00:45" countdown, so it
+       takes --font-numeric (tabular-nums) instead of the removed
+       --font-mono. */
+    font-family: var(--font-numeric);
+    font-variant-numeric: tabular-nums;
+    font-size: var(--fs-sm);
     margin-left: 4px;
 }
 
@@ -1219,7 +1276,7 @@ body.auth-lock {
 .auth-terms-title {
     font-family: var(--font-display);
     font-weight: 600;
-    font-size: 1.25rem;
+    font-size: var(--fs-lg);
     line-height: 1.2;
     color: var(--color-ink);
 }
@@ -1270,7 +1327,7 @@ body.auth-lock {
     color: #14110d;
     font-family: var(--font-body);
     font-weight: 700;
-    font-size: 0.92rem;
+    font-size: var(--fs-md);
     cursor: pointer;
     transition: background 0.2s, transform 0.2s;
 }
@@ -1302,8 +1359,9 @@ body.auth-lock {
    column. The *copy* still has exactly one source of truth: terms.html.
    -------------------------------------------------------------------------- */
 .auth-terms-body .terms-updated {
-    font-family: var(--font-mono);
-    font-size: 0.78rem;
+    /* Revision A2 (implementation_plan.md) — a "Last updated: <date>"
+       sentence, not a bare number/label, so it inherits the body font. */
+    font-size: var(--fs-xs);
     color: var(--color-ink-faint);
     margin-bottom: 24px;
 }
@@ -1315,7 +1373,7 @@ body.auth-lock {
 .auth-terms-body .terms-section h2 {
     font-family: var(--font-display);
     font-weight: 600;
-    font-size: 1.08rem;
+    font-size: var(--fs-lg);
     line-height: 1.3;
     color: var(--color-ink);
     margin-bottom: 10px;
@@ -1323,7 +1381,7 @@ body.auth-lock {
 
 .auth-terms-body .terms-section p,
 .auth-terms-body .terms-section li {
-    font-size: 0.92rem;
+    font-size: var(--fs-md);
     line-height: 1.7;
     color: var(--color-ink-dim);
 }
@@ -1376,11 +1434,11 @@ body.auth-lock {
     }
 
     .auth-brand .logo-text {
-        font-size: 1.3rem;
+        font-size: var(--fs-xl);
     }
 
     .auth-brand .auth-tagline {
-        font-size: 0.76rem;
+        font-size: var(--fs-xs);
     }
 
     .auth-terms-overlay {
@@ -1397,7 +1455,7 @@ body.auth-lock {
     }
 
     .auth-terms-title {
-        font-size: 1.1rem;
+        font-size: var(--fs-lg);
     }
 
     .auth-terms-body {
@@ -1410,7 +1468,7 @@ body.auth-lock {
 
     .auth-google-button {
         min-height: 46px;
-        font-size: 0.9rem;
+        font-size: var(--fs-md);
         padding: 12px 14px;
     }
 
@@ -1419,7 +1477,7 @@ body.auth-lock {
     }
 
     .auth-otp-box {
-        font-size: 1.1rem;
+        font-size: var(--fs-lg);
     }
 }
 
@@ -1442,15 +1500,15 @@ body.auth-lock {
     }
 
     .auth-brand .logo-text {
-        font-size: 1.2rem;
+        font-size: var(--fs-lg);
     }
 
     .auth-brand .auth-tagline {
-        font-size: 0.72rem;
+        font-size: var(--fs-xs);
     }
 
     .auth-google-button {
-        font-size: 0.86rem;
+        font-size: var(--fs-md);
         gap: 8px;
     }
 }

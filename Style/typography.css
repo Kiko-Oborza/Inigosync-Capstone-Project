@@ -1,0 +1,124 @@
+/* ==========================================================================
+   IñigoSync — Typography system (fonts, scale, weights)
+
+   Revision A2 (implementation_plan.md) — one place defines fonts, sizes,
+   weights and line-heights for the whole product. Linked FIRST (right after
+   the Google Fonts preconnects, before every other stylesheet) on all five
+   pages: Pages/Index.html, Pages/terms.html, Pages/user_dashboard.html,
+   Pages/staff_dashboard.html, Pages/owner_dashboard.html.
+
+   Fonts: Sora (display — headings, stat values, brand wordmark, hero
+   titles; weights 500/600/700) + Inter (body/UI; weights 400/500/600/700).
+   The Google Fonts link on every page was:
+     Oswald:wght@500;600;700&Inter:wght@400;500;600;700&Space+Mono:wght@400;700
+   and is now:
+     Sora:wght@500;600;700&Inter:wght@400;500;600;700
+
+   Space Mono is removed. --font-mono stays defined below (aliased to the
+   body stack) purely so nothing breaks if a stray `var(--font-mono)`
+   reference is ever missed or reintroduced; the six stylesheets that used
+   to set their own --font-display/--font-body/--font-mono in :root
+   (LandingPage.css, owner_dashboard.css, staff_dashboard.css) had that
+   block deleted and now consume the tokens defined here instead. Every
+   `font-family: var(--font-mono)` usage across those files was re-homed to
+   either --font-display (it was acting as an uppercase/label caption) or
+   --font-numeric (it was showing a number/ID/time — stats, receipt
+   numbers, table meta, chips, clocks, counts, prices), so --font-mono
+   itself should have zero real usages outside this file.
+
+   Sora renders visibly heavier/wider than Oswald at the same weight, so
+   every heading that used to be Oswald 700 was stepped down to
+   --fw-semibold (600) at its call site — see the per-rule comments in each
+   stylesheet. Oswald 500/600 stays Sora 500/600 as-is.
+   ========================================================================== */
+
+:root {
+    --font-display: 'Sora', 'Segoe UI', system-ui, sans-serif;
+    --font-body: 'Inter', 'Segoe UI', system-ui, sans-serif;
+    /* Numbers/IDs/times (stats, receipt numbers, table meta, chips, clocks,
+       counts, prices) — same face as body copy, just with tabular figures
+       via the .u-numeric/[data-numeric] utility below (or wherever a rule
+       adds font-variant-numeric: tabular-nums directly). */
+    --font-numeric: var(--font-body);
+    /* Back-compat alias only — Space Mono is removed (Revision A2). Kept so
+       any missed/future `var(--font-mono)` reference still resolves to
+       something sane instead of falling through to the browser default. */
+    --font-mono: var(--font-body);
+
+    /* Type scale — every font-size in Style/*.css maps to one of these. */
+    --fs-xs: .75rem;
+    --fs-sm: .8125rem;
+    --fs-md: .875rem;
+    --fs-base: 1rem;
+    --fs-lg: 1.125rem;
+    --fs-xl: 1.375rem;
+    --fs-2xl: 1.75rem;
+    --fs-3xl: 2.25rem;
+    /* Fluid hero/page-title size — used by true page heroes (e.g.
+       .hero-title), not every section header (some keep their own smaller
+       clamp() on purpose; see the comment at each such rule). */
+    --fs-hero: clamp(2.25rem, 5vw, 3.5rem);
+
+    /* Line-heights */
+    --lh-tight: 1.15;
+    --lh-snug: 1.3;
+    --lh-normal: 1.55;
+
+    /* Letter-spacing */
+    --ls-eyebrow: .08em;
+    --ls-tight: -.01em;
+
+    /* Weights */
+    --fw-regular: 400;
+    --fw-medium: 500;
+    --fw-semibold: 600;
+    --fw-bold: 700;
+}
+
+/* ==========================================================================
+   Base element rules
+
+   Note: every page that loads this file also loads a stylesheet with its
+   own `* { margin: 0; padding: 0; box-sizing: border-box; }` reset
+   (Style/LandingPage.css, Style/owner_dashboard.css, Style/
+   staff_dashboard.css each carry one), so the `margin: 0` on headings below
+   does not change any existing layout — it restates a value every page
+   already had.
+   ========================================================================== */
+html {
+    font-size: 16px;
+    -webkit-text-size-adjust: 100%;
+}
+
+body {
+    font-family: var(--font-body);
+    font-size: var(--fs-base);
+    line-height: var(--lh-normal);
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+}
+
+h1, h2, h3, h4, h5, h6 {
+    font-family: var(--font-display);
+    line-height: var(--lh-tight);
+    letter-spacing: var(--ls-tight);
+    font-weight: var(--fw-semibold);
+    margin: 0;
+}
+
+h1 { font-size: var(--fs-3xl); }
+h2 { font-size: var(--fs-2xl); }
+h3 { font-size: var(--fs-xl); }
+h4 { font-size: var(--fs-lg); }
+
+button, input, select, textarea {
+    font-family: inherit;
+    font-size: inherit;
+}
+
+/* Utility for inline numbers/IDs/times outside the six stylesheets' own
+   rules (e.g. ad-hoc markup) — same alignment intent as --font-numeric. */
+.u-numeric, [data-numeric] {
+    font-family: var(--font-numeric);
+    font-variant-numeric: tabular-nums;
+}
