@@ -385,14 +385,28 @@
                          overviewSortMode ('sport') — see that file's
                          declaration comment. -->
                     <div class="dash-card">
-                        <div class="dash-card-head">
+                        <!-- Availability date (D5, implementation_plan.md
+                             "Revision 5") — lets the customer pick which
+                             calendar day the peek strip below reflects,
+                             instead of always today. `min`/`value` are set by
+                             includes/Dashboard.js (same todayDateInputValue()
+                             the Booking wizard's own date field already
+                             uses), so a past date can't be selected here
+                             either. -->
+                        <div class="dash-card-head dash-overview-controls">
                             <h3>Courts</h3>
-                            <label for="dash-overview-sort" class="sr-only">Sort courts</label>
-                            <select id="dash-overview-sort" class="dash-select" data-dash-overview-sort>
-                                <option value="sport" selected>Sport (A–Z)</option>
-                                <option value="available">Available first</option>
-                                <option value="price">Price: Low to High</option>
-                            </select>
+                            <div class="dash-overview-controls-fields">
+                                <label class="dash-overview-date-field">
+                                    <span class="sr-only">Availability for</span>
+                                    <input type="date" class="dash-input" data-dash-overview-date aria-label="Availability for">
+                                </label>
+                                <label for="dash-overview-sort" class="sr-only">Sort courts</label>
+                                <select id="dash-overview-sort" class="dash-select" data-dash-overview-sort>
+                                    <option value="sport" selected>Sport (A–Z)</option>
+                                    <option value="available">Available first</option>
+                                    <option value="price">Price: Low to High</option>
+                                </select>
+                            </div>
                         </div>
 
                         <div class="dash-court-groups" data-dash-overview-court-list>
@@ -525,24 +539,35 @@
                                 <input type="date" class="dash-input" data-dash-book-date>
                             </div>
 
-                            <!-- Part 3 (implementation_plan.md, "Multi-hour
-                                 booking with availability checking") — this
-                                 used to be 12 hardcoded <button data-dash-slot>
-                                 elements (three permanently disabled as pure
-                                 mockup, 12 PM skipped entirely, never
-                                 regenerated per court or date). Now an empty
-                                 container renderSlotGrid()/paintSlotGrid() in
-                                 includes/Dashboard.js fill with one real,
-                                 clickable button per bookable hour
-                                 ([OPEN_HOUR, CLOSE_HOUR) from
-                                 includes/businessHours.js), supporting a
-                                 multi-hour RANGE selection (first click =
-                                 start, second click = end) checked against
-                                 real `booking` rows for the chosen court +
-                                 unit + date. -->
+                            <!-- Revision 5, D3 (implementation_plan.md) — the
+                                 old 12-button clickable slot grid (Part 3) is
+                                 gone entirely per the user's explicit "there
+                                 should be no slots to click" correction.
+                                 Replaced by a From / To time-range picker:
+                                 two plain <select>s whose OPTIONS shrink to
+                                 what's actually free on the chosen court +
+                                 unit + date, so there is nothing to click
+                                 that isn't already guaranteed bookable.
+                                 includes/Dashboard.js's renderTimePickers()
+                                 fills both from computeFreeWindows() (built
+                                 on the same fetchDayBookings()/
+                                 isSlotHourBooked() this step has always used)
+                                 and writes the "Open on this date" status
+                                 line below them. -->
                             <div class="dash-form-group">
-                                <span class="dash-form-label">Available time slots</span>
-                                <div class="dash-slot-grid" data-dash-slot-grid></div>
+                                <span class="dash-form-label">Time range</span>
+                                <p class="dash-form-hint">Choose a start and end time (8:00 AM – 8:00 PM, whole hours).</p>
+                                <div class="dash-time-range">
+                                    <div class="dash-form-group">
+                                        <span class="dash-form-label">From</span>
+                                        <select class="dash-select" data-dash-book-from></select>
+                                    </div>
+                                    <div class="dash-form-group">
+                                        <span class="dash-form-label">To</span>
+                                        <select class="dash-select" data-dash-book-to></select>
+                                    </div>
+                                </div>
+                                <p class="dash-form-hint" data-dash-book-open-windows>Select a court first.</p>
                             </div>
                         </div>
 
@@ -595,7 +620,7 @@
                             <div class="dash-wizard-summary">
                                 <div class="dash-summary-row"><span>Court</span><strong data-dash-summary-court>Loading…</strong></div>
                                 <div class="dash-summary-row"><span>Date</span><strong data-dash-summary-date>Loading…</strong></div>
-                                <div class="dash-summary-row"><span>Time</span><strong data-dash-summary-time>— Select a slot —</strong></div>
+                                <div class="dash-summary-row"><span>Time</span><strong data-dash-summary-time>— Select a time —</strong></div>
                                 <div class="dash-summary-row"><span>Rate</span><strong data-dash-summary-rate>—</strong></div>
 
                                 <div class="dash-summary-divider"></div>
@@ -609,7 +634,7 @@
                                     <span data-dash-summary-total>—</span>
                                 </div>
 
-                                <button type="button" class="dash-btn-primary" data-dash-book-submit disabled>Select a time slot to continue</button>
+                                <button type="button" class="dash-btn-primary" data-dash-book-submit disabled>Select a time range to continue</button>
                             </div>
                         </div>
 
@@ -898,37 +923,46 @@
                         </div>
                     </div>
 
-                    <!-- Personal Information — §9, D3. The old single "Full
-                         name" box is now three (First/Middle/Surname); see
-                         includes/Dashboard.js's parseFullName()/
-                         populateSettingsNameFields() for how they're loaded
-                         (preferring the profiles.first_name/middle_name/
-                         last_name columns added by database/schema/
-                         008_profile_name_parts.sql, falling back to parsing
-                         full_name when those are absent/undefined) and how
-                         Save keeps full_name in sync for the owner/staff
-                         dashboards that still read it. -->
+                    <!-- Personal Information — Revision 5 (implementation_plan.md)
+                         locks this card down: names and email are no longer
+                         editable from here at all (the user's explicit
+                         instruction — personal info changes go through
+                         staff/admin, not self-service). The three name boxes
+                         stay populated exactly as before (readonly, not
+                         removed) via includes/Dashboard.js's parseFullName()/
+                         populateSettingsNameFields() (preferring
+                         profiles.first_name/middle_name/last_name, database/
+                         schema/008_profile_name_parts.sql, falling back to
+                         parsing full_name when those are absent/undefined) —
+                         only the Save/Cancel pair and the write path behind
+                         them are gone, since there is nothing left on this
+                         card to save. Mobile number is the one exception:
+                         still editable, but now gated behind real SMS OTP
+                         (D6) instead of a plain Save — see the Verify button
+                         below and the OTP dialog near the end of this
+                         file. -->
                     <div class="dash-card">
                         <div class="dash-card-head">
                             <h3>Personal Information</h3>
                         </div>
+                        <p class="dash-card-hint">Personal information can't be changed here.</p>
                         <div class="dash-name-fields">
                             <div class="dash-form-group">
                                 <span class="dash-form-label">First name</span>
-                                <input type="text" class="dash-input" placeholder="Juan" value="Juan" data-dash-settings-firstname>
+                                <input type="text" class="dash-input" placeholder="Juan" value="Juan" readonly data-dash-settings-firstname>
                             </div>
                             <div class="dash-form-group">
                                 <span class="dash-form-label">Middle name <span class="dash-form-label-hint">(optional)</span></span>
-                                <input type="text" class="dash-input" placeholder="Reyes" data-dash-settings-middlename>
+                                <input type="text" class="dash-input" placeholder="Reyes" readonly data-dash-settings-middlename>
                             </div>
                             <div class="dash-form-group">
                                 <span class="dash-form-label">Surname</span>
-                                <input type="text" class="dash-input" placeholder="Dela Cruz" value="Dela Cruz" data-dash-settings-lastname>
+                                <input type="text" class="dash-input" placeholder="Dela Cruz" value="Dela Cruz" readonly data-dash-settings-lastname>
                             </div>
                         </div>
                         <div class="dash-settings-grid">
                             <div class="dash-form-group">
-                                <span class="dash-form-label">Email address · cannot be changed here</span>
+                                <span class="dash-form-label">Email address · cannot be changed</span>
                                 <input type="email" class="dash-input" value="juan.delacruz@email.com" disabled data-dash-settings-email>
                             </div>
                             <div class="dash-form-group">
@@ -943,14 +977,27 @@
                                      stored spaceless (window.validatePhMobile's `normalized`
                                      is always the local 09XXXXXXXXX form), so a spaced demo
                                      value would be the one thing on this page that could
-                                     never actually come from the database. -->
-                                <input type="tel" class="dash-input" placeholder="09XX XXX XXXX" value="09123456789"
-                                       inputmode="numeric" maxlength="11" data-digits-only data-dash-settings-mobile>
+                                     never actually come from the database.
+
+                                     Revision 5, D6 (implementation_plan.md) — this field is
+                                     still editable (unlike the name/email fields above), but
+                                     typing a new number no longer saves anything by itself:
+                                     Verify sends a real SMS OTP (Supabase Auth's Phone
+                                     provider) to the new number and only writes
+                                     profiles.contact_num once that code is confirmed — see
+                                     includes/Dashboard.js. The badge next to the field shows
+                                     once the number on file has been proven this way
+                                     (profiles.phone_verified). -->
+                                <div class="dash-mobile-verify-row">
+                                    <input type="tel" class="dash-input" placeholder="09XX XXX XXXX" value="09123456789"
+                                           inputmode="numeric" maxlength="11" data-digits-only data-dash-settings-mobile>
+                                    <button type="button" class="dash-btn-ghost dash-mobile-verify-btn" data-dash-mobile-verify>Verify</button>
+                                </div>
+                                <span class="dash-mobile-verified-badge" data-dash-mobile-verified hidden>
+                                    <svg viewBox="0 0 24 24" width="14" height="14" fill="none" aria-hidden="true"><path d="M20 6L9 17l-5-5" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                                    Verified
+                                </span>
                             </div>
-                        </div>
-                        <div class="dash-form-actions">
-                            <button type="button" class="dash-btn-ghost" data-dash-settings-cancel="profile">Cancel</button>
-                            <button type="button" class="dash-btn-save" data-dash-settings-save="profile">Save Changes</button>
                         </div>
                     </div>
 
@@ -1030,61 +1077,78 @@
 
             </main>
 
-            <!-- Same site footer as Pages/Index.html (verbatim content —
-                 address, phone, email, Facebook, embedded map), appended
-                 after <main> rather than inside any [data-dash-panel] so it
-                 always renders regardless of which dashboard tab is active.
-                 No new CSS needed: .site-footer/.footer-*/.section-inner
-                 already live in Style/LandingPage.css, already <link>ed
-                 above. -->
-            <footer class="site-footer">
-                <div class="section-inner footer-inner">
-                    <div class="footer-brand">
-                        <div class="footer-brand-main">
-                            <img src="../assets/Logo/WebLogo.png" alt="IñigoSync logo" class="footer-logo">
-                            <div class="logo-text">IñigoSync</div>
+            <!-- Revision 5, D8/D9 (implementation_plan.md) — a slim,
+                 dashboard-only footer, replacing the landing-page footer
+                 clone this page used to render on every tab. Still appended
+                 after <main> rather than inside any [data-dash-panel] (same
+                 position as before) so exactly one instance exists
+                 regardless of which tab is active — includes/Dashboard.js's
+                 setActivePanel() (D8) is what actually shows/hides it,
+                 toggling `hidden` so it is visible ONLY on the Dashboard/
+                 Overview tab (name === 'overview') and hidden everywhere
+                 else, including the notification -> Receipts deep link. No
+                 `hidden` attribute here in the raw markup — Overview is
+                 ALSO the default-active `[data-dash-panel]` without any JS
+                 having run yet (see its own "is-active" class above), so
+                 the footer starts visible to match that same no-JS
+                 baseline; setActivePanel() only ever needs to hide it from
+                 that point on, never show it for the very first paint.
+                 Quick links reuse the existing [data-dash-nav] tab switcher
+                 — no separate navigation logic. The Google Maps <iframe>
+                 the old footer embedded is gone (D9): it was the single
+                 heaviest element on this page and already had to be
+                 special-cased out of every receipt's html2canvas capture
+                 (see downloadReceiptAsPng()'s `ignoreElements` in
+                 includes/Dashboard.js) — a plain "Get directions" link
+                 replaces it. Styled by the new .dash-footer* rules in
+                 Style/Dashboard.css (dashboard tokens, not
+                 Style/LandingPage.css's .site-footer/.footer-* — those stay
+                 untouched for Pages/Index.html). -->
+            <footer class="dash-footer" data-dash-footer>
+                <div class="dash-footer-inner">
+                    <div class="dash-footer-col dash-footer-brand">
+                        <div class="dash-footer-brand-main">
+                            <img src="../assets/Logo/WebLogo.png" alt="IñigoSync logo">
+                            <span class="dash-footer-brand-name">IñigoSync</span>
                         </div>
-                        <p class="footer-tagline">Book courts, manage schedules, and stay connected with Iñigos Sports Center.</p>
+                        <p>Book courts, manage schedules, and stay connected with Iñigos Sports Center.</p>
                     </div>
 
-                    <div class="footer-grid">
-                        <div class="footer-card">
-                            <h3>Visit us</h3>
-                            <p>Iñigos Sports Center</p>
-                            <p>Brgy. Bocohan, Diversion Road</p>
-                            <p>Lucena City</p>
-                        </div>
-
-                        <div class="footer-card">
-                            <h3>Contact</h3>
-                            <a href="tel:+639281546876">+63 928 154 6876</a>
-                            <a href="mailto:itsrosem8@gmail.com">itsrosem8@gmail.com</a>
-                        </div>
-
-                        <div class="footer-card">
-                            <h3>Follow</h3>
-                            <a href="https://www.facebook.com/profile.php?id=100064109438955" target="_blank" rel="noopener noreferrer">
-                                <span class="footer-social-icon" aria-hidden="true">
-                                    <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
-                                        <path d="M13.5 22v-8.5h2.8l.4-3.2h-3.2V4.3c0-.9.3-1.6 1.6-1.6h1.7V.1c-.3 0-1.3-.1-2.4-.1-2.4 0-4.1 1.5-4.1 4.2v2.4H7.2v3.2h2.8V22h3.5z"/>
-                                    </svg>
-                                </span>
-                                <span>Facebook</span>
-                            </a>
-                        </div>
+                    <div class="dash-footer-col">
+                        <h4>Quick links</h4>
+                        <button type="button" data-dash-nav="booking">Book a Court</button>
+                        <button type="button" data-dash-nav="bookings">My Bookings</button>
+                        <button type="button" data-dash-nav="receipts">Receipts</button>
+                        <button type="button" data-dash-nav="settings">Account Settings</button>
                     </div>
 
-                    <div class="footer-map-block">
-                        <p class="footer-map-label">Iñigos Sports Center · Brgy. Bocohan, Diversion Road, Lucena City</p>
-                        <iframe
-                            class="footer-map-frame"
-                            src="https://www.google.com/maps?q=I%C3%B1igos%20Sports%20Center%20Brgy.%20Bocohan%20Lucena%20City&z=15&output=embed"
-                            loading="lazy"
-                            referrerpolicy="no-referrer-when-downgrade"
-                            title="Iñigos Sports Center location"
-                            allowfullscreen>
-                        </iframe>
+                    <div class="dash-footer-col">
+                        <h4>Need help?</h4>
+                        <a href="tel:+639281546876">+63 928 154 6876</a>
+                        <a href="mailto:itsrosem8@gmail.com">itsrosem8@gmail.com</a>
+                        <span>Iñigos Sports Center, Brgy. Bocohan, Diversion Road, Lucena City</span>
+                        <!-- Filled by includes/Dashboard.js from
+                             window.InigoBusinessHours (OPEN_HOUR/CLOSE_HOUR)
+                             so this text can never quietly drift from the
+                             real bookable window (D1) the way a hand-typed
+                             string could. -->
+                        <span>Operating hours: <span data-dash-footer-hours>8:00 AM – 8:00 PM daily</span></span>
+                        <a href="https://www.google.com/maps?q=I%C3%B1igos%20Sports%20Center%20Brgy.%20Bocohan%20Lucena%20City&z=15" target="_blank" rel="noopener noreferrer">Get directions</a>
                     </div>
+
+                    <div class="dash-footer-col">
+                        <h4>Policies</h4>
+                        <a href="terms.html" target="_blank" rel="noopener noreferrer">Terms &amp; Conditions</a>
+                        <span>Bookings can't be cancelled or refunded; arriving more than 30 minutes late automatically marks it "Unattended."</span>
+                        <a href="https://www.facebook.com/profile.php?id=100064109438955" target="_blank" rel="noopener noreferrer" class="dash-footer-social">
+                            <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M13.5 22v-8.5h2.8l.4-3.2h-3.2V4.3c0-.9.3-1.6 1.6-1.6h1.7V.1c-.3 0-1.3-.1-2.4-.1-2.4 0-4.1 1.5-4.1 4.2v2.4H7.2v3.2h2.8V22h3.5z"/></svg>
+                            Facebook
+                        </a>
+                    </div>
+                </div>
+
+                <div class="dash-footer-bottom">
+                    <span>© 2026 IñigoSync · Iñigos Sports Center, Lucena City. All rights reserved.</span>
                 </div>
             </footer>
         </div>
@@ -1134,6 +1198,55 @@
         </div>
     </div>
 
+    <!-- ================================================================
+         MOBILE NUMBER VERIFICATION (OTP) DIALOG — Revision 5, D6
+         (implementation_plan.md). Reuses the SAME generic
+         .dash-modal-overlay/.dash-modal shell as the Feedback dialog above,
+         rather than a second implementation. Opened by Account Settings'
+         "Verify" button (data-dash-mobile-verify) only AFTER
+         sb.auth.updateUser({ phone }) has actually sent a real code — this
+         is never opened speculatively, and the code typed here is never
+         checked against anything generated client-side (see
+         includes/Dashboard.js; "no fake verification path" is a hard
+         constraint of this revision). The 6 boxes / auto-advance / paste /
+         Resend-with-cooldown behavior mirrors Pages/Index.html's own email
+         OTP panel (data-otp-box, includes/auth.js) under dash-otp-* names —
+         Style/Auth.css itself is intentionally NOT linked on this page, so
+         that sizing is ported into Style/Dashboard.css's own .dash-otp-box
+         rule instead of sharing the class across stylesheets. -->
+    <div class="dash-modal-overlay" data-dash-mobile-otp-overlay hidden>
+        <div class="dash-modal" role="dialog" aria-modal="true" aria-labelledby="dashMobileOtpTitle" tabindex="-1" data-dash-mobile-otp-dialog>
+            <button type="button" class="dash-modal-close" data-dash-mobile-otp-cancel aria-label="Close">
+                <svg viewBox="0 0 24 24" fill="none"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+            </button>
+
+            <h3 id="dashMobileOtpTitle">Verify your mobile number</h3>
+            <p class="dash-modal-sub">Enter the 6-digit code we sent to <strong data-dash-mobile-otp-phone>your mobile number</strong>.</p>
+
+            <div class="dash-otp-row">
+                <input type="text" inputmode="numeric" pattern="[0-9]*" maxlength="1" class="dash-otp-box" data-dash-otp-box aria-label="Digit 1">
+                <input type="text" inputmode="numeric" pattern="[0-9]*" maxlength="1" class="dash-otp-box" data-dash-otp-box aria-label="Digit 2">
+                <input type="text" inputmode="numeric" pattern="[0-9]*" maxlength="1" class="dash-otp-box" data-dash-otp-box aria-label="Digit 3">
+                <input type="text" inputmode="numeric" pattern="[0-9]*" maxlength="1" class="dash-otp-box" data-dash-otp-box aria-label="Digit 4">
+                <input type="text" inputmode="numeric" pattern="[0-9]*" maxlength="1" class="dash-otp-box" data-dash-otp-box aria-label="Digit 5">
+                <input type="text" inputmode="numeric" pattern="[0-9]*" maxlength="1" class="dash-otp-box" data-dash-otp-box aria-label="Digit 6">
+            </div>
+
+            <p class="dash-otp-error" data-dash-mobile-otp-error>That code didn't match. Please try again.</p>
+
+            <p class="dash-form-hint">
+                Didn't get a code?
+                <button type="button" class="dash-link-btn" data-dash-mobile-otp-resend>Resend code</button>
+                <span data-dash-mobile-otp-timer></span>
+            </p>
+
+            <div class="dash-form-actions">
+                <button type="button" class="dash-btn-ghost" data-dash-mobile-otp-cancel>Cancel</button>
+                <button type="button" class="dash-btn-save" data-dash-mobile-otp-confirm>Confirm</button>
+            </div>
+        </div>
+    </div>
+
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
     <script src="../Config/supabaseClient.js"></script>
     <script src="../includes/authGuard.js"></script>
@@ -1156,10 +1269,11 @@
          Dashboard.js, which reads the downpayment percentage from it. -->
     <script src="../includes/appSettings.js"></script>
     <!-- Shared operating-hours constants (Part 3, multi-hour booking —
-         implementation_plan.md). Must load before Dashboard.js, whose Step 2
-         slot grid and Overview peek widget both read
-         window.InigoBusinessHours.OPEN_HOUR/CLOSE_HOUR/formatHourLabel at
-         parse time. -->
+         implementation_plan.md; CLOSE_HOUR updated by Revision 5, D1). Must
+         load before Dashboard.js, whose Step 2 From/To pickers and Overview
+         peek widget both read window.InigoBusinessHours.OPEN_HOUR/
+         CLOSE_HOUR/formatHourLabel/formatHourRangeLabelShort at parse
+         time. -->
     <script src="../includes/businessHours.js"></script>
     <!-- Receipt PNG download (§7, D8) — same no-build-step CDN <script>
          convention as the supabase-js tag above. Must load before

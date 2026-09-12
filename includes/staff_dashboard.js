@@ -833,16 +833,18 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // 2-hour windows, [OPEN_HOUR, CLOSE_HOUR) from includes/businessHours.js
     // (Part 3, implementation_plan.md) — used to be its own hardcoded
-    // [8,10,12,14,16,18], which assumed an 8 PM closing time. The real
-    // closing time (CLOSE_HOUR = 21, 9 PM) means this now derives ONE MORE
-    // column (adds hour 20) than before — a real coverage fix, not a
-    // cosmetic change: a booking in the 8 PM-9 PM hour was previously
-    // invisible on this grid, because the old array's last column
-    // (starting at 18) only covered 6 PM-8 PM. Literal fallback here only
+    // [8,10,12,14,16,18], which assumed an 8 PM closing time. Part 3
+    // briefly made this derive ONE MORE column (through hour 20) once
+    // CLOSE_HOUR became 21/9 PM, fixing a real gap where a booking in the
+    // 8 PM-9 PM hour was invisible on this grid. Revision 5's D1
+    // (implementation_plan.md) returns CLOSE_HOUR to 20/8 PM on the user's
+    // explicit instruction, so this is back to exactly 6 columns —
+    // [8,10,12,14,16,18], last one covering 6 PM-8 PM — the same shape the
+    // literal fallback below has always used. Literal fallback here only
     // for the "should never happen" case this file's own load-order guard
     // already logs (see the window.InigoCourtsData guard further below,
     // same pattern).
-    const SCHEDULE_SLOTS = window.InigoBusinessHours ? window.InigoBusinessHours.hoursRange(2) : [8, 10, 12, 14, 16, 18, 20];
+    const SCHEDULE_SLOTS = window.InigoBusinessHours ? window.InigoBusinessHours.hoursRange(2) : [8, 10, 12, 14, 16, 18];
     const SCHEDULE_SLOT_MS = 2 * 60 * 60 * 1000;
     // Kept equal to database/schema/004_staff_module.sql's
     // booking.duration_minutes DEFAULT — see that file's header comment.

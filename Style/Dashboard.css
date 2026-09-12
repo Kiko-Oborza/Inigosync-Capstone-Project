@@ -741,6 +741,8 @@ body.dash-body {
     display: flex;
     align-items: center;
     justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 8px 16px;
     margin-bottom: 18px;
 }
 
@@ -777,6 +779,29 @@ body.dash-body {
     font-size: 0.82rem;
 }
 
+/* Overview Courts card header (Revision 5, D5 — implementation_plan.md) —
+   groups the new Availability date field (data-dash-overview-date) with
+   the existing sort <select> into ONE flex child, so .dash-card-head's own
+   h3-vs-controls space-between layout above needs no changes. Wraps onto
+   its own line under "Courts" (via .dash-card-head's own flex-wrap) if the
+   card gets too narrow for both controls plus the heading. */
+.dash-overview-controls-fields {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+/* Same width/padding/font-size as .dash-card-head .dash-select immediately
+   above, so the date field and the sort <select> beside it read as one
+   deliberate control pair rather than two differently-sized inputs. */
+.dash-overview-date-field .dash-input {
+    width: auto;
+    min-width: 150px;
+    padding: 8px 10px;
+    font-size: 0.82rem;
+}
+
 /* Two column layout */
 .dash-grid-2 {
     display: grid;
@@ -797,12 +822,18 @@ body.dash-body {
 }
 
 /* Compact modifier for .dash-slot, used inside the peek strip
-   (class="dash-slot dash-slot-mini") — same open/booked color logic as the
-   Booking panel's own slots, just smaller. */
+   (class="dash-slot dash-slot-mini") — same open/booked/past color logic as
+   .dash-slot's own base rules, just smaller. Revision 5, D2/D5
+   (implementation_plan.md) — the pill's own label is now a short RANGE
+   (formatHourRangeLabelShort(), e.g. "8–9 AM", up to "11 AM–12 PM" for the
+   one hour that crosses noon) instead of a single start time, so
+   white-space: nowrap keeps that longer label on one line inside its own
+   small pill instead of wrapping mid-word. */
 .dash-slot-mini {
     padding: 5px 8px;
     border-radius: 8px;
     font-size: 0.68rem;
+    white-space: nowrap;
 }
 
 /* Revision 2, R1 (implementation_plan.md) — peek-strip pills are a
@@ -1391,12 +1422,71 @@ body.dash-body {
     cursor: not-allowed;
 }
 
-.dash-slot-grid {
-    display: grid;
-    grid-template-columns: repeat(4, 1fr);
-    gap: 10px;
+/* Revision 5 (implementation_plan.md) — Account Settings' name fields are
+   read-only now (not disabled): a readonly field still submits its value
+   and reads as normal body text (unlike :disabled's greyed-out look, which
+   would wrongly suggest the FIELD itself is broken/unavailable rather than
+   "this data just isn't editable here"). A subtler visual cue than
+   :disabled — same border/background as an editable field, just a
+   not-allowed cursor and a slightly dimmer background — since the value
+   itself is still perfectly readable, current, real data. */
+.dash-input[readonly] {
+    background: var(--color-bg);
+    cursor: not-allowed;
 }
 
+/* Small subtext under a .dash-card-head, e.g. Personal Information's
+   "Personal information can't be changed here." (Revision 5) — same visual
+   weight as .dash-panel-head's own subtitle <p>, just scoped to a card
+   instead of a whole panel. */
+.dash-card-hint {
+    color: var(--color-ink-faint);
+    font-size: 0.85rem;
+    margin: -8px 0 20px;
+}
+
+/* Step 2's "Choose a start and end time…" intro line and its dynamic
+   "Open on this date: …"/"Fully booked on this date." status line
+   (Revision 5, D3 — implementation_plan.md's renderTimePickers()). Reused
+   as a general-purpose small-print hint wherever a .dash-form-group needs
+   one line of secondary guidance under its label/control. */
+.dash-form-hint {
+    font-size: 0.82rem;
+    color: var(--color-ink-faint);
+    line-height: 1.5;
+    margin: 0;
+}
+
+/* From/To time-range picker (Revision 5, D3) — replaces Step 2's old
+   .dash-slot-grid. Two columns on anything wide enough to comfortably show
+   both selects side by side; collapses to one below 620px (a narrower
+   threshold than the 640px tier most of this file uses, since two
+   <select>s side by side stay usable a little longer than, say, the
+   Booking wizard's own two/three-column form grids before they need to
+   stack — see the Responsive section for the exact override). */
+.dash-time-range {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    margin-bottom: 4px;
+}
+
+/* .dash-form-group's own margin-bottom (meant for stacked, non-flex-gapped
+   form rows elsewhere on this page) would otherwise double up with the
+   gap above — same override .dash-book-step1-fields/.dash-court-body
+   already apply to their own nested .dash-form-group children, for the
+   same reason. */
+.dash-time-range .dash-form-group {
+    margin-bottom: 0;
+}
+
+/* .dash-slot-grid (Step 2's old clickable hour-button grid, Part 3) is
+   removed as of Revision 5, D3 (implementation_plan.md) — Step 2 is a
+   From/To <select> pair now (.dash-time-range further below), with nothing
+   left to click. .dash-slot itself, its hover rule, and .is-unavailable/
+   .is-past below all STAY: the Overview panel's read-only peek strip
+   (.dash-overview-peek-strip .dash-slot-mini) still uses them for its
+   open/booked/past pill coloring. */
 .dash-slot {
     padding: 10px 6px;
     border-radius: 10px;
@@ -1415,13 +1505,10 @@ body.dash-body {
     color: var(--color-ink);
 }
 
-.dash-slot.is-selected {
-    background: var(--color-primary);
-    border-color: var(--color-primary);
-    color: #14110d;
-    font-weight: 700;
-}
-
+/* .is-selected/.is-in-range/.is-range-start/.is-range-end (Part 3's
+   clickable-range selection states) are removed as of Revision 5, D3 —
+   nothing sets those classes any more now that Step 2 is a From/To
+   <select> pair instead of clickable buttons. */
 .dash-slot.is-unavailable {
     color: var(--color-ink-faint);
     text-decoration: line-through;
@@ -1429,35 +1516,18 @@ body.dash-body {
     opacity: 0.5;
 }
 
-/* Part 3 (implementation_plan.md, "Multi-hour booking with availability
-   checking") — an hour earlier than "now" on the currently selected date.
-   Distinct from .is-unavailable (booked by someone else): less opaque, since
-   "not bookable today" is a less urgent signal than "already taken". */
+/* An hour earlier than "now" on the currently selected date. Distinct from
+   .is-unavailable (booked by someone else): less opaque, since "not
+   bookable today" is a less urgent signal than "already taken". Used by
+   the Overview peek strip (renderOverviewSlotPill() in
+   includes/Dashboard.js, Revision 5 D5) — Step 2's own past-hour handling
+   now lives entirely in its From/To <select> OPTIONS (an elapsed hour is
+   simply never offered), so this class has no consumer there any more. */
 .dash-slot.is-past {
     color: var(--color-ink-faint);
     text-decoration: line-through;
     cursor: not-allowed;
     opacity: 0.35;
-}
-
-/* Multi-hour range picker (Part 3) — .is-in-range marks an hour strictly
-   BETWEEN the two clicked boundary hours. The boundaries themselves keep
-   the .is-selected solid fill above (a single-hour selection is just a
-   range whose start and end are the same hour, so it only ever gets
-   .is-selected) plus .is-range-start/.is-range-end below for a small ring
-   so the two ends read as deliberate boundaries. rgba(255, 106, 44, *) is
-   this stylesheet's own existing translucent-primary literal (see
-   .dash-notice and the notification-dot rules above) — reused here rather
-   than introduced fresh. */
-.dash-slot.is-in-range {
-    background: rgba(255, 106, 44, 0.16);
-    border-color: var(--color-primary);
-    color: var(--color-ink);
-}
-
-.dash-slot.is-range-start,
-.dash-slot.is-range-end {
-    box-shadow: inset 0 0 0 2px var(--color-primary-dim);
 }
 
 .dash-payment-options {
@@ -1871,6 +1941,55 @@ body.dash-body {
     outline-offset: 3px;
 }
 
+/* Store-receipt/ticket redesign (Revision 5, D7 — implementation_plan.md).
+   Kept to the same deliberately simple/non-exotic rules this card already
+   followed pre-redesign (flexbox, solid backgrounds, no gradients/
+   backdrop-filter/transforms/box-shadow/external images) — the user's
+   explicit priority for this revision is that the downloaded PNG (see
+   downloadReceiptAsPng() in includes/Dashboard.js) look IDENTICAL to the
+   on-screen card, and html2canvas does not reliably support every modern
+   CSS feature. Plain `border-style: dashed` for the "perforation" dividers
+   is the one new technique here; it is a long-supported CSS2 feature
+   html2canvas's own border renderer handles as ordinary canvas line
+   dashes, unlike the gradient-based dashed-line tricks this file
+   deliberately avoids elsewhere. */
+.dash-receipt-brand {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 8px;
+}
+
+.dash-receipt-brand-name {
+    font-family: var(--font-display);
+    font-weight: 700;
+    font-size: 1.05rem;
+    color: var(--color-primary);
+    letter-spacing: 0.02em;
+}
+
+.dash-receipt-brand-tag {
+    font-family: var(--font-mono);
+    font-size: 0.64rem;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: var(--color-ink-faint);
+}
+
+.dash-receipt-no {
+    font-family: var(--font-mono);
+    font-size: 0.76rem;
+    color: var(--color-ink-faint);
+}
+
+/* The dashed "perforation" line between a ticket-stub receipt's sections —
+   reused for every divider on the card rather than one rule per position. */
+.dash-receipt-divider {
+    height: 0;
+    border: none;
+    border-top: 2px dashed var(--color-line);
+}
+
 .dash-receipt-top {
     display: flex;
     align-items: flex-start;
@@ -1889,21 +2008,50 @@ body.dash-body {
     font-weight: 600;
 }
 
-.dash-receipt-top p {
-    font-family: var(--font-mono);
-    font-size: 0.74rem;
-    color: var(--color-ink-faint);
-    margin-top: 2px;
-}
-
-.dash-receipt-rows {
+/* Sport/Date/Time rows, and the itemised Rate/hr × hours row (D7) — same
+   shape as the old .dash-receipt-rows this replaces, renamed since this
+   redesign uses it for more than one block on the card (see
+   renderReceiptCard() in includes/Dashboard.js). */
+.dash-receipt-meta {
     display: flex;
     flex-direction: column;
     gap: 6px;
 }
 
-.dash-receipt-rows .dash-summary-row {
+.dash-receipt-meta .dash-summary-row {
     font-size: 0.82rem;
+}
+
+/* The prominent TOTAL row (D7) — same label/value shape as the Booking
+   wizard's own .dash-summary-total, reused here rather than duplicated
+   with different numbers, plus the uppercase treatment a ticket stub's
+   "TOTAL" line reads with. */
+.dash-receipt-total {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+}
+
+.dash-receipt-total span:first-child {
+    font-family: var(--font-display);
+    font-weight: 700;
+    font-size: 0.9rem;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+}
+
+.dash-receipt-total span:last-child {
+    font-family: var(--font-mono);
+    font-size: 1.3rem;
+    color: var(--color-primary);
+}
+
+.dash-receipt-thanks {
+    text-align: center;
+    font-size: 0.78rem;
+    font-style: italic;
+    color: var(--color-ink-faint);
+    margin: 0;
 }
 
 .dash-receipt-actions {
@@ -2043,6 +2191,101 @@ body.dash-body {
     gap: 20px;
 }
 
+/* Mobile number verify row (Revision 5, D6 — implementation_plan.md) —
+   input + Verify button side by side; wraps onto two lines on a narrow
+   .dash-form-group instead of squeezing the button down to nothing. */
+.dash-mobile-verify-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.dash-mobile-verify-row .dash-input {
+    flex: 1 1 160px;
+    min-width: 0;
+}
+
+.dash-mobile-verify-btn {
+    flex: 0 0 auto;
+    padding: 12px 20px;
+}
+
+/* "Verified" badge — shown once profiles.phone_verified is true for the
+   number currently on file (renderProfile()/populateMobileVerifiedBadge()
+   in includes/Dashboard.js). --color-court-green matches the same "this
+   succeeded" green .dash-status.confirmed already uses. */
+.dash-mobile-verified-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    margin-top: 8px;
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: var(--color-court-green);
+}
+
+/* H1 fix (post-Revision-5 review) — the `display: inline-flex` above is an
+   author rule, which beats the UA `[hidden] { display: none }` rule at
+   equal specificity because it comes later in the cascade. Without this
+   restatement every customer saw a green "Verified" badge regardless of
+   profiles.phone_verified, since renderMobileVerifiedBadge() (Dashboard.js)
+   only toggles the `hidden` IDL property. Mirrors the same pattern already
+   used for .dash-modal-overlay[hidden] above. */
+.dash-mobile-verified-badge[hidden] {
+    display: none;
+}
+
+.dash-mobile-verified-badge svg {
+    flex-shrink: 0;
+}
+
+/* Mobile verification OTP dialog (Revision 5, D6) — 6-box code entry,
+   ported from Pages/Index.html's own email OTP panel
+   (.auth-otp-row/.auth-otp-box/.auth-otp-error in Style/Auth.css) under
+   dash-otp-* names, since Style/Auth.css itself is not linked on this
+   page. */
+.dash-otp-row {
+    display: flex;
+    gap: 10px;
+    justify-content: space-between;
+    margin-bottom: 16px;
+}
+
+.dash-otp-box {
+    width: 100%;
+    aspect-ratio: 1;
+    text-align: center;
+    font-family: var(--font-mono);
+    font-size: 1.4rem;
+    background: var(--color-bg-elevated);
+    border: 1px solid var(--color-line);
+    border-radius: 10px;
+    color: var(--color-ink);
+    transition: border-color 0.2s, transform 0.15s;
+}
+
+.dash-otp-box:focus {
+    outline: none;
+    border-color: var(--color-primary);
+    transform: translateY(-1px);
+}
+
+.dash-otp-box.is-filled {
+    border-color: var(--color-primary-dim);
+}
+
+.dash-otp-error {
+    display: none;
+    font-size: 0.82rem;
+    color: var(--color-alert-text);
+    margin: -8px 0 16px;
+}
+
+.dash-otp-error.is-visible {
+    display: block;
+}
+
 .dash-input-wrap {
     position: relative;
     display: flex;
@@ -2132,6 +2375,120 @@ body.dash-body {
     cursor: not-allowed;
     transform: none;
 }
+
+/* ==========================================================================
+   Dashboard footer (D8/D9, implementation_plan.md "Revision 5"). A slim,
+   dashboard-only footer replacing the landing-page footer clone this page
+   used to render on every tab (Pages/user_dashboard.html) — uses this
+   file's own dashboard card/line tokens (--color-bg-elevated/--color-line/
+   --color-ink*) rather than Style/LandingPage.css's .site-footer/.footer-*
+   rules, which stay untouched for Pages/Index.html. Visibility itself
+   (D8 — shown only on the Overview tab) is a plain `hidden` toggle in
+   includes/Dashboard.js's setActivePanel(); nothing here controls that.
+   ========================================================================== */
+.dash-footer {
+    border-top: 1px solid var(--color-line);
+    background: var(--color-bg-elevated);
+    padding: 40px 36px 24px;
+}
+
+.dash-footer-inner {
+    display: grid;
+    grid-template-columns: 1.3fr repeat(3, 1fr);
+    gap: 28px;
+    max-width: 1200px;
+    margin: 0 auto;
+}
+
+.dash-footer-col {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    min-width: 0;
+}
+
+.dash-footer-col h4 {
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--color-ink-faint);
+    margin-bottom: 2px;
+}
+
+/* Quick links (data-dash-nav buttons) and the Contact/Policies <a> links
+   share one look — a plain-text row, brand-colored on hover — so a mixed
+   column of buttons and anchors (Need help?, Policies) still reads as one
+   consistent list. */
+.dash-footer-col a,
+.dash-footer-col button {
+    background: none;
+    border: none;
+    padding: 0;
+    text-align: left;
+    font-family: var(--font-body);
+    font-size: 0.86rem;
+    color: var(--color-ink-dim);
+    cursor: pointer;
+    transition: color 0.2s;
+}
+
+.dash-footer-col a:hover,
+.dash-footer-col button:hover {
+    color: var(--color-primary);
+}
+
+.dash-footer-col span {
+    font-size: 0.86rem;
+    color: var(--color-ink-dim);
+    line-height: 1.5;
+}
+
+.dash-footer-brand-main {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.dash-footer-brand-main img {
+    width: 26px;
+    height: 26px;
+    object-fit: contain;
+}
+
+.dash-footer-brand-name {
+    font-family: var(--font-display);
+    font-weight: 600;
+    font-size: 1.05rem;
+    color: var(--color-ink);
+}
+
+.dash-footer-brand p {
+    font-size: 0.84rem;
+    color: var(--color-ink-faint);
+    line-height: 1.5;
+    margin: 0;
+}
+
+.dash-footer-social {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.dash-footer-bottom {
+    max-width: 1200px;
+    margin: 24px auto 0;
+    padding-top: 18px;
+    border-top: 1px solid var(--color-line);
+    font-size: 0.76rem;
+    color: var(--color-ink-faint);
+    text-align: center;
+}
+/* Responsive overrides for .dash-footer-inner's column count live in the
+   Responsive section further below (this file's own convention — every
+   breakpoint override lives together, grouped by width, not scattered
+   next to each component's base rules), not here. */
 
 /* ==========================================================================
    Generic dialog + Feedback modal (§2, D7). One overlay/dialog pair, reused
@@ -2316,6 +2673,14 @@ body.dash-sidebar-open {
     .dash-receipt-grid {
         grid-template-columns: 1fr;
     }
+
+    /* D9 (implementation_plan.md, "Revision 5") — the footer's brand +
+       Quick links / Need help? / Policies columns drop from 4 to 2 here,
+       same tier every other 4-column-ish grid on this page already
+       collapses at. */
+    .dash-footer-inner {
+        grid-template-columns: repeat(2, 1fr);
+    }
 }
 
 @media (max-width: 860px) {
@@ -2450,10 +2815,6 @@ body.dash-sidebar-open {
         font-size: 1.6rem;
     }
 
-    .dash-slot-grid {
-        grid-template-columns: repeat(3, 1fr);
-    }
-
     .dash-payment-options {
         flex-direction: column;
     }
@@ -2501,6 +2862,28 @@ body.dash-sidebar-open {
 
     .dash-wizard-nav {
         flex-wrap: wrap;
+    }
+
+    /* D9 (implementation_plan.md, "Revision 5") — one column, tighter
+       outer padding to match .dash-content's own narrow-viewport padding. */
+    .dash-footer {
+        padding: 32px 18px 20px;
+    }
+
+    .dash-footer-inner {
+        grid-template-columns: 1fr;
+    }
+}
+
+/* Revision 5, D3 (implementation_plan.md) — Step 2's From/To picker
+   (.dash-time-range) collapses to one column a little earlier than the
+   640px tier above: two <select>s side by side are still comfortably
+   usable down to ~620px (unlike, say, a 3-column name-fields row), so this
+   is its own narrower, purpose-built breakpoint rather than folded into
+   the 640px block. */
+@media (max-width: 620px) {
+    .dash-time-range {
+        grid-template-columns: 1fr;
     }
 }
 

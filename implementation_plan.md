@@ -1,3 +1,155 @@
+# Customer Dashboard — Revision 5 (8 AM–8 PM hours, From/To booking picker, receipt redesign, locked profile + mobile OTP, dashboard-only footer)
+
+## Context
+
+The customer (user) dashboard at `Pages/user_dashboard.html` + `includes/Dashboard.js` + `Style/Dashboard.css`
+already has: a per-court "Show availability" peek strip on the Overview tab (today only, start-time labels,
+per-court-row granularity), a Book-a-Court wizard whose Step 2 renders hourly slot buttons and supports a
+contiguous start→end range (first click = start, second click = end), a Receipts tab rendering one
+`.dash-receipt-card` per booking with PNG download, an Account Settings tab where names + mobile are editable
+(email already `disabled`), and a `<footer class="site-footer">` that renders on every tab.
+
+The user wants the customer account to:
+
+1. **Dashboard (Overview) availability** — show real hourly slots as ranges (8–9 AM, 9–10 AM, … 7–8 PM),
+   and let the customer pick a **date** so the strip reflects that day's availability, not only today.
+2. **Booking Step 2** — no clickable slots; a **From / To time-range picker** (whole hours, 8 AM → 8 PM)
+   whose options shrink to what is still free on the chosen date. Any number of consecutive hours.
+3. **Receipt** — keep exactly the same information, change the visual design.
+4. **Account Settings** — personal info (first/middle/last name) **not editable**; email **not editable**;
+   mobile number changes require **OTP verification** (like the email OTP at signup).
+5. **Footer** — visible only on the Dashboard (Overview) tab.
+
+Single shared hours source: `includes/businessHours.js` (`OPEN_HOUR = 8`, `CLOSE_HOUR = 21` today).
+
+## Decisions (confirmed with the user on 2026-09-12)
+
+| # | Decision | Final |
+|---|----------|-------|
+| D1 | Operating hours | `CLOSE_HOUR` 21 → **20**. Bookable window is **8:00 AM – 8:00 PM**. Slots = 8–9, 9–10, … 7–8 PM (**12 slots**). A customer may book **any contiguous run of whole hours** inside that window (1 hr up to all 12) — no fixed 2-hour blocks, no half-hours. Affects Overview, Step 2, and the staff Court Schedule (`hoursRange(2)` → 6 columns ending 6–8 PM) automatically. |
+| D2 | Slot label format | Range on every slot button/pill: `8:00 AM – 9:00 AM` (new helper `formatHourRangeLabel(hour)` in `businessHours.js`). Peek strip uses a short form `8–9 AM` to fit. |
+| D3 | Step 2 time selection | **No slot grid. Step 2 becomes a From/To time-range picker** (user corrected this on the second pass: "there should be no slots to click"). Two `<select>`s: **From** (options 8:00 AM … 7:00 PM) and **To** (options 9:00 AM … 8:00 PM). Options are **reduced by that date's availability**: a From hour is offered only if it is free (not booked for the chosen court+unit, not past when the date is today); after From is chosen, To offers only hours from `From+1` up to the next booked hour (or 8 PM), so the range is always contiguous and free. Changing From re-derives To (and clears it if no longer valid). A helper line under the pickers lists the free windows for the day, e.g. "Open on this date: 8 AM – 10 AM, 11 AM – 8 PM", or "Fully booked on this date". Result maps to `bookingState.startHour` = From, `bookingState.endHour` = To − 1 (existing inclusive convention) → single `booking` row with `end_at`/`duration_minutes`; `bookingHoursSelected()`, `updateSummary()`, the insert payload, and the DB EXCLUDE constraint are unchanged. |
+| D4 | Overview ⇄ Step 2 consistency | User's example: book 8–9 AM → Overview strip AND Step 2 both show 8–9 taken and 9 AM–8 PM still open, for that date/unit. Peek strip becomes **per selected unit** (uses the existing `[data-overview-unit-select]`) and uses the **same occupancy helper** Step 2 uses (`overviewBookingWindow` + `overviewWindowsOverlap` + unit match), so the two can never disagree. Fetch includes `court_unit, end_at` with the same schema-mismatch retry Step 2 uses. After a successful booking, both the Overview widget and Step 2 grid are refreshed. |
+| D5 | Overview date | One `<input type="date" data-dash-overview-date>` above the courts grid (min = today, default today). Changing it re-fetches bookings + walk-ins for that day and re-renders. Past hours on today are shown as `is-past`. |
+| D6 | Mobile OTP | **Implement the real SMS OTP code path now; no paid SMS provider yet** (user: "code-only for now, but apply it"). Flow: `sb.auth.updateUser({ phone: '+63…' })` sends the code; `sb.auth.verifyOtp({ phone, token, type: 'phone_change' })` confirms. On success write `profiles.contact_num` (local `09…` form) + new `profiles.phone_verified = true`. **Zero-cost demo path for the thesis defense:** Supabase Auth → Phone provider supports *Test phone numbers with fixed OTPs* (`auth.sms.test_otp`) — no SMS is sent and no Twilio account is charged; the exact same code path runs. Documented as a new `docs/OWNER_ACTION_LIST.md` item (enable Phone provider, add test numbers now, add a real SMS provider later). Until the provider is enabled, the UI shows a friendly "SMS verification isn't set up yet" toast — **no fake client-side code generation**. |
+| D7 | Receipt look | "Store receipt / ticket stub" style: brand header (IñigoSync + "Official booking receipt"), monospace receipt no., dashed perforation dividers, itemised body (**Rate/hr × hours = Amount**, when rate is known; otherwise "Rate TBA"), a prominent TOTAL row, status badge, date/time, thank-you footer, download button. Same underlying fields (Court, Receipt #, Status, Sport, Date, Time, Amount) — no new data. **Priority (user): the downloaded PNG must look identical to the on-screen card** — so the design must use only html2canvas-safe CSS (no `backdrop-filter`, no external images/fonts beyond what already renders, no `mix-blend-mode`), and the coder must verify by opening the PNG side-by-side. A payment-option / downpayment line is NOT included because `booking` does not store the chosen payment option (out of scope; noted under risks). |
+| D8 | Footer visibility | `setActivePanel()` sets `document.querySelector('.site-footer').hidden = name !== 'overview'`. |
+| D9 | Footer content (recommended, user asked for a suggestion) | Replace the landing-page footer clone with a **slim dashboard footer** built for a signed-in customer: (1) brand + one-line tagline; (2) **Quick links** — Book a Court, My Bookings, Receipts, Account Settings (each a `data-dash-nav` button, so they use the existing tab switcher); (3) **Need help?** — phone, email, address, and **Operating hours: 8:00 AM – 8:00 PM daily** read from `InigoBusinessHours` so it can never drift; (4) **Policies** — Terms (`Pages/terms.html`) and the no-cancellation / unattended policy line; (5) copyright line. **Drop the Google Maps `<iframe>`** on the dashboard (it is the single heaviest element on the page and already has to be special-cased out of html2canvas; a "Get directions" link to Google Maps replaces it). Keep the social links as icons. Uses new `dash-footer-*` classes in `Dashboard.css`; the landing page footer in `Index.html` is untouched. |
+
+## Files to change
+
+### `includes/businessHours.js`
+- `CLOSE_HOUR = 20`; update header comments (they currently justify 21).
+- Add `formatHourRangeLabel(hour)` → `"8:00 AM – 9:00 AM"` and `formatHourRangeLabelShort(hour)` → `"8–9 AM"` (period shown once when both sides share it, e.g. `11 AM–12 PM`). Export on `window.InigoBusinessHours`.
+
+### `Pages/user_dashboard.html`
+- Overview courts header (`~:387-401`): add a date field `<input type="date" class="dash-input" data-dash-overview-date>` with label "Availability for" next to the sort select.
+- Step 2 (`~:516-547`): **remove** `<div class="dash-slot-grid" data-dash-slot-grid>`; add two form groups — `<select class="dash-select" data-dash-book-from>` ("From") and `<select class="dash-select" data-dash-book-to>` ("To") — and a status line `<p class="dash-form-hint" data-dash-book-open-windows>` for the "Open on this date: …" text. Helper text: "Choose a start and end time (8:00 AM – 8:00 PM, whole hours)".
+- Settings Personal Information card (`~:905-955`):
+  - First/middle/last name inputs → `readonly` (keep values populated by `renderProfile()`), label hint "Personal information can't be changed here".
+  - Email stays `disabled`; label → "Email address · cannot be changed".
+  - Mobile: input + adjacent `Verify` button (`data-dash-mobile-verify`) + a verified badge span (`data-dash-mobile-verified`). Remove the profile "Save Changes"/"Cancel" pair (nothing left to save except via OTP).
+- Add a Mobile OTP dialog reusing the generic `.dash-modal-overlay`/`.dash-modal` shell: 6 code boxes (`data-dash-otp-box`), "Resend code" with cooldown, Cancel/Confirm (`data-dash-mobile-otp-*`).
+- Footer (D9): replace `<footer class="site-footer">…</footer>` (`~:1040-1089`) with the slim `<footer class="dash-footer">` described in D9 (Quick links use `data-dash-nav="booking|bookings|receipts|settings"`; hours text filled by JS from `InigoBusinessHours`). Keep the surrounding comment explaining it lives outside `[data-dash-panel]`.
+
+### `includes/Dashboard.js`
+- **Overview** (`OVERVIEW_SLOT_HOURS`, `renderOverviewSlotPill`, `isOverviewCourtHourOccupied`, `refreshOverviewCourtWidget`):
+  - New `overviewDate` state (default today) driven by `[data-dash-overview-date]`; replace `todayRange()` usage with a day range built from `overviewDate`.
+  - Booking query: `select('courts, court_unit, time_date, end_at, duration_minutes, status')` with schema-mismatch retry that drops `court_unit, end_at`.
+  - `isOverviewCourtHourOccupied(court, hour, unitLabel)` — match `court_unit` against the card's selected unit (null/'' both sides treated as same unit, identical to `isSlotHourBooked`).
+  - Pill label → `formatHourRangeLabelShort(hour)`; add `is-past` for elapsed hours when the chosen date is today. Unit select change re-renders that card's strip.
+- **Step 2** (replace `paintSlotGrid`, `onSlotClick`, `extendSelectionTo`, `renderSlotGrid`):
+  - Keep `fetchDayBookings()` and `isSlotHourBooked(hour)` (per-unit occupancy) as the single source of truth.
+  - New `computeFreeWindows()` → array of `{ startHour, endHourExclusive }` runs of free, non-past hours for the selected court/unit/date.
+  - New `renderTimePickers()`: fills `[data-dash-book-from]` with every free hour (`formatHourLabel`), fills `[data-dash-book-to]` from `From+1` to the end of the run containing From, writes the "Open on this date" line, and disables both selects with a message when the day has no free hour. Called by `resetSlotSelectionAndRender()` (rename to `resetTimeSelectionAndRender()`), i.e. on court/unit/date change and before submit (race guard re-fetch stays).
+  - `change` handlers: From → set `bookingState.startHour`, rebuild To, clear `endHour`; To → set `bookingState.endHour = to − 1`; both call `updateSummary()` and `updateWizardButtons()`.
+  - `bookStepIsReady()` for step 2 now requires **both** From and To.
+  - Keep `bookingState.startHour/endHour`, `bookingHoursSelected()`, `updateSummary()`, `bookingTimeRangeLabel()`, and the insert payload unchanged.
+- **Receipts** (`renderReceiptCard`): new markup per D7 using new `dash-receipt-*` sub-classes; `downloadReceiptAsPng` unchanged (still captures `.dash-receipt-card`).
+- **Settings**:
+  - Remove the profile-save handler's name/mobile writes (or guard it out) — names/email are read-only.
+  - New mobile verification flow: validate with `window.validatePhMobile`, convert to E.164 `+63XXXXXXXXXX`, `updateUser({ phone })`, open OTP modal, `verifyOtp({ phone, token, type: 'phone_change' })`, then `profiles.update({ contact_num, phone_verified: true })` (schema-mismatch retry drops `phone_verified`). Toast success; `renderProfile()` shows the verified badge when `phone_verified` is true.
+  - Map Supabase errors: SMS provider not configured / "Unsupported phone provider" → friendly toast; invalid/expired token → inline error in modal.
+- **Footer**: D8 one-liner in `setActivePanel()` (target `.dash-footer`); fill `[data-dash-footer-hours]` from `InigoBusinessHours.formatHourLabel(OPEN_HOUR)` / `(CLOSE_HOUR)`; `downloadReceiptAsPng`'s iframe `ignoreElements` guard can stay (harmless).
+- **After a successful booking insert**: call `refreshOverviewCourtWidget()` in addition to the existing My Bookings/notification refresh so the Overview strip immediately shows the new booking (D4).
+
+### `Style/Dashboard.css`
+- Step 2: remove `.dash-slot-grid` / `.dash-slot` selection-state rules that are no longer used (`.is-selected`, `.is-range-*`, `.is-in-range`); keep `.dash-slot-mini`, `.is-unavailable`, `.is-past` for the Overview strip and size `.dash-slot-mini` for `8–9 AM` labels. Add a two-column `.dash-time-range` layout for the From/To selects (1 column ≤ 620px) and `.dash-form-hint` for the open-windows line.
+- Overview header layout for the new date field.
+- Receipt redesign styles (D7) — `.dash-receipt-card` retains its class; add `.dash-receipt-brand`, `.dash-receipt-divider` (dashed), `.dash-receipt-total`, `.dash-receipt-meta`. Must still render correctly through html2canvas (avoid `backdrop-filter`, external images).
+- Read-only input style (`.dash-input[readonly]`), mobile verify row, verified badge, OTP box styles (port the sizing of `.auth-otp-box` from `Style/Auth.css` under a `dash-otp-box` name).
+- New `.dash-footer*` styles (D9): compact 3–4 column grid, collapses to 1 column ≤ 640px, matches the dashboard's card/line tokens rather than the landing page's.
+
+### `includes/staff_dashboard.js` / `includes/owner_dashboard.js`
+- No code change expected; verify the schedule grid still renders sanely with `CLOSE_HOUR = 20` (6 two-hour columns). Update any comment that hard-codes "9 PM".
+
+### `database/schema/013_profile_phone_verified.sql` (new)
+- `alter table public.profiles add column if not exists phone_verified boolean not null default false;` + comment. Idempotent, same style as `011_profile_avatar.sql`.
+
+### `docs/OWNER_ACTION_LIST.md`
+- New item: enable Phone provider + SMS provider in Supabase Auth, run `013_profile_phone_verified.sql`.
+
+### `implementation_plan.md` (project root)
+- Prepend a "Revision 5" section mirroring this plan (project convention: it's the running log every code comment cites).
+
+## Constraints and non-goals
+- No build step; plain `<script>` files attaching to `window`. Keep `data-dash-*` hooks, `dash-*` CSS prefix, hoisted function declarations.
+- Do not change the `booking` insert payload shape or the `booking_no_overlap` semantics.
+- Do not touch owner/staff dashboards beyond verifying they still work with the new `CLOSE_HOUR`.
+- No fake OTP success path. No email-change flow.
+- Non-contiguous slot selection (e.g. 8–9 AM and 2–3 PM in one booking) is out of scope (would require multiple booking rows/receipts).
+- The static "Upcoming reservations" card on Overview is untouched (pre-existing fake data; separate task).
+
+## Success criteria
+1. Overview: date picker present; strip shows 12 pills labeled `8–9 AM … 7–8 PM`; changing date or unit updates booked/open state; today's elapsed hours look past.
+2. Step 2: no slot buttons; From/To selects offer only free hours per D3 (e.g. with 10–11 AM booked, From = 8 AM ⇒ To offers 9 AM and 10 AM only); "Open on this date" line matches the Overview strip for the same date/unit; Next is disabled until both are chosen; summary shows correct range/hours/total; booking insert produces one row with correct `time_date`/`end_at`/`duration_minutes`.
+3. Receipts: every field previously shown is still shown; new design; PNG download still works and the download button is not baked into the image.
+4. Settings: names/email cannot be edited; mobile change goes through OTP; `contact_num` updates only after successful `verifyOtp`; verified badge shown when `phone_verified` true; unconfigured SMS provider yields a clear error, not a crash.
+5. Footer visible on Overview only; hidden on every other tab and on deep links (notification → receipts).
+6. Staff Court Schedule still renders (6 columns, last 6–8 PM). No console errors on customer dashboard load.
+
+## Verification
+- Start `static-server` from `.claude/launch.json` (python http.server :8532) and open `Pages/user_dashboard.html` in the in-app browser; sign in as a customer.
+- Walk each tab: Overview (date change, unit change, expand strip), Book a Court (multi-click flows, past date guard, summary), Receipts (visual + download), Settings (readonly fields, Verify → modal), footer visibility on each tab.
+- Check console/network for errors; confirm the booking `select` retries gracefully if `012` isn't applied.
+- Reviewer pass on the diff (booking selection logic and OTP flow are regression-prone).
+
+## Resolved questions (user answers, 2026-09-12)
+1. Hours → 8 AM – 8 PM, last slot 7–8 PM, any contiguous number of hours. ✔
+2. Step 2 → **no clickable slots**; From/To time pickers whose options shrink to the free hours on the chosen date (user's second correction). Still one contiguous range, one booking. ✔
+3. Mobile OTP → real code path now, no paid provider yet; demo via Supabase test-OTP numbers. ✔
+4. Receipt → store-receipt/ticket style; downloaded PNG must equal on-screen card. ✔
+5. Footer → user asked for a recommendation; D9 is the recommendation (slim dashboard footer, no map iframe).
+
+## Risks
+- `phone_change` OTP requires the Supabase **Phone** provider to be enabled; with it disabled `updateUser({ phone })` errors — handled with a friendly toast, but the feature can't be exercised until the owner flips it on (owner action item).
+- Receipt cannot show payment option / downpayment because `booking` doesn't store it; adding that is a separate schema + wizard change.
+- Changing `CLOSE_HOUR` alters the staff schedule's column count; verify nothing in `staff_dashboard.js` hard-codes 7 columns.
+- Existing bookings that end at 9 PM (made under the old hours) will render past the new grid; they're rare/none pre-launch, and My Bookings/Receipts still show them correctly from `end_at`.
+
+## Execution notes
+- Copy this plan into the project's `implementation_plan.md` as "Revision 5" before delegating (project convention).
+- Single `coder` lane (all changes share `Dashboard.js` / `Dashboard.css`), then a `reviewer` pass on slot-selection logic and the OTP flow.
+
+
+## Post-implementation notes (2026-09-12)
+
+Implemented by the coder, reviewed independently, review findings fixed. Deviations from the plan above:
+
+- **D4 tightened**: Step 2 now also counts staff walk-ins (`fetchDayWalkins()` → `slotGridWalkins`, court-wide since walk-ins have no unit) and the Overview strip counts only `pending`/`confirmed` bookings — both views now use the same inputs, so the "Open on this date" line and the Overview pills agree.
+- **D6 hardened**: `updateUser({ phone })` only opens the OTP modal when `data.user.new_phone === e164` (a pending change). If Supabase's "Enable phone confirmations" is OFF, no code is sent and the UI says so instead of dead-ending. Pending OTP state is cleared on every modal close.
+- `refreshOverviewCourtWidget()` got a request-sequence guard (`overviewRequestSeq`) so fast date changes can't paint stale data.
+- Receipt: hours fall back to `duration_minutes` when `end_at` is absent; rate line uses the court's real `rateUnit` instead of a hard-coded "/hr".
+- Footer starts visible in markup (Overview is the default panel and `setActivePanel()` only runs on navigation).
+- `updateWizardButtons()` was not added — `updateSummary()` → `renderBookWizard()` already re-gates Next.
+
+**Not verified live** (no signed-in session available to the agents): the receipt PNG side-by-side check, the OTP round trip, and "no console errors on load". Owner must run `database/schema/013_profile_phone_verified.sql` and enable Phone provider + confirmations + test-OTP numbers (docs/OWNER_ACTION_LIST.md E5) before mobile verification can be exercised.
+
+
+---
+
+# Earlier revisions (kept for the code comments that cite them)
+
 # Customer Page — Revision 2 (post-feedback-v6 corrections)
 
 ## Goal

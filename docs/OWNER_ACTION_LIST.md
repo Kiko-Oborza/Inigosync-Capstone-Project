@@ -26,6 +26,7 @@ paste the file's contents → **Run**.
 | A3 | `database/schema/005_session_security.sql` | Creates the `active_session` table + RLS for one-device-at-a-time enforcement | Single-session silently no-ops. Login and dashboards work normally. |
 | A4 | `database/schema/006_court_unit_images.sql` | Adds a nullable `unit_images` jsonb column to `court`, so one sport can carry a photo per individual court/lane/table | The landing page's court viewer still lists every unit (Court 1–9, Duckpin/Ten-Pin, Table 1–2) — they just all share the sport's single photo. Nothing breaks. |
 | A5 | `database/schema/007_app_settings.sql` | Creates the single-row `app_settings` table + RLS (admin read/write, staff/customer read-only), seeded with today's defaults (GCash + Cash on, 50% downpayment) | The owner dashboard's Payment Configuration Save button fails with a clear "needs a database update" message instead of a fake success toast; the customer booking and staff walk-in screens keep using the hardcoded 50%/GCash+Cash-on defaults exactly as they do today. Nothing breaks. |
+| A6 | `database/schema/013_profile_phone_verified.sql` | Adds a `phone_verified boolean not null default false` column to `profiles` | The customer dashboard's new mobile-number OTP verification (Account Settings) can still complete `verifyOtp()` and save the new number, but the "Verified" badge next to it never appears (the write silently drops just that one column — see item E5 below for the other half of this feature). Nothing breaks. |
 
 > All frontend code is written to **work correctly before these are applied**.
 > Missing columns/tables degrade gracefully — they never break the app. Applying
@@ -341,6 +342,57 @@ straight in the customer dashboard.
 
 ---
 
+## E5. Enable the Phone provider (SMS OTP) *(REQUIRED — mobile-number verification will otherwise show a friendly error)*
+
+**Why it's blocked:** it's a provider toggle in the Supabase dashboard, same
+place as the email templates above but a different provider (Phone, not
+Email).
+
+**Why this exists.** Account Settings' mobile number field now requires proof
+you actually control the new number before it's saved: the app calls
+`sb.auth.updateUser({ phone: '+63…' })` to send a 6-digit code, then
+`sb.auth.verifyOtp({ phone, token, type: 'phone_change' })` to confirm it —
+exactly the same code/verify shape as the email OTP flows above, just over
+SMS instead of email. **This is real, not a demo stub** — no code is ever
+generated or checked client-side (see implementation_plan.md's "Revision 5"
+section, D6). Until the Phone provider is turned on, `updateUser({ phone })`
+fails and the UI shows "SMS verification isn't set up yet — ask the owner to
+enable Phone sign-in in Supabase" instead of crashing or pretending it
+worked.
+
+**What to do (zero-cost demo path — no SMS provider account needed):**
+1. Supabase Dashboard → **Authentication → Providers → Phone** → enable it.
+   Also go to **Authentication → Settings** (User Signups) and switch **Enable
+   phone confirmations** ON — this is a separate toggle from the provider
+   switch above. With the provider enabled but this toggle OFF,
+   `updateUser({ phone: '+63…' })` returns **success with no error and no
+   code queued**, so the app's OTP dialog would have nothing to confirm and
+   could never complete. The app detects that "no pending change" case and
+   shows "No verification code was sent — the owner needs to turn on phone
+   confirmations in Supabase" instead of opening a dead-end dialog — but the
+   feature only actually works once this toggle is ON.
+2. Supabase will ask for an SMS provider (Twilio, MessageBird, Vonage, etc.)
+   to actually send text messages — **skip that for now.** Scroll to
+   **Phone → Test phone numbers and OTPs** (sometimes labelled
+   `auth.sms.test_otp` in older dashboard versions) and add one or more
+   fake numbers with fixed codes, e.g. `+639171234567` → `123456`. No SMS is
+   sent and nothing costs money; typing that exact number and code in the
+   app's Verify dialog completes real `verifyOtp()` calls end-to-end.
+3. Run item **A6** above (`013_profile_phone_verified.sql`) so the
+   "Verified" badge has somewhere to persist.
+4. **Later, for real customers:** add a real SMS provider under the same
+   Phone provider screen (Twilio Verify is the one Supabase's docs walk
+   through in the most detail). This is a paid, per-message service — no
+   need to set it up before the thesis defense, only before real mobile
+   numbers need real codes.
+
+**How to test:** Account Settings → change the mobile number to one of your
+test numbers → **Verify** → a 6-box code dialog opens → type the fixed test
+code → **Confirm**. The number should save and a "Verified" badge should
+appear next to it.
+
+---
+
 ## F. Set real court rates *(no longer needs me — you can do this yourself now)*
 
 Every `court.rate` is currently `NULL`, so the UI honestly shows **"Rate TBA"**
@@ -371,7 +423,7 @@ Get the real answers and I'll drop them in, or edit the file directly.
 
 | Do this | Unlocks |
 |---|---|
-| **A1–A5** (run SQL) | Court ratings, staff Time-In/Out, audit trail, single-session, per-court photos, real Payment Configuration persistence |
+| **A1–A6** (run SQL) | Court ratings, staff Time-In/Out, audit trail, single-session, per-court photos, real Payment Configuration persistence, mobile "Verified" badge |
 | **B** (`pg_cron` check) | Lets me *design* auto-cancellation + reminders correctly |
 | **C** (PayMongo) | Payment Automation objective, receipts, payment loading phase |
 | **D** (Resend) | Gmail booking reminders |
@@ -379,12 +431,14 @@ Get the real answers and I'll drop them in, or edit the file directly.
 | **E2** (Magic Link template) | **Required** — first-login OTP is unusable without it, for all three roles |
 | **E3** (Reset Password template) | **Required** — "Forgot password?" cannot be completed without the code |
 | **E4** (Confirm signup template) | **Required** — new sign-ups cannot get past the verify screen without it |
+| **E5** (Phone provider + test OTP numbers) | **Required** — Account Settings' mobile-number verification cannot send/verify a code without it |
 | **F** (court rates) | Replaces every "Rate TBA" with real pricing |
 | **G** (T&C values) | Completes the Terms & Conditions page |
 
-**Cheapest high-impact combination:** A1–A5, E2, E3 and E4 — all three email
+**Cheapest high-impact combination:** A1–A6, E2, E3 and E4 — all three email
 templates, not two. That's roughly fifteen minutes of copy-paste in the Supabase
 dashboard and it activates most of what's already built and sitting dormant —
 including log-in, sign-up and password reset, all three of which are *currently
 broken* on a default Supabase project because none of the default templates
-contain `{{ .Token }}`.
+contain `{{ .Token }}`. Add **E5** (five more minutes, no SMS account needed —
+just the free test-OTP numbers) to light up mobile-number verification too.

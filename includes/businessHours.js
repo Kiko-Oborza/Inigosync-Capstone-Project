@@ -1,5 +1,6 @@
 // IñigoSync — Shared operating-hours constants (Part 3, multi-hour booking —
 // implementation_plan.md, "Multi-hour booking with availability checking").
+// Updated by Revision 5 (implementation_plan.md, D1/D2) — see below.
 //
 // Before this file existed, the sports center's operating hours were three
 // separate, hardcoded, and mutually inconsistent hour lists:
@@ -19,6 +20,15 @@
 // fallback the whole app agrees on until an admin-configurable setting
 // exists for it.
 //
+// Revision 5, D1 (implementation_plan.md) — CLOSE_HOUR moves from 21 (9 PM)
+// to 20 (8 PM), on the user's explicit instruction that the sports center's
+// bookable window is 8:00 AM - 8:00 PM (12 whole-hour slots: 8-9, 9-10, …
+// 7-8 PM), not 8:00 AM - 9:00 PM. Every consumer that already reads
+// OPEN_HOUR/CLOSE_HOUR from here (the customer dashboard's Overview peek
+// widget and Step 2 time pickers, the staff Court Schedule) picks this up
+// automatically with no code change of their own — see each file's own
+// comments for what one fewer bookable hour means there.
+//
 // This project ships plain <script src> tags (no build step, no ES
 // modules), so this attaches to window, same as includes/courtsData.js and
 // includes/appSettings.js. Load this after Config/supabaseClient.js (not
@@ -30,12 +40,14 @@
 (function () {
     // 8:00 AM. The sports center's first bookable hour.
     const OPEN_HOUR = 8;
-    // 9:00 PM (21:00). Exclusive — the LAST bookable hour STARTS at 8 PM
-    // (hour 20) and ends here. Never treat this as a valid start hour.
-    const CLOSE_HOUR = 21;
+    // 8:00 PM (20:00). Exclusive — the LAST bookable hour STARTS at 7 PM
+    // (hour 19) and ends here (Revision 5, D1 — implementation_plan.md;
+    // was 21/9 PM before this revision). Never treat this as a valid start
+    // hour.
+    const CLOSE_HOUR = 20;
 
     // "8:00 AM" / "6:00 PM" — the long form used by the customer dashboard
-    // (Booking Step 2's slot grid, the Overview peek widget).
+    // (Booking Step 2's From/To time pickers, the Overview peek widget).
     function formatHourLabel(hour) {
         const period = hour >= 12 ? 'PM' : 'AM';
         const hour12 = ((hour + 11) % 12) + 1;
@@ -51,12 +63,46 @@
         return `${hour12} ${period}`;
     }
 
+    // "8:00 AM – 9:00 AM" (Revision 5, D2 — implementation_plan.md) — one
+    // whole-hour slot's full start-to-end range, built from two
+    // formatHourLabel() calls rather than a parallel implementation so the
+    // two can never disagree on a single hour's own label. Used wherever a
+    // slot/pill needs to read as a range instead of just its start time
+    // (e.g. a future full-width slot listing) — the customer dashboard's
+    // Overview peek strip uses the SHORT form below instead, since a range
+    // this long doesn't fit a small pill.
+    function formatHourRangeLabel(hour) {
+        return `${formatHourLabel(hour)} – ${formatHourLabel(hour + 1)}`;
+    }
+
+    // "8–9 AM" / "11 AM–12 PM" / "7–8 PM" (Revision 5, D2) — the compact
+    // range form the Overview peek strip's pills use (renderOverviewSlotPill()
+    // in includes/Dashboard.js), replacing that widget's old single
+    // start-time-only label. The period (AM/PM) is printed ONCE, after the
+    // end hour, whenever both ends share it ("8–9 AM") — printing it twice
+    // ("8 AM–9 AM") would be redundant in a label this narrow. The one
+    // hour of the day that crosses noon (11 AM–12 PM) is the sole case
+    // where the two ends DON'T share a period, so both get their own,
+    // exactly like a normal range would read.
+    function formatHourRangeLabelShort(hour) {
+        const startPeriod = hour >= 12 ? 'PM' : 'AM';
+        const startHour12 = ((hour + 11) % 12) + 1;
+        const endHour = hour + 1;
+        const endPeriod = endHour >= 12 ? 'PM' : 'AM';
+        const endHour12 = ((endHour + 11) % 12) + 1;
+        const startPart = startPeriod === endPeriod ? `${startHour12}` : `${startHour12} ${startPeriod}`;
+        return `${startPart}–${endHour12} ${endPeriod}`;
+    }
+
     // [OPEN_HOUR, CLOSE_HOUR) stepping by `step` (default 1, hourly).
     // includes/staff_dashboard.js's SCHEDULE_SLOTS calls this with step=2
-    // for its 2-hour columns — see that file for why this now yields ONE
-    // MORE column than its old hardcoded array (a real coverage fix, not a
-    // cosmetic change: the old array silently couldn't show a booking in
-    // the 8 PM-9 PM hour at all).
+    // for its 2-hour columns. Before Part 3 this was its own hardcoded
+    // [8,10,12,14,16,18] array that assumed an 8 PM closing time; Part 3
+    // briefly made it yield ONE MORE column (through hour 20) once
+    // CLOSE_HOUR became 21/9 PM. Revision 5's D1 (implementation_plan.md)
+    // returns CLOSE_HOUR to 20/8 PM on the user's explicit instruction, so
+    // this is back to 6 columns ([8,10,12,14,16,18], last one covering
+    // 6 PM-8 PM) — see that file's own comment for the full history.
     function hoursRange(step) {
         const stepSize = Number.isFinite(step) && step > 0 ? step : 1;
         const hours = [];
@@ -69,6 +115,8 @@
         CLOSE_HOUR,
         formatHourLabel,
         formatHourLabelShort,
+        formatHourRangeLabel,
+        formatHourRangeLabelShort,
         hoursRange,
     };
 })();

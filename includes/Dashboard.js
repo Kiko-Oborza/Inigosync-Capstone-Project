@@ -65,6 +65,10 @@ document.addEventListener('DOMContentLoaded', () => {
     const navButtons = document.querySelectorAll('[data-dash-nav]');
     const titleEl = document.querySelector('[data-dash-title]');
     const subtitleEl = document.querySelector('[data-dash-subtitle]');
+    // D8/D9 (implementation_plan.md "Revision 5") — the slim dashboard-only
+    // footer; see setActivePanel() below for the visibility rule and the
+    // "Footer" section further down for its Operating-hours text fill.
+    const dashFooter = document.querySelector('[data-dash-footer]');
 
     const panelMeta = {
         overview: { title: 'Dashboard', subtitle: "Welcome back, here's what's happening with your bookings." },
@@ -109,6 +113,14 @@ document.addEventListener('DOMContentLoaded', () => {
             subtitleEl.textContent = meta.subtitle;
         }
 
+        // D8 (implementation_plan.md, "Revision 5") — the slim dashboard
+        // footer (D9) is visible ONLY on the Overview tab; every other
+        // panel hides it entirely, including a notification's own deep
+        // link into Receipts (setActivePanel('receipts'), wired near the
+        // notifications dropdown above) — it is never left showing on a
+        // tab it wasn't designed for.
+        if (dashFooter) dashFooter.hidden = name !== 'overview';
+
         closeMobileSidebar();
         closeProfileMenu();
         closeNotifMenu();
@@ -136,6 +148,21 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     if (scrim) {
         scrim.addEventListener('click', closeMobileSidebar);
+    }
+
+    // ------------------------------------------------------------------
+    // Footer (D9, implementation_plan.md "Revision 5") — the "Operating
+    // hours" line is filled here from window.InigoBusinessHours (the exact
+    // same source Step 2's From/To pickers and the Overview peek strip
+    // read), so it can never quietly drift from the real bookable window if
+    // OPEN_HOUR/CLOSE_HOUR ever change again — see includes/businessHours.js.
+    // Visibility itself (D8) is handled inside setActivePanel() above, not
+    // here — this only ever needs to run once, at setup.
+    // ------------------------------------------------------------------
+    const dashFooterHoursEl = document.querySelector('[data-dash-footer-hours]');
+    if (dashFooterHoursEl && window.InigoBusinessHours) {
+        const { OPEN_HOUR, CLOSE_HOUR, formatHourLabel } = window.InigoBusinessHours;
+        dashFooterHoursEl.textContent = `${formatHourLabel(OPEN_HOUR)} – ${formatHourLabel(CLOSE_HOUR)} daily`;
     }
 
     // ------------------------------------------------------------------
@@ -616,11 +643,14 @@ document.addEventListener('DOMContentLoaded', () => {
     // multi-hour RANGE picker backed by database/schema/
     // 012_booking_time_range.sql's new end_at/duration_minutes/court_unit
     // columns and its booking_no_overlap EXCLUDE constraint — see
-    // renderSlotGrid()/fetchDayBookings() further below and that
+    // refreshTimePickers()/fetchDayBookings() further below and that
     // migration's own header comment. bookingState.time (a single "8:00 AM"
     // string) is gone, replaced by bookingState.startHour/endHour (24-hour
     // integers) and bookingState.unit (the Step 1 preview's resolved
     // Court/Lane/Table label, D3 — persisted now instead of thrown away).
+    // Revision 5, D3 further replaced the clickable button grid itself with
+    // a From/To <select> pair — see that section's own header comment
+    // further below for the full reasoning.
     // ------------------------------------------------------------------
     if (!window.InigoBusinessHours) {
         // Should never happen — includes/businessHours.js must load before
@@ -630,12 +660,17 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const bookSelect = document.querySelector('[data-dash-book-select]');
     const bookDate = document.querySelector('[data-dash-book-date]');
-    // Real slot buttons no longer exist in the markup at page load — they're
-    // rendered into this (initially empty) container by renderSlotGrid()/
-    // paintSlotGrid() below, one per bookable hour, and re-wired on every
-    // repaint (same idiom this file's wireOverviewCourtList() already uses
-    // for its own dynamically rendered scope further below).
-    const slotGridEl = document.querySelector('[data-dash-slot-grid]');
+    // Revision 5, D3 (implementation_plan.md) — the old clickable slot grid
+    // is gone; Step 2 is now a From/To time-range picker whose OPTIONS are
+    // rendered into these two (initially empty) <select>s by
+    // renderTimePickers() below, one <option> per still-free bookable hour,
+    // re-filled on every repaint (same idiom this file's
+    // wireOverviewCourtList() already uses for its own dynamically rendered
+    // scope further below). bookOpenWindowsEl is the "Open on this date: …"
+    // status line underneath both selects.
+    const bookFromSelect = document.querySelector('[data-dash-book-from]');
+    const bookToSelect = document.querySelector('[data-dash-book-to]');
+    const bookOpenWindowsEl = document.querySelector('[data-dash-book-open-windows]');
     const paymentOptions = document.querySelectorAll('[data-dash-payment-option]');
     const bookSubmit = document.querySelector('[data-dash-book-submit]');
 
@@ -702,8 +737,8 @@ document.addEventListener('DOMContentLoaded', () => {
     // persists it, since availability/overlap is checked PER UNIT, not per
     // sport (booking two different Basketball courts must not conflict with
     // each other). `startHour`/`endHour` (24-hour integers, or null before
-    // anything is picked) replace the old single `time` string — see
-    // renderSlotGrid()/onSlotClick() below.
+    // anything is picked) replace the old single `time` string — set by the
+    // From/To <select>s' own change handlers below (Revision 5, D3).
     let bookingState = {
         court: '',
         sport: '',
@@ -819,12 +854,13 @@ document.addEventListener('DOMContentLoaded', () => {
             // Unit choice used to be preview-only — it repainted the photo
             // and nothing else. Part 3/D3 makes it meaningful: a different
             // unit can have entirely different availability, so any
-            // in-progress Step 2 selection is cleared and the grid
-            // re-fetched for the newly chosen unit (resetSlotSelectionAndRender(),
-            // defined with the rest of the slot-grid machinery below —
-            // hoisted, safe to call from here).
+            // in-progress Step 2 selection is cleared and the From/To
+            // pickers re-fetched for the newly chosen unit
+            // (resetTimeSelectionAndRender(), defined with the rest of the
+            // time-picker machinery below — hoisted, safe to call from
+            // here).
             paintBookPreview(court, Number(bookUnitSelect.value) || 0);
-            resetSlotSelectionAndRender();
+            resetTimeSelectionAndRender();
             updateSummary();
         });
     }
@@ -840,11 +876,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function bookStepIsReady(step) {
         if (step === 1) return Boolean(bookingState.court);
-        // A single clicked hour (startHour set, endHour still null) is
-        // already a complete, valid 1-hour booking — see onSlotClick()
-        // below; a customer isn't forced to click twice just to book one
-        // hour.
-        if (step === 2) return Boolean(bookingState.date) && bookingState.startHour !== null;
+        // Revision 5, D3 (implementation_plan.md) — both From AND To must
+        // now be chosen, even for a 1-hour booking (From = 8:00 AM, To =
+        // 9:00 AM). The old "a single clicked hour is already a complete
+        // 1-hour booking" rule is gone along with the clickable slot grid
+        // it belonged to — there is nothing to click any more, only two
+        // explicit <select>s (see renderTimePickers() below), and Next
+        // stays disabled until both hold a real value.
+        if (step === 2) return Boolean(bookingState.date) && bookingState.startHour !== null && bookingState.endHour !== null;
         return true;
     }
 
@@ -892,11 +931,13 @@ document.addEventListener('DOMContentLoaded', () => {
         return typeof bookingState.rate === 'number' && !Number.isNaN(bookingState.rate);
     }
 
-    // Number of whole hours currently selected in Step 2, or 0 before any
-    // hour has been clicked. A single clicked hour with no second click yet
-    // (endHour still null) counts as ITS OWN 1-hour end — see
-    // onSlotClick() below for why that's a deliberate, complete selection
-    // on its own, not a "waiting for step 2 of 2" state.
+    // Number of whole hours in the currently chosen From/To range, or 0
+    // before From is even chosen. Falls back to treating startHour as its
+    // own 1-hour end whenever endHour is still null — that fallback is only
+    // ever observed INSIDE Step 2's own transient state (e.g. From is
+    // chosen but To isn't yet), since bookStepIsReady() (Revision 5, D3)
+    // keeps the wizard from reaching Step 3's summary until BOTH From and
+    // To hold a real value.
     function bookingHoursSelected() {
         if (bookingState.startHour === null) return 0;
         const effectiveEnd = bookingState.endHour !== null ? bookingState.endHour : bookingState.startHour;
@@ -931,7 +972,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (summaryCourt) summaryCourt.textContent = bookingState.court || '—';
         if (summaryDate) summaryDate.textContent = formatDate(bookingState.date);
-        if (summaryTime) summaryTime.textContent = bookingTimeRangeLabel() || '— Select a slot —';
+        if (summaryTime) summaryTime.textContent = bookingTimeRangeLabel() || '— Select a time —';
         if (summaryRate) summaryRate.textContent = hasKnownRate() ? `₱${bookingState.rate}${bookingState.rateUnit}` : 'Rate TBA';
         if (summaryPayment) summaryPayment.textContent = isFull ? 'Full Payment' : `Downpayment (${pct}%)`;
         if (summaryTotal) summaryTotal.textContent = amount !== null ? `₱${amount.toFixed(2)}` : '—';
@@ -943,9 +984,14 @@ document.addEventListener('DOMContentLoaded', () => {
         if (downpaymentDesc) downpaymentDesc.textContent = `Pay ${pct}% now, balance on-site.`;
 
         if (bookSubmit) {
-            const ready = bookingState.startHour !== null && Boolean(bookingState.court);
+            // Revision 5, D3 — both From AND To required (not just
+            // startHour), matching bookStepIsReady()'s own step-2 gate
+            // above; Step 3 is unreachable without both already set, so
+            // this is defensive belt-and-suspenders rather than a normally
+            // reachable branch.
+            const ready = bookingState.startHour !== null && bookingState.endHour !== null && Boolean(bookingState.court);
             bookSubmit.disabled = !ready;
-            bookSubmit.textContent = ready ? 'Request Booking' : 'Select a time slot to continue';
+            bookSubmit.textContent = ready ? 'Request Booking' : 'Select a time range to continue';
         }
 
         // Re-gates the wizard's Next button and refreshes the step
@@ -968,8 +1014,8 @@ document.addEventListener('DOMContentLoaded', () => {
             // A different court almost always means different availability
             // (and paintBookPreview() above just reset bookingState.unit
             // too) — any in-progress Step 2 selection is stale, so it's
-            // cleared and the grid re-fetched for the new court.
-            resetSlotSelectionAndRender();
+            // cleared and the From/To pickers re-fetched for the new court.
+            resetTimeSelectionAndRender();
             updateSummary();
         });
     }
@@ -988,7 +1034,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 window.InigoToast?.show("You can't book a date in the past — showing today instead.", true);
             }
             bookingState.date = bookDate.value;
-            resetSlotSelectionAndRender();
+            resetTimeSelectionAndRender();
             updateSummary();
         });
     }
@@ -1007,10 +1053,19 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     // ------------------------------------------------------------------
-    // Step 2 — data-driven multi-hour range picker (Part 3,
-    // implementation_plan.md "Multi-hour booking with availability
-    // checking"). Replaces the old single-select [data-dash-slot] click
-    // handler above (bookingState.time, slotTo24h()) — both are gone.
+    // Step 2 — From/To time-range picker (Revision 5, D3 —
+    // implementation_plan.md). Replaces Part 3's clickable slot-grid model
+    // (bookingState.startHour/endHour set by clicking hour buttons —
+    // onSlotClick()/extendSelectionTo()/paintSlotGrid(), all three deleted)
+    // after the user's explicit correction: "there should be no slots to
+    // click." Two plain <select>s do the same job now — From (bookFromSelect)
+    // and To (bookToSelect) — with their OPTIONS shrunk to whatever is
+    // actually free, so every value either one can hold is already
+    // guaranteed bookable; see renderTimePickers() further below.
+    // bookingState.startHour/endHour (24-hour integers, or null before both
+    // are chosen) are UNCHANGED in shape and meaning — bookingHoursSelected(),
+    // bookingTimeRangeLabel(), updateSummary(), and the insert payload
+    // further below all keep working exactly as before.
     //
     // Bookable hours: window.InigoBusinessHours.hoursRange() —
     // [OPEN_HOUR, CLOSE_HOUR) from includes/businessHours.js, the same
@@ -1042,14 +1097,24 @@ document.addEventListener('DOMContentLoaded', () => {
     // outer scope, hoisted, so it doesn't matter that they're defined later
     // in this file than this section.
     //
+    // M2 fix (post-Revision-5 review) — D4 promises Overview and Step 2 can
+    // never disagree, but Overview's peek strip already counted walk-ins
+    // (isOverviewCourtHourOccupied() below) while Step 2 never fetched them
+    // at all, so an hour blocked by a walk-in still looked bookable here.
+    // fetchDayWalkins() below (reusing fetchOverviewWalkins()) fetches the
+    // same table for the selected court/date; isSlotHourBooked() treats any
+    // overlapping walk-in as occupying EVERY unit of the court, exactly
+    // like isOverviewCourtHourOccupied() does, since walk_in_booking has no
+    // court_unit column to narrow it to one.
+    //
     // RLS CAVEAT (implementation_plan.md's "Open questions and risks" —
     // documented, not introduced here, and NOT fixable from this repo):
     // `booking`'s row-level security policies predate this repo's schema
     // tracking and are not visible to it (database/schema/
     // 004_staff_module.sql's own header note). If the signed-in customer
     // role cannot SELECT other customers' booking rows, the query below
-    // returns only (or none of) their own bookings and this grid would
-    // cheerfully show a truly-booked hour as open. This code is written to
+    // returns only (or none of) their own bookings and these pickers would
+    // cheerfully offer a truly-booked hour as free. This code is written to
     // be correct regardless of what RLS actually allows, but it cannot
     // verify or fix RLS from here. The REAL guarantee against a double
     // booking either way is server-side: database/schema/
@@ -1062,9 +1127,19 @@ document.addEventListener('DOMContentLoaded', () => {
     // bookings to every other signed-in customer.
     // ------------------------------------------------------------------
     let slotGridBookings = { ok: true, rows: [] };
-    // Bumped on every renderSlotGrid() call so a slow, now-superseded fetch
-    // (rapid court/date/unit changes) can detect it's stale and drop its
-    // own result instead of overwriting a newer render.
+    // M2 fix (post-Revision-5 review) — walk-ins for the selected court/date,
+    // fetched alongside slotGridBookings above by refreshTimePickers() below
+    // (see fetchDayWalkins() further down). Same { ok, rows } shape so every
+    // reader that already checks slotGridBookings.ok can check this one the
+    // same way.
+    let slotGridWalkins = { ok: true, rows: [] };
+    // Bumped on every refreshTimePickers() call so a slow, now-superseded
+    // fetch (rapid court/date/unit changes) can detect it's stale and drop
+    // its own result instead of overwriting a newer render. Both this and
+    // slotGridBookings above keep their Part 3 names (the "slot grid" they
+    // once fed no longer exists as of Revision 5, D3) rather than a
+    // cosmetic rename — they still gate the exact same race guard and hold
+    // the exact same fetched rows for renderTimePickers() below.
     let slotGridRequestSeq = 0;
 
     async function fetchDayBookings(courtName, dateStr) {
@@ -1078,9 +1153,9 @@ document.addEventListener('DOMContentLoaded', () => {
         // first attempt fails with a schema-mismatch error (same
         // classifier fetchOverviewWalkins() below already uses, despite
         // its "isOverviewSchemaMismatch" name) and this retries with only
-        // the columns that exist today, so the grid can still show
-        // approximate (sport-wide, not per-unit) availability instead of
-        // nothing.
+        // the columns that exist today, so the From/To pickers can still
+        // show approximate (sport-wide, not per-unit) availability instead
+        // of nothing.
         let res = await window.sb
             .from('booking')
             .select('court_unit, time_date, end_at, duration_minutes')
@@ -1100,10 +1175,36 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         if (res.error) {
-            console.error('[dashboard] failed to load bookings for the slot grid', res.error);
+            console.error('[dashboard] failed to load bookings for the time pickers', res.error);
             return { ok: false, rows: [] };
         }
         return { ok: true, rows: res.data || [] };
+    }
+
+    // M2 fix (post-Revision-5 review) — walk-ins for the same court/date
+    // fetchDayBookings() just fetched, so Step 2 stops disagreeing with the
+    // Overview strip about a walk-in-blocked hour (D4). Reuses
+    // fetchOverviewWalkins() itself (defined further below in the Overview
+    // Courts section; safe to call from here — hoisted `function`
+    // declaration, same reasoning as this section's own header comment on
+    // overviewBookingWindow()/overviewWindowsOverlap()) rather than a
+    // second walk_in_booking query with its own copy of the schema-mismatch
+    // retry. That function fetches every court's walk-ins for the day
+    // (the Overview widget needs all of them at once); narrowed to THIS
+    // court client-side since Step 2 only ever needs one.
+    async function fetchDayWalkins(courtName, dateStr) {
+        if (!window.sb || !courtName || !dateStr) return { ok: false, rows: [] };
+
+        const dayStart = new Date(`${dateStr}T00:00:00`);
+        const dayEnd = new Date(dayStart.getTime() + 24 * 60 * 60 * 1000);
+
+        const res = await fetchOverviewWalkins(dayStart, dayEnd);
+        if (res.error) {
+            console.error('[dashboard] failed to load walk-ins for the time pickers', res.error);
+            return { ok: false, rows: [] };
+        }
+        const rows = (res.data || []).filter((row) => String(row.courts || '') === courtName);
+        return { ok: true, rows };
     }
 
     // True when `hour` (on the currently selected date) has already
@@ -1118,17 +1219,25 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // True when `hour` on the currently selected date overlaps a fetched
     // booking that shares the CURRENTLY selected unit (or shares "no
-    // unit" — see this section's header comment on legacy rows).
+    // unit" — see this section's header comment on legacy rows), OR
+    // overlaps a walk-in (M2 fix, post-Revision-5 review) — a walk-in has
+    // no court_unit to match against at all, so it blocks EVERY unit of
+    // this court, exactly like isOverviewCourtHourOccupied() below treats
+    // it.
     function isSlotHourBooked(hour) {
         if (!slotGridBookings.ok) return false;
         const dateBase = new Date(`${bookingState.date}T00:00:00`);
         const slot = overviewSlotWindow(hour, dateBase);
         const currentUnit = bookingState.unit || '';
-        return slotGridBookings.rows.some((row) => {
+        const bookingMatch = slotGridBookings.rows.some((row) => {
             const rowUnit = row.court_unit || '';
             if (rowUnit !== currentUnit) return false;
             return overviewWindowsOverlap(overviewBookingWindow(row), slot);
         });
+        if (bookingMatch) return true;
+
+        if (!slotGridWalkins.ok) return false;
+        return slotGridWalkins.rows.some((row) => overviewWindowsOverlap(overviewBookingWindow(row), slot));
     }
 
     function slotHourStatus(hour) {
@@ -1137,139 +1246,235 @@ document.addEventListener('DOMContentLoaded', () => {
         return 'available';
     }
 
-    // Extends the range from bookingState.startHour up to (and including)
-    // targetHour, stopping at the first past/booked hour it meets instead
-    // of spanning across it — "a range may not span a booked hour" is
-    // enforced here, not just at the two clicked endpoints (both of which
-    // are already guaranteed available/future, since a past/booked hour's
-    // button is rendered `disabled` and never reaches onSlotClick()).
-    function extendSelectionTo(targetHour) {
-        let newEnd = bookingState.startHour;
-        let blockedAt = null;
-        for (let h = bookingState.startHour + 1; h <= targetHour; h++) {
-            if (slotHourStatus(h) !== 'available') {
-                blockedAt = h;
-                break;
+    // Runs of consecutive free (available, non-past) hours for the
+    // currently selected court/unit/date (Revision 5, D3 —
+    // implementation_plan.md) — e.g. with 10-11 AM booked, this returns
+    // [{ startHour: 8, endHourExclusive: 10 }, { startHour: 11,
+    // endHourExclusive: 20 }]. The single source both renderTimePickers()
+    // below (Step 2's From/To options + its "Open on this date" status
+    // line) and the Overview strip's per-hour pills read availability from
+    // (via the same slotHourStatus()/isSlotHourBooked() this function
+    // calls) — so the two views can never disagree about what's free for a
+    // given court/unit/date (D4). hoursRange() always returns a plain
+    // ascending, step-1 sequence, so a run only needs to remember where it
+    // started; it closes the moment a non-free hour interrupts it, or at
+    // CLOSE_HOUR if it reaches the end of the day still open.
+    function computeFreeWindows() {
+        if (!window.InigoBusinessHours) return [];
+        const hours = window.InigoBusinessHours.hoursRange();
+        const windows = [];
+        let runStart = null;
+
+        hours.forEach((hour) => {
+            if (slotHourStatus(hour) === 'available') {
+                if (runStart === null) runStart = hour;
+            } else if (runStart !== null) {
+                windows.push({ startHour: runStart, endHourExclusive: hour });
+                runStart = null;
             }
-            newEnd = h;
+        });
+        if (runStart !== null) {
+            windows.push({ startHour: runStart, endHourExclusive: window.InigoBusinessHours.CLOSE_HOUR });
         }
-        bookingState.endHour = newEnd;
-        if (blockedAt !== null) {
-            const blockedLabel = window.InigoBusinessHours.formatHourLabel(blockedAt);
-            window.InigoToast?.show(`${blockedLabel} is already taken, so the range was shortened to end there.`, true);
-        }
+        return windows;
     }
 
-    // Range-selection rule (implementation_plan.md): first click sets the
-    // start, second click sets the end (inclusive of that hour's own
-    // slot — clicking 8 then 11 books 8:00-12:00). Clicking the start
-    // again, or clicking an hour BEFORE it, starts a new selection there
-    // instead. A third click, once a full [start, end] range already
-    // exists, also starts fresh — there is no "extend an already-completed
-    // range" gesture.
-    function onSlotClick(hour) {
-        if (bookingState.startHour === null) {
-            bookingState.startHour = hour;
-            bookingState.endHour = null;
-        } else if (bookingState.endHour === null) {
-            if (hour === bookingState.startHour) {
-                // No-op — already the sole selected hour.
-            } else if (hour < bookingState.startHour) {
-                bookingState.startHour = hour;
-                bookingState.endHour = null;
-            } else {
-                extendSelectionTo(hour);
-            }
-        } else {
-            bookingState.startHour = hour;
-            bookingState.endHour = null;
-        }
+    // Fills [data-dash-book-from]/[data-dash-book-to] from
+    // computeFreeWindows() above and writes the "Open on this date" status
+    // line (Revision 5, D3). Both selects get an explicit, UNSELECTED
+    // placeholder <option> — bookStepIsReady() keeps Next disabled until the
+    // customer actively picks both, the same "nothing chosen yet" state a
+    // fresh page load starts in.
+    //
+    // From lists every free hour across every window, labelled with its
+    // OWN start time (formatHourLabel — "8:00 AM"). To only makes sense
+    // once From is picked: it lists every hour from From+1 through the end
+    // of the free run that CONTAINS From, labelled with the END time each
+    // option represents (so picking 8:00 AM inside a run that's open
+    // through 8 PM offers "9:00 AM" … "8:00 PM") — an option's value V
+    // means "book through V:00", stored as bookingState.endHour = V-1 to
+    // keep the existing inclusive-hour convention bookingHoursSelected()/
+    // bookingTimeRangeLabel()/the insert payload above already rely on.
+    // This is the direct replacement for Part 3's paintSlotGrid() — same
+    // "pure re-render from whatever was last fetched into slotGridBookings"
+    // role, just painting two <select>s instead of a button grid.
+    function renderTimePickers() {
+        if (!bookFromSelect || !bookToSelect || !window.InigoBusinessHours) return;
 
-        paintSlotGrid();
-        updateSummary();
-    }
-
-    // Pure re-render from whatever renderSlotGrid() last fetched into
-    // slotGridBookings — used both after a fetch resolves and after every
-    // click (a click only changes bookingState.startHour/endHour, never
-    // the underlying availability data, so it never needs a new request).
-    function paintSlotGrid() {
-        if (!slotGridEl || !window.InigoBusinessHours) return;
-
-        if (!slotGridBookings.ok) {
-            slotGridEl.innerHTML = '<p style="color: var(--color-ink-faint); padding: 8px 4px;">Could not check live availability right now — please try a different date, or refresh the page.</p>';
+        if (!bookingState.court || !bookingState.date) {
+            bookFromSelect.innerHTML = '<option value="">Select a court first</option>';
+            bookToSelect.innerHTML = '<option value="">Select a court first</option>';
+            bookFromSelect.disabled = true;
+            bookToSelect.disabled = true;
+            if (bookOpenWindowsEl) bookOpenWindowsEl.textContent = 'Select a court first.';
             return;
         }
 
-        const effectiveEnd = bookingState.endHour !== null ? bookingState.endHour : bookingState.startHour;
-        const hours = window.InigoBusinessHours.hoursRange();
+        // M2 fix — either fetch failing means occupancy can't be trusted
+        // (a walk-in fetch failure is just as unsafe to render around as a
+        // booking fetch failure), same fail-safe reasoning
+        // refreshOverviewCourtWidget()'s overviewDataOk uses.
+        if (!slotGridBookings.ok || !slotGridWalkins.ok) {
+            bookFromSelect.innerHTML = '<option value="">Unavailable</option>';
+            bookToSelect.innerHTML = '<option value="">Unavailable</option>';
+            bookFromSelect.disabled = true;
+            bookToSelect.disabled = true;
+            if (bookOpenWindowsEl) bookOpenWindowsEl.textContent = 'Could not check live availability right now — please try a different date, or refresh the page.';
+            return;
+        }
 
-        slotGridEl.innerHTML = hours.map((hour) => {
-            const status = slotHourStatus(hour);
-            const classes = ['dash-slot'];
-            let disabled = false;
+        const fmt = window.InigoBusinessHours.formatHourLabel;
+        const windows = computeFreeWindows();
 
-            if (status === 'past') {
-                classes.push('is-past');
-                disabled = true;
-            } else if (status === 'booked') {
-                classes.push('is-unavailable');
-                disabled = true;
-            } else if (bookingState.startHour !== null && hour >= bookingState.startHour && hour <= effectiveEnd) {
-                if (hour === bookingState.startHour || hour === effectiveEnd) {
-                    classes.push('is-selected');
-                    if (hour === bookingState.startHour) classes.push('is-range-start');
-                    if (hour === effectiveEnd) classes.push('is-range-end');
-                } else {
-                    classes.push('is-in-range');
-                }
+        if (windows.length === 0) {
+            bookFromSelect.innerHTML = '<option value="">No times available</option>';
+            bookToSelect.innerHTML = '<option value="">No times available</option>';
+            bookFromSelect.disabled = true;
+            bookToSelect.disabled = true;
+            bookingState.startHour = null;
+            bookingState.endHour = null;
+            if (bookOpenWindowsEl) {
+                // L3 fix (post-Revision-5 review) — windows.length === 0
+                // means every hour of the day is either 'booked' or 'past'
+                // (an 'available' hour would have produced a window above).
+                // On a future date every one of those must be 'booked', so
+                // "Fully booked" is always accurate there. On TODAY,
+                // though, an evening visit could find every hour simply
+                // elapsed with nothing ever booked — "Fully booked" would
+                // be misleading in that case, so this only says it when at
+                // least one hour is genuinely 'booked'; otherwise the day
+                // just ran out.
+                const isToday = bookingState.date === todayDateInputValue();
+                const noneBooked = window.InigoBusinessHours.hoursRange().every((h) => slotHourStatus(h) !== 'booked');
+                bookOpenWindowsEl.textContent = (isToday && noneBooked)
+                    ? 'No more times available today.'
+                    : 'Fully booked on this date.';
             }
+            return;
+        }
 
-            const label = window.escapeHtml(window.InigoBusinessHours.formatHourLabel(hour));
-            const disabledAttr = disabled ? ' disabled' : '';
-            return `<button type="button" class="${classes.join(' ')}" data-dash-slot data-hour="${hour}"${disabledAttr}>${label}</button>`;
-        }).join('');
+        // From — every free hour, across every window, in order.
+        const freeHours = [];
+        windows.forEach((w) => {
+            for (let h = w.startHour; h < w.endHourExclusive; h++) freeHours.push(h);
+        });
+        if (bookingState.startHour !== null && !freeHours.includes(bookingState.startHour)) {
+            // Defensive only — From's OWN change handler below already
+            // clears endHour whenever From itself changes, and every
+            // court/unit/date change goes through resetTimeSelectionAndRender()
+            // (which nulls both directly), so this should never actually
+            // trigger; kept in case a future caller repaints without
+            // resetting first.
+            bookingState.startHour = null;
+            bookingState.endHour = null;
+        }
 
-        slotGridEl.querySelectorAll('[data-dash-slot]:not([disabled])').forEach((btn) => {
-            btn.addEventListener('click', () => onSlotClick(Number(btn.dataset.hour)));
+        bookFromSelect.disabled = false;
+        const fromPlaceholder = `<option value=""${bookingState.startHour === null ? ' selected' : ''} disabled>Select a start time</option>`;
+        const fromOptions = freeHours.map((h) => `<option value="${h}"${h === bookingState.startHour ? ' selected' : ''}>${window.escapeHtml(fmt(h))}</option>`).join('');
+        bookFromSelect.innerHTML = fromPlaceholder + fromOptions;
+
+        // To — only the hours from From+1 through the end of the run that
+        // contains From, so a range can never be chosen that spans a
+        // booked/past hour (the same rule Part 3's extendSelectionTo() used
+        // to enforce for the old clickable grid).
+        if (bookingState.startHour === null) {
+            bookToSelect.innerHTML = '<option value="" selected disabled>Select a start time first</option>';
+            bookToSelect.disabled = true;
+        } else {
+            const run = windows.find((w) => bookingState.startHour >= w.startHour && bookingState.startHour < w.endHourExclusive);
+            const runEndExclusive = run ? run.endHourExclusive : bookingState.startHour + 1;
+
+            const toPlaceholder = `<option value=""${bookingState.endHour === null ? ' selected' : ''} disabled>Select an end time</option>`;
+            const toOptions = [];
+            for (let endExclusive = bookingState.startHour + 1; endExclusive <= runEndExclusive; endExclusive++) {
+                const endHourValue = endExclusive - 1; // stored using the existing inclusive-hour convention
+                toOptions.push(`<option value="${endHourValue}"${endHourValue === bookingState.endHour ? ' selected' : ''}>${window.escapeHtml(fmt(endExclusive))}</option>`);
+            }
+            bookToSelect.innerHTML = toPlaceholder + toOptions.join('');
+            bookToSelect.disabled = false;
+        }
+
+        if (bookOpenWindowsEl) {
+            const windowLabels = windows.map((w) => `${fmt(w.startHour)} – ${fmt(w.endHourExclusive)}`).join(', ');
+            bookOpenWindowsEl.textContent = `Open on this date: ${windowLabels}`;
+        }
+    }
+
+    if (bookFromSelect) {
+        bookFromSelect.addEventListener('change', () => {
+            const value = bookFromSelect.value;
+            bookingState.startHour = value === '' ? null : Number(value);
+            // Changing From always clears To (Revision 5, D3) — the free
+            // run containing the new From hour may not even include the
+            // previously chosen End, so re-deriving To from scratch (via
+            // renderTimePickers() below) is simpler and safer than trying
+            // to carry a possibly-invalid End forward.
+            bookingState.endHour = null;
+            renderTimePickers();
+            updateSummary();
+        });
+    }
+
+    if (bookToSelect) {
+        bookToSelect.addEventListener('change', () => {
+            const value = bookToSelect.value;
+            bookingState.endHour = value === '' ? null : Number(value);
+            updateSummary();
         });
     }
 
     // Re-fetches availability for the currently selected court + date, then
-    // paints the grid from the result. Called whenever court, unit, or
-    // date changes (implementation_plan.md) — a unit-only change re-fetches
-    // too, even though fetchDayBookings() isn't itself unit-filtered
-    // (filtering happens client-side in isSlotHourBooked() above); the
-    // extra round trip is cheap and keeps this one function the single
-    // "availability might have changed" entry point.
-    function renderSlotGrid() {
-        if (!slotGridEl) return;
+    // repaints the From/To pickers from the result. Called whenever court,
+    // unit, or date changes (implementation_plan.md) — a unit-only change
+    // re-fetches too, even though fetchDayBookings() isn't itself
+    // unit-filtered (filtering happens client-side in isSlotHourBooked()
+    // above); the extra round trip is cheap and keeps this one function the
+    // single "availability might have changed" entry point. Renamed from
+    // Part 3's renderSlotGrid() (Revision 5, D3) now that there's no grid
+    // left to paint — repaints via renderTimePickers() above instead of the
+    // deleted paintSlotGrid().
+    async function refreshTimePickers() {
+        if (!bookFromSelect || !bookToSelect) return;
 
         if (!bookingState.court || !bookingState.date) {
-            slotGridEl.innerHTML = '<p style="color: var(--color-ink-faint); padding: 8px 4px;">Select a court first.</p>';
+            renderTimePickers();
             return;
         }
 
         const mySeq = ++slotGridRequestSeq;
-        slotGridEl.innerHTML = '<p style="color: var(--color-ink-faint); padding: 8px 4px;">Checking availability…</p>';
+        bookFromSelect.innerHTML = '<option value="">Checking availability…</option>';
+        bookToSelect.innerHTML = '<option value="">Checking availability…</option>';
+        bookFromSelect.disabled = true;
+        bookToSelect.disabled = true;
+        if (bookOpenWindowsEl) bookOpenWindowsEl.textContent = 'Checking availability…';
 
-        fetchDayBookings(bookingState.court, bookingState.date).then((result) => {
-            // A newer render started while this one was in flight — that
-            // newer call already owns the grid, so this stale response is
-            // dropped instead of flashing outdated availability.
-            if (mySeq !== slotGridRequestSeq) return;
-            slotGridBookings = result;
-            paintSlotGrid();
-        });
+        // M2 fix — fetched together (Promise.all) so a walk-in fetched a
+        // request apart from its booking counterpart can't itself become a
+        // second, separately-racing source of staleness.
+        const [result, walkinResult] = await Promise.all([
+            fetchDayBookings(bookingState.court, bookingState.date),
+            fetchDayWalkins(bookingState.court, bookingState.date),
+        ]);
+        // A newer refresh started while this one was in flight — that newer
+        // call already owns the pickers, so this stale response is dropped
+        // instead of flashing outdated availability.
+        if (mySeq !== slotGridRequestSeq) return;
+        slotGridBookings = result;
+        slotGridWalkins = walkinResult;
+        renderTimePickers();
     }
 
-    // Clears any in-progress Step 2 selection and re-renders the grid —
-    // shared by every "the court/unit/date might have just changed"
-    // handler above and below, so none of them has to repeat both steps.
-    function resetSlotSelectionAndRender() {
+    // Clears any in-progress Step 2 selection and re-renders the From/To
+    // pickers — shared by every "the court/unit/date might have just
+    // changed" handler above and below, so none of them has to repeat both
+    // steps. Renamed from Part 3's resetSlotSelectionAndRender() (Revision
+    // 5, D3) now that there's no grid selection left to reset, only
+    // bookingState.startHour/endHour.
+    function resetTimeSelectionAndRender() {
         bookingState.startHour = null;
         bookingState.endHour = null;
-        renderSlotGrid();
+        refreshTimePickers();
     }
 
     if (bookSubmit) {
@@ -1280,7 +1485,13 @@ document.addEventListener('DOMContentLoaded', () => {
                 return;
             }
 
-            if (!bookingState.date || bookingState.startHour === null) {
+            // Revision 5, D3 — both From AND To are required now (see
+            // bookStepIsReady()/bookSubmit's own disabled-state check
+            // above); bookSubmit.disabled already guards this in normal use
+            // (the `if (bookSubmit.disabled) return;` line above), so this
+            // is defensive belt-and-suspenders, not a normally reachable
+            // branch.
+            if (!bookingState.date || bookingState.startHour === null || bookingState.endHour === null) {
                 window.InigoToast?.show('Please select a date and time range.', true);
                 return;
             }
@@ -1301,11 +1512,21 @@ document.addEventListener('DOMContentLoaded', () => {
             // comment on the RLS caveat this can't fully close). Refreshes
             // slotGridBookings with the very latest data first so this
             // isn't judging against whatever was fetched whenever Step 2
-            // last rendered, which could be stale by now.
-            const recheck = await fetchDayBookings(bookingState.court, bookingState.date);
+            // last rendered, which could be stale by now. M2 fix (post-
+            // Revision-5 review) — re-fetches walk-ins the same way, since
+            // a walk-in taken in the last few seconds is just as real a
+            // conflict as a booking (and, unlike a booking, has NO database
+            // constraint backing it up — see the insert's own comment below
+            // on why `walk_in_booking` is a different table — so this
+            // app-level recheck is the ONLY guard a walk-in gets).
+            const [recheck, walkinRecheck] = await Promise.all([
+                fetchDayBookings(bookingState.court, bookingState.date),
+                fetchDayWalkins(bookingState.court, bookingState.date),
+            ]);
             if (recheck.ok) slotGridBookings = recheck;
+            if (walkinRecheck.ok) slotGridWalkins = walkinRecheck;
             let conflict = false;
-            if (slotGridBookings.ok) {
+            if (slotGridBookings.ok && slotGridWalkins.ok) {
                 for (let h = bookingState.startHour; h <= effectiveEnd; h++) {
                     if (isSlotHourBooked(h)) { conflict = true; break; }
                 }
@@ -1316,7 +1537,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 bookSubmit.textContent = originalLabel;
                 bookingState.startHour = null;
                 bookingState.endHour = null;
-                paintSlotGrid();
+                renderTimePickers();
                 updateSummary();
                 return;
             }
@@ -1430,13 +1651,13 @@ document.addEventListener('DOMContentLoaded', () => {
                 bookSubmit.disabled = false;
                 bookSubmit.textContent = originalLabel;
                 if (error.code === '23P01') {
-                    // The grid we're showing is now known-stale — someone
-                    // else just took part of this range. Refresh it so the
-                    // customer can immediately see and pick around the real
-                    // conflict instead of retrying blind.
+                    // The pickers we're showing are now known-stale —
+                    // someone else just took part of this range. Refresh
+                    // them so the customer can immediately see and pick
+                    // around the real conflict instead of retrying blind.
                     bookingState.startHour = null;
                     bookingState.endHour = null;
-                    renderSlotGrid();
+                    refreshTimePickers();
                     updateSummary();
                 }
                 return;
@@ -1451,7 +1672,14 @@ document.addEventListener('DOMContentLoaded', () => {
             // court, date, or unit — the only three triggers that would
             // otherwise re-fetch) sees the booking they just made reflected
             // as taken, not the pre-submit snapshot.
-            renderSlotGrid();
+            refreshTimePickers();
+            // D4 (implementation_plan.md, "Revision 5") — the Overview
+            // panel's peek strip reads the exact same occupancy the pickers
+            // above just refreshed for (same fetchDayBookings()-shaped
+            // query, same overlap primitives); without this it would keep
+            // showing the pre-submit snapshot until the customer manually
+            // changed its own date/unit.
+            refreshOverviewCourtWidget();
             // Back to Step 1 so a customer who wants to book a second court
             // right away starts the guided flow fresh instead of sitting on
             // a Confirm step that just fired.
@@ -1465,7 +1693,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // below) — same "loading" honesty as the <select>'s own "Loading
     // courts…" option.
     paintBookPreview(null);
-    renderSlotGrid();
+    refreshTimePickers();
     updateSummary();
 
     // Real downpayment percentage (E2, implementation_plan.md) — read once
@@ -1537,10 +1765,10 @@ document.addEventListener('DOMContentLoaded', () => {
         bookingState.rateUnit = (firstOpt && firstOpt.dataset.rateUnit) || '/hr';
         syncBookPreviewFromState();
         // First time bookingState.court/unit become real (courts load
-        // asynchronously) — renders Step 2's grid for real instead of the
-        // "Select a court first." placeholder renderSlotGrid() showed at
-        // setup time above.
-        renderSlotGrid();
+        // asynchronously) — renders Step 2's From/To pickers for real
+        // instead of the "Select a court first." placeholder
+        // refreshTimePickers() showed at setup time above.
+        refreshTimePickers();
         updateSummary();
     }
 
@@ -1612,16 +1840,33 @@ document.addEventListener('DOMContentLoaded', () => {
     // Hourly, [OPEN_HOUR, CLOSE_HOUR) — includes/businessHours.js (Part 3,
     // implementation_plan.md). Used to be its own hardcoded [8..20] literal
     // that happened to match today's operating hours by coincidence, not by
-    // reference — Step 2's slot grid (renderSlotGrid() above) and
+    // reference — Step 2's From/To pickers (refreshTimePickers() above) and
     // includes/staff_dashboard.js's SCHEDULE_SLOTS now read the exact same
     // source. Literal fallback here only for the "should never happen"
     // case the guard above already logs — keeps this widget rendering
     // SOMETHING sensible instead of an empty peek strip.
-    const OVERVIEW_SLOT_HOURS = window.InigoBusinessHours ? window.InigoBusinessHours.hoursRange() : [8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20];
+    const OVERVIEW_SLOT_HOURS = window.InigoBusinessHours ? window.InigoBusinessHours.hoursRange() : [8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19];
     // Kept equal to database/schema/004_staff_module.sql's
     // booking.duration_minutes DEFAULT, same reasoning as
     // includes/staff_dashboard.js's own DEFAULT_DURATION_MINUTES.
     const OVERVIEW_DEFAULT_DURATION_MINUTES = 60;
+
+    // Revision 5, D5 (implementation_plan.md) — which calendar day this
+    // widget's peek strips reflect. Defaults to today, min-clamped to
+    // today, same todayDateInputValue() the Booking wizard's own bookDate
+    // uses (defined with that section above — a hoisted function, safe to
+    // call from here). overviewDate is tracked as its own piece of state
+    // (not read from overviewDateInput.value on demand) for the same reason
+    // bookingState.date is: every helper below reads ONE value instead of
+    // re-querying the DOM, and it degrades honestly to today even if this
+    // <input> is ever missing from the markup.
+    const overviewDateInput = document.querySelector('[data-dash-overview-date]');
+    if (overviewDateInput) {
+        const todayStr = todayDateInputValue();
+        overviewDateInput.min = todayStr;
+        if (!overviewDateInput.value || overviewDateInput.value < todayStr) overviewDateInput.value = todayStr;
+    }
+    let overviewDate = overviewDateInput ? overviewDateInput.value : todayDateInputValue();
 
     // Default sort mode (Revision 2, R2 — implementation_plan.md): groups
     // the per-sport headings alphabetically, matching the sort <select>'s
@@ -1640,6 +1885,14 @@ document.addEventListener('DOMContentLoaded', () => {
     let overviewWalkins = [];
     let overviewDataOk = true;
     let overviewDateBase = null;
+    // M3 fix (post-Revision-5 review) — same stale-response race guard as
+    // Step 2's slotGridRequestSeq above: refreshOverviewCourtWidget() is
+    // re-entrant (date change, unit change, the profile-ready event, and
+    // the initial call can all overlap), and network responses are not
+    // guaranteed to resolve in the order their requests were sent. Bumped
+    // at the top of every call; a response only gets to write state/paint
+    // if its own snapshot still matches the latest value when it resolves.
+    let overviewRequestSeq = 0;
     // Court ids (always compared as strings — see courtId below) currently
     // expanded — a Set so re-rendering after a sort change or a toggle
     // click preserves whichever peeks were already open instead of
@@ -1653,7 +1906,11 @@ document.addEventListener('DOMContentLoaded', () => {
     const overviewSelectedUnitIndex = new Map();
 
     // "Today" in the browser's local timezone — same 2-line pattern as
-    // includes/staff_dashboard.js's todayRange().
+    // includes/staff_dashboard.js's todayRange(). Used directly only as
+    // overviewSelectedDayRange()'s defensive fallback below now (Revision 5,
+    // D5 moved this widget's OWN day off "always today" — see that
+    // function), but kept as its own named helper since that fallback still
+    // needs exactly this "local midnight, +24h" math.
     function todayRange() {
         const now = new Date();
         const start = new Date(now.getFullYear(), now.getMonth(), now.getDate());
@@ -1661,19 +1918,31 @@ document.addEventListener('DOMContentLoaded', () => {
         return { start, end };
     }
 
-    // "8:00 AM" / "6:00 PM" — delegates to includes/businessHours.js's
-    // shared formatter (Part 3) so this widget and Step 2's slot grid
-    // (renderSlotGrid() above) can never disagree on how an hour reads.
-    // Kept as its own named function rather than inlining the call at its
-    // one remaining use below, since the "why this exact format" reasoning
-    // (matches the Booking panel's own labels) is worth keeping documented
-    // here.
-    function formatOverviewHourLabel(hour) {
-        return window.InigoBusinessHours.formatHourLabel(hour);
+    // Revision 5, D5 (implementation_plan.md) — the [start, end) range for
+    // whatever date is currently in overviewDate, replacing this widget's
+    // old hardcoded todayRange() call (below, in refreshOverviewCourtWidget()).
+    // Falls back to todayRange() itself if overviewDate is ever unparsable
+    // (e.g. the <input> is missing from the markup and the fallback
+    // assignment above somehow still produced something invalid) — the
+    // same "degrade to today, never to nothing" honesty this widget's other
+    // fallbacks already use.
+    function overviewSelectedDayRange() {
+        const start = new Date(`${overviewDate}T00:00:00`);
+        if (Number.isNaN(start.getTime())) return todayRange();
+        return { start, end: new Date(start.getTime() + 24 * 60 * 60 * 1000) };
     }
 
-    // `dateBase` defaults to overviewDateBase (this widget's own "today") —
-    // Step 2's slot grid (isSlotHourBooked() above) reuses this SAME
+    // True when overviewDate IS today — the only case where any hour can
+    // read as "past" (D5). A future date never has past hours by
+    // definition; renderOverviewPeekContent() below checks this before ever
+    // calling isOverviewHourPast().
+    function overviewDateIsToday() {
+        return overviewDate === todayDateInputValue();
+    }
+
+    // `dateBase` defaults to overviewDateBase (this widget's own currently
+    // selected date, kept in sync by refreshOverviewCourtWidget() below) —
+    // Step 2's From/To pickers (isSlotHourBooked() above) reuse this SAME
     // function for an arbitrary customer-picked date by passing one
     // explicitly, instead of a second near-identical implementation. Despite
     // the "overview" name (kept as-is — see isOverviewSchemaMismatch()'s own
@@ -1686,16 +1955,22 @@ document.addEventListener('DOMContentLoaded', () => {
         return { start, end: new Date(start.getTime() + 60 * 60 * 1000) };
     }
 
+    // True when `hour` on overviewDateBase has already started — mirrors
+    // Step 2's own isSlotHourPast() above, just against this widget's
+    // selected date instead of bookingState.date (D5, Revision 5).
+    function isOverviewHourPast(hour) {
+        const start = new Date(overviewDateBase);
+        start.setHours(hour, 0, 0, 0);
+        return start.getTime() < Date.now();
+    }
+
     // Same shape as includes/staff_dashboard.js's bookingWindow() — a
     // missing/invalid duration_minutes falls back to
     // OVERVIEW_DEFAULT_DURATION_MINUTES, never a fabricated guess. Prefers
     // the real end_at (database/schema/012_booking_time_range.sql, Part 3)
-    // when the caller's query selected it — Step 2's fetchDayBookings()
-    // above does; this widget's own booking query below does not (adding it
-    // there would need the same schema-mismatch retry fetchDayBookings()
-    // has, for zero behavioural gain — duration_minutes already agrees with
-    // end_at by construction for every row this feature writes) — so this
-    // branch is a no-op here and only actually engages for Step 2.
+    // when the caller's query selected it — both Step 2's fetchDayBookings()
+    // and this widget's own fetchOverviewBookings() below now do (D4,
+    // Revision 5), so this branch engages for both.
     function overviewBookingWindow(row) {
         const start = new Date(row.time_date);
         if (row.end_at) {
@@ -1711,20 +1986,47 @@ document.addEventListener('DOMContentLoaded', () => {
         return a.start < b.end && b.start < a.end;
     }
 
-    // A court's hour is occupied if a non-cancelled booking OR a walk-in
-    // today overlaps that hour's [start, start+1h) window — identical
-    // semantics to includes/staff_dashboard.js's scheduleCellContent(),
-    // just without that function's staff-only customer-name lookup.
-    function isOverviewCourtHourOccupied(court, hour) {
+    // A court+unit's hour is occupied if a `pending`/`confirmed` booking
+    // sharing that SAME unit, OR a walk-in, overlaps that hour's [start,
+    // start+1h) window (Revision 5, D4 — implementation_plan.md). `unitLabel`
+    // is the card's CURRENTLY SELECTED unit (renderOverviewCourtCard()
+    // below) — matched against a row's court_unit the exact same way Step
+    // 2's isSlotHourBooked() matches bookingState.unit: null/'' on either
+    // side both mean "no unit distinction", so a legacy pre-012 row (or a
+    // single-unit court) still behaves as a sport-wide block, and the two
+    // views (this peek strip, Step 2's own pickers) can never disagree
+    // about a given court+unit+hour.
+    //
+    // M2 fix (post-Revision-5 review) — this used to treat "anything not
+    // cancelled" (including `completed`) as occupying, while Step 2's
+    // fetchDayBookings() only ever fetches `pending`/`confirmed` rows in the
+    // first place (its `.in('status', [...])` filter). A `completed`
+    // booking from earlier the same day therefore still blocked THIS
+    // widget's pill while Step 2 had already stopped counting it — the two
+    // views could disagree about the exact same hour. Matching Step 2's
+    // allow-list (rather than a deny-list) makes them structurally
+    // incapable of disagreeing on status again, per D4's own guarantee.
+    function isOverviewCourtHourOccupied(court, hour, unitLabel) {
         const slot = overviewSlotWindow(hour);
+        const currentUnit = unitLabel || '';
 
         const bookingMatch = overviewBookings.some((b) => {
-            if (String(b.status || '').toLowerCase() === 'cancelled') return false;
+            const status = String(b.status || '').toLowerCase();
+            if (status !== 'pending' && status !== 'confirmed') return false;
             if (String(b.courts || '') !== court.name) return false;
+            if ((b.court_unit || '') !== currentUnit) return false;
             return overviewWindowsOverlap(overviewBookingWindow(b), slot);
         });
         if (bookingMatch) return true;
 
+        // Walk-ins carry no court_unit at all — walk_in_booking has no such
+        // column (database/schema/012_booking_time_range.sql's own header
+        // note: its EXCLUDE constraint deliberately does not cover this
+        // table). Matched by COURT NAME ONLY, same as before this revision,
+        // so a walk-in still blocks every unit's peek strip regardless of
+        // which one is currently selected, rather than silently
+        // under-reporting a real conflict just because this table can't say
+        // which unit it was.
         return overviewWalkins.some((w) => {
             if (String(w.courts || '') !== court.name) return false;
             return overviewWindowsOverlap(overviewBookingWindow(w), slot);
@@ -1744,6 +2046,29 @@ document.addEventListener('DOMContentLoaded', () => {
         return code === 'PGRST204' || code === 'PGRST205' || code === '42703' || code === '42P01'
             || message.includes('could not find') || message.includes('does not exist')
             || message.includes('schema cache');
+    }
+
+    // Revision 5, D4 (implementation_plan.md) — court_unit/end_at only
+    // exist once database/schema/012_booking_time_range.sql has been
+    // applied. If it hasn't, this first attempt fails with a schema-mismatch
+    // error and retries with only the columns that predate that migration —
+    // same idiom (and the exact same three columns dropped) as Step 2's own
+    // fetchDayBookings() above, so the two never disagree about which
+    // columns they can/can't rely on. Without court_unit, occupancy still
+    // degrades to a sport-wide (not per-unit) block, same "approximate
+    // availability instead of nothing" fallback fetchDayBookings() uses.
+    async function fetchOverviewBookings(start, end) {
+        let res = await window.sb.from('booking')
+            .select('courts, court_unit, time_date, end_at, duration_minutes, status')
+            .gte('time_date', start.toISOString())
+            .lt('time_date', end.toISOString());
+        if (res.error && isOverviewSchemaMismatch(res.error)) {
+            res = await window.sb.from('booking')
+                .select('courts, time_date, duration_minutes, status')
+                .gte('time_date', start.toISOString())
+                .lt('time_date', end.toISOString());
+        }
+        return res;
     }
 
     // walk_in_booking.duration_minutes is NOT confirmed to exist —
@@ -1833,23 +2158,36 @@ document.addEventListener('DOMContentLoaded', () => {
     // neutralizes the shared .dash-slot class's pointer cursor/hover
     // affordance specifically inside .dash-overview-peek-strip, so these
     // don't visually invite a click they no longer respond to (the Booking
-    // panel's own [data-dash-slot] buttons in Step 2 keep their normal
-    // interactive styling — this is scoped to the peek strip only). Every
-    // interpolated value is escaped, same as renderOverviewCourtCard()
-    // below — court/sport names are admin-authored content that can
-    // contain HTML.
-    function renderOverviewSlotPill(court, hour) {
-        const label = formatOverviewHourLabel(hour);
-        const occupied = isOverviewCourtHourOccupied(court, hour);
-        const unavailableClass = occupied ? ' is-unavailable' : '';
-        return `<span class="dash-slot dash-slot-mini${unavailableClass}">${window.escapeHtml(label)}</span>`;
+    // panel's own From/To <select>s in Step 2 are unaffected — this is
+    // scoped to the peek strip only). Every interpolated value is escaped,
+    // same as renderOverviewCourtCard() below — court/sport names are
+    // admin-authored content that can contain HTML.
+    //
+    // Revision 5, D2/D4/D5 (implementation_plan.md) — the label is now a
+    // SHORT range ("8–9 AM", formatHourRangeLabelShort()) instead of a
+    // single start time, `unitLabel` scopes occupancy to the card's
+    // CURRENTLY SELECTED unit (isOverviewCourtHourOccupied() above), and
+    // `isPast` (true only when overviewDate is today AND the hour has
+    // already started) adds the same .is-past treatment Step 2's pickers
+    // give an elapsed hour.
+    function renderOverviewSlotPill(court, hour, unitLabel, isPast) {
+        const label = window.InigoBusinessHours.formatHourRangeLabelShort(hour);
+        const occupied = isOverviewCourtHourOccupied(court, hour, unitLabel);
+        const classes = ['dash-slot', 'dash-slot-mini'];
+        if (occupied) classes.push('is-unavailable');
+        if (isPast) classes.push('is-past');
+        return `<span class="${classes.join(' ')}">${window.escapeHtml(label)}</span>`;
     }
 
-    function renderOverviewPeekContent(court) {
+    function renderOverviewPeekContent(court, unitLabel) {
         if (!overviewDataOk) {
             return '<p style="color: var(--color-ink-faint); font-size: 0.78rem; margin: 0; padding: 4px 0;">Live slot status unavailable right now.</p>';
         }
-        return OVERVIEW_SLOT_HOURS.map((hour) => renderOverviewSlotPill(court, hour)).join('');
+        const isToday = overviewDateIsToday();
+        return OVERVIEW_SLOT_HOURS.map((hour) => {
+            const isPast = isToday && isOverviewHourPast(hour);
+            return renderOverviewSlotPill(court, hour, unitLabel, isPast);
+        }).join('');
     }
 
     // One unit's photo (or the honest placeholder) as an HTML string — the
@@ -1977,7 +2315,14 @@ document.addEventListener('DOMContentLoaded', () => {
                     <div class="dash-court-peek">
                         <button type="button" class="dash-mini-btn" data-overview-peek-toggle data-overview-court-id="${courtIdAttr}" aria-expanded="${isExpanded ? 'true' : 'false'}">${isExpanded ? 'Hide availability' : 'Show availability'}</button>
                     </div>
-                    <div class="dash-overview-peek-strip${isExpanded ? ' is-active' : ''}">${isExpanded ? renderOverviewPeekContent(court) : ''}</div>
+                    <!-- data-overview-peek-strip (Revision 5, D4) lets the
+                         unit <select>'s own change handler
+                         (wireOverviewCourtList() below) find and repaint
+                         JUST this card's strip in place when the selected
+                         unit changes availability, without a full
+                         renderOverviewCourtList() re-render that would
+                         disturb every OTHER card's expanded/scroll state. -->
+                    <div class="dash-overview-peek-strip${isExpanded ? ' is-active' : ''}" data-overview-peek-strip data-overview-court-id="${courtIdAttr}">${isExpanded ? renderOverviewPeekContent(court, selectedUnit.label) : ''}</div>
                 </div>
             </article>
         `;
@@ -2029,6 +2374,20 @@ document.addEventListener('DOMContentLoaded', () => {
                 const card = select.closest('.dash-court-card');
                 const mediaEl = card ? card.querySelector('[data-overview-court-media]') : null;
                 paintOverviewCourtMedia(mediaEl, court, units[index]);
+
+                // Revision 5, D4 (implementation_plan.md) — occupancy is now
+                // PER SELECTED UNIT, so a unit change can flip which hours
+                // this card's peek strip shows as booked/open. Patched in
+                // place rather than a full renderOverviewCourtList()
+                // re-render, so no OTHER card's expanded state or scroll
+                // position is disturbed; a COLLAPSED strip needs no repaint
+                // here at all — renderOverviewCourtCard() already reads the
+                // just-updated overviewSelectedUnitIndex the next time this
+                // card is expanded.
+                const strip = card ? card.querySelector('[data-overview-peek-strip]') : null;
+                if (strip && strip.classList.contains('is-active')) {
+                    strip.innerHTML = renderOverviewPeekContent(court, units[index].label);
+                }
             });
         });
     }
@@ -2063,18 +2422,38 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
+    // Revision 5, D5 (implementation_plan.md) — changing the date DOES
+    // re-fetch (unlike the sort <select> above): a different day's bookings
+    // and walk-ins are genuinely different data, not just a different
+    // ordering of what's already in memory. Same past-date clamp idiom as
+    // the Booking wizard's own bookDate change handler above.
+    if (overviewDateInput) {
+        overviewDateInput.addEventListener('change', () => {
+            const todayStr = todayDateInputValue();
+            if (overviewDateInput.value < todayStr) {
+                overviewDateInput.value = todayStr;
+                window.InigoToast?.show("You can't check availability for a past date — showing today instead.", true);
+            }
+            overviewDate = overviewDateInput.value;
+            refreshOverviewCourtWidget();
+        });
+    }
+
     async function refreshOverviewCourtWidget() {
         if (!overviewCourtList || !window.InigoCourtsData) return;
 
-        const { start, end } = todayRange();
-        overviewDateBase = start;
+        // M3 fix (post-Revision-5 review) — see overviewRequestSeq's own
+        // declaration above for why this exists.
+        const mySeq = ++overviewRequestSeq;
+
+        // Revision 5, D5 — was always todayRange(); now the customer-picked
+        // overviewDate, defaulting to today (overviewSelectedDayRange()
+        // above).
+        const { start, end } = overviewSelectedDayRange();
 
         const courtsPromise = window.InigoCourtsData.getCourts();
         const bookingPromise = window.sb
-            ? window.sb.from('booking')
-                .select('courts, time_date, duration_minutes, status')
-                .gte('time_date', start.toISOString())
-                .lt('time_date', end.toISOString())
+            ? fetchOverviewBookings(start, end)
             : Promise.resolve({ data: null, error: new Error('Supabase client unavailable') });
         const walkinPromise = window.sb
             ? fetchOverviewWalkins(start, end)
@@ -2082,10 +2461,18 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const [courts, bookingRes, walkinRes] = await Promise.all([courtsPromise, bookingPromise, walkinPromise]);
 
+        // M3 fix — a slower, now-superseded call (e.g. the date was changed
+        // again before this one resolved) must not overwrite state a newer,
+        // already-resolved call already painted. Every write below (state
+        // AND the render call) moves after this guard so a stale response
+        // touches nothing.
+        if (mySeq !== overviewRequestSeq) return;
+
+        overviewDateBase = start;
         overviewCourts = courts || [];
 
-        if (bookingRes.error) console.error("[dashboard] failed to load today's bookings for the court peek", bookingRes.error);
-        if (walkinRes.error) console.error("[dashboard] failed to load today's walk-ins for the court peek", walkinRes.error);
+        if (bookingRes.error) console.error('[dashboard] failed to load bookings for the court peek', bookingRes.error);
+        if (walkinRes.error) console.error('[dashboard] failed to load walk-ins for the court peek', walkinRes.error);
 
         // Fail-safe, not fabrication (see this block's header comment on the
         // RLS risk): if EITHER query errors, every court's peek renders the
@@ -2121,6 +2508,19 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!opt || !opt.dataset.rate) return null;
         const rate = Number(opt.dataset.rate);
         return Number.isNaN(rate) ? null : rate;
+    }
+
+    // L2 fix (post-Revision-5 review) — same <option data-rate-unit> lookup
+    // as getCourtRate() above (and the exact source bookingState.rateUnit
+    // itself is populated from — the court <select>'s change handler around
+    // updateSummary(), ~line 1012), so a receipt for court X shows the same
+    // "/hr" (or whatever unit that court actually bills) the booking wizard
+    // summary showed while it was being booked, instead of a hard-coded
+    // "/hr" that would be wrong for a non-hourly court.
+    function getCourtRateUnit(courtName) {
+        if (!bookSelect) return '/hr';
+        const opt = Array.from(bookSelect.options).find((o) => o.value === courtName);
+        return (opt && opt.dataset.rateUnit) || '/hr';
     }
 
     function formatBookingDate(iso) {
@@ -2350,8 +2750,8 @@ document.addEventListener('DOMContentLoaded', () => {
     // "Bowling — Duckpin" booking — see the big booking-insert comment
     // further up this file), `rate` comes from the same getCourtRate()
     // lookup (with the same "Rate TBA" honesty) My Bookings already uses
-    // above, and `status` is the DERIVED display status (R4), not the raw
-    // stored one.
+    // above, `hours` from receiptHours() below, and `status` is the DERIVED
+    // display status (R4), not the raw stored one.
     function normalizeReceipt(booking) {
         return {
             id: booking.booking_id,
@@ -2360,20 +2760,73 @@ document.addEventListener('DOMContentLoaded', () => {
             when: booking.time_date,
             // Part 3 — booking.end_at (database/schema/
             // 012_booking_time_range.sql); undefined for a booking made
-            // before that migration, which formatBookingTime() below
-            // already handles by falling back to a single start-time label.
+            // before that migration, which formatBookingTime()/
+            // receiptHours() below both already handle by falling back to a
+            // single start-time label / duration_minutes respectively.
             until: booking.end_at,
             status: displayStatusFor(booking),
             rate: getCourtRate(booking.courts),
+            // L2 fix — carried alongside `rate` so renderReceiptCard() below
+            // never has to assume "/hr".
+            rateUnit: getCourtRateUnit(booking.courts),
+            hours: receiptHours(booking),
         };
     }
 
-    // Kept deliberately simple/non-exotic (flexbox, solid backgrounds, no
-    // gradients/backdrop-filter/transforms) so html2canvas — which does not
-    // reliably support every modern CSS feature — captures it correctly and
-    // completely; see downloadReceiptAsPng() below.
+    // Whole hours between a booking's start and end (Revision 5, D7 —
+    // implementation_plan.md), for the redesigned receipt's itemised
+    // "Rate/hr × hours" line. Every booking this app writes is whole-hour
+    // by construction (Part 3's Step 2 From/To pickers), so Math.round()
+    // here is just floating-point insurance, not real rounding.
+    //
+    // L1 fix (post-Revision-5 review) — a booking made before database/
+    // schema/012_booking_time_range.sql added end_at has no end_at, but it
+    // DOES still have its original duration_minutes column (Part 3 stopped
+    // writing new values there, it never dropped the column or backfilled
+    // it away) — a real recorded duration, not a guess. Falling straight to
+    // an assumed 1 hour ignored that real value whenever it wasn't exactly
+    // 60. Takes the whole `booking` row (not just two ISO strings) so it can
+    // reach duration_minutes; 60 is only the last-resort default when THAT
+    // is also missing. This is still a display-only computation — it never
+    // invents a rate or amount that isn't already known; "Rate TBA" still
+    // applies independently.
+    function receiptHours(booking) {
+        const endIso = booking.end_at;
+        if (endIso) {
+            const start = new Date(booking.time_date);
+            const end = new Date(endIso);
+            if (!Number.isNaN(start.getTime()) && !Number.isNaN(end.getTime())) {
+                const hours = Math.round((end.getTime() - start.getTime()) / 3600000);
+                if (hours > 0) return hours;
+            }
+        }
+        return Math.max(1, Math.round((Number(booking.duration_minutes) || 60) / 60));
+    }
+
+    // Store-receipt/ticket redesign (Revision 5, D7 — implementation_plan.md):
+    // brand header, monospace receipt number, dashed "perforation" dividers,
+    // an itemised Rate/hr × hours line (or the existing "Rate TBA" honesty
+    // convention whenever the rate itself is unknown — every court today),
+    // and a prominent TOTAL row. EXACTLY the same underlying fields as
+    // before this redesign (court, receipt #, status, sport, date, time,
+    // amount) — nothing new is shown, only how it's laid out. Kept
+    // deliberately simple/non-exotic (flexbox, solid backgrounds, plain
+    // dashed borders, no gradients/backdrop-filter/transforms/external
+    // images) so html2canvas — which does not reliably support every modern
+    // CSS feature — captures it correctly and completely, matching the
+    // on-screen card exactly (the user's explicit priority for this
+    // redesign); see downloadReceiptAsPng() below. No logo image for the
+    // same reason: a wordmark rendered as plain text can never fail to load
+    // or render differently between the screen and the captured PNG the way
+    // an <img> could.
     function renderReceiptCard(receipt) {
-        const amount = receipt.rate !== null ? `₱${receipt.rate.toFixed(2)}` : 'Rate TBA';
+        const hasRate = receipt.rate !== null;
+        const amount = hasRate ? receipt.rate * receipt.hours : null;
+        const rateLineLabel = hasRate
+            ? `₱${receipt.rate.toFixed(2)}/hr × ${receipt.hours} hr${receipt.hours === 1 ? '' : 's'}`
+            : 'Amount';
+        const rateLineAmount = hasRate ? `₱${amount.toFixed(2)}` : 'Rate TBA';
+        const totalAmount = hasRate ? `₱${amount.toFixed(2)}` : '—';
         const statusClass = window.escapeHtml(receipt.status);
         const statusLabel = window.escapeHtml(receipt.status ? receipt.status.charAt(0).toUpperCase() + receipt.status.slice(1) : '—');
         const idAttr = window.escapeHtml(String(receipt.id));
@@ -2387,19 +2840,40 @@ document.addEventListener('DOMContentLoaded', () => {
         // value here doesn't affect that at all.
         return `
             <div class="dash-receipt-card" data-dash-receipt-card="${idAttr}">
+                <div class="dash-receipt-brand">
+                    <span class="dash-receipt-brand-name">IñigoSync</span>
+                    <span class="dash-receipt-brand-tag">Official booking receipt</span>
+                </div>
+                <p class="dash-receipt-no">Receipt #${idAttr}</p>
+
+                <div class="dash-receipt-divider"></div>
+
                 <div class="dash-receipt-top">
-                    <div>
-                        <h4>${window.escapeHtml(receipt.court)}</h4>
-                        <p>Receipt #${idAttr}</p>
-                    </div>
+                    <h4>${window.escapeHtml(receipt.court)}</h4>
                     <span class="dash-status ${statusClass}">${statusLabel}</span>
                 </div>
-                <div class="dash-receipt-rows">
+
+                <div class="dash-receipt-meta">
                     <div class="dash-summary-row"><span>Sport</span><strong>${window.escapeHtml(receipt.sport || '—')}</strong></div>
                     <div class="dash-summary-row"><span>Date</span><strong>${window.escapeHtml(formatBookingDate(receipt.when))}</strong></div>
                     <div class="dash-summary-row"><span>Time</span><strong>${window.escapeHtml(formatBookingTime(receipt.when, receipt.until))}</strong></div>
-                    <div class="dash-summary-row"><span>Amount</span><strong>${window.escapeHtml(amount)}</strong></div>
                 </div>
+
+                <div class="dash-receipt-divider"></div>
+
+                <div class="dash-receipt-meta">
+                    <div class="dash-summary-row"><span>${window.escapeHtml(rateLineLabel)}</span><strong>${window.escapeHtml(rateLineAmount)}</strong></div>
+                </div>
+
+                <div class="dash-receipt-total">
+                    <span>Total</span>
+                    <span>${window.escapeHtml(totalAmount)}</span>
+                </div>
+
+                <div class="dash-receipt-divider"></div>
+
+                <p class="dash-receipt-thanks">Thank you for booking with Iñigos Sports Center!</p>
+
                 <div class="dash-receipt-actions">
                     <button type="button" class="dash-btn-primary" data-dash-receipt-download="${idAttr}">Download as PNG</button>
                 </div>
@@ -2435,14 +2909,17 @@ document.addEventListener('DOMContentLoaded', () => {
                 scale: Math.min(window.devicePixelRatio || 1, 2) || 1,
                 useCORS: true,
                 // html2canvas clones the WHOLE document (not just `card`) to
-                // resolve inherited styles correctly, so the footer's
-                // cross-origin Google Maps <iframe> gets walked on every
-                // single receipt download even though it never appears in
-                // the output — verified locally this turns a ~70ms capture
-                // into 1300ms+. Skipping every <iframe> (there is only ever
-                // the one, but this isn't hardcoded to that fact) keeps the
-                // download fast without touching anything the receipt card
-                // itself renders.
+                // resolve inherited styles correctly, so any <iframe> on the
+                // page gets walked on every single receipt download even
+                // though it never appears in the output — verified locally
+                // this used to turn a ~70ms capture into 1300ms+ against the
+                // footer's old cross-origin Google Maps <iframe>. That
+                // <iframe> is gone as of Revision 5, D9 (implementation_plan.md
+                // — the dashboard footer now links out to Maps instead of
+                // embedding it), so this guard is currently a no-op; kept
+                // rather than removed since it's harmless and protects
+                // against the same slow-capture class of bug if any future
+                // dashboard content ever adds an <iframe> back.
                 ignoreElements: (el) => el.tagName === 'IFRAME',
             });
             const blob = await canvasToBlobAsync(canvas);
@@ -2511,9 +2988,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // ------------------------------------------------------------------
     // Profile + Settings — prefill from the real signed-in profile, and
-    // wire the two Settings save buttons (Personal Info vs Change Password
-    // — distinguished by data-dash-settings-save="profile"/"password" in
-    // the markup) to real Supabase calls.
+    // wire Change Password's save button (data-dash-settings-save="password")
+    // to a real Supabase call. Personal Information no longer has a save
+    // button of its own as of Revision 5 (implementation_plan.md) — names/
+    // email are read-only, and the mobile number's only write path is the
+    // OTP-gated flow above, not this data-dash-settings-save family.
     // ------------------------------------------------------------------
 
     // Shared by the Mobile number field's load-time display (below) and its
@@ -2565,19 +3044,13 @@ document.addEventListener('DOMContentLoaded', () => {
         };
     }
 
-    // Same "First Middle Last" composition includes/auth.js's signup form
-    // already uses (its own composeFullName()) — duplicated here rather
-    // than shared, since this project ships plain <script src> files with
-    // no module system (see includes/courtsData.js's own header note on why
-    // small helpers are copied per file instead of imported) and
-    // includes/auth.js isn't loaded on this page. filter(Boolean) makes
-    // Middle name optional without leaving a double space behind.
-    function composeFullName(first, middle, last) {
-        return [first, middle, last]
-            .map((part) => String(part || '').trim().replace(/\s+/g, ' '))
-            .filter(Boolean)
-            .join(' ');
-    }
+    // composeFullName() (the inverse of parseFullName() above — "First
+    // Middle Last" -> one string) used to live here, used only by the
+    // Personal Information card's Save handler. Revision 5 (implementation_plan.md)
+    // made the name fields read-only and removed that handler entirely (see
+    // its own removal note further below, near where it used to be wired),
+    // which left this as unused dead code — removed alongside it rather
+    // than left behind for nothing to call.
 
     function fillNameInputs(parts) {
         const settingsPanel = document.querySelector('[data-dash-panel="settings"]');
@@ -2790,6 +3263,453 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
+    // ------------------------------------------------------------------
+    // Account Settings — Mobile number verification (Revision 5, D6 —
+    // implementation_plan.md). Names/email are now read-only (see the
+    // profile-save handler further below, which no longer writes either),
+    // but the mobile number can still change — gated behind a REAL SMS OTP
+    // round trip instead of a plain Save, exactly like the email OTP this
+    // project already uses at signup/login/password-reset (includes/auth.js),
+    // just over Supabase Auth's Phone provider instead of Email. Flow:
+    // validate -> sb.auth.updateUser({ phone }) sends the code -> this
+    // dialog collects it -> sb.auth.verifyOtp({ phone, token, type:
+    // 'phone_change' }) confirms it -> ONLY THEN does profiles.contact_num
+    // get written (with profiles.phone_verified = true alongside it). There
+    // is NO fake/client-generated code anywhere in this path — a hard
+    // constraint of this revision (implementation_plan.md's "Revision 5"
+    // section) — every step above is a real Supabase Auth call. Until the
+    // owner enables the Phone provider (docs/OWNER_ACTION_LIST.md, item E5),
+    // updateUser({ phone }) errors and friendlyPhoneProviderError() below
+    // turns that into a clear, actionable toast instead of a raw error or a
+    // silently-broken button.
+    //
+    // Reuses the SAME generic .dash-modal-overlay/.dash-modal shell the
+    // Feedback dialog above does (open/close fade timing ported verbatim —
+    // see openFeedbackModal()/closeFeedbackModal() further above for why
+    // this exact 250ms/offsetWidth-flush idiom exists), and the 6-box
+    // auto-advance/paste/Resend-with-cooldown behavior is ported from
+    // Pages/Index.html's own email OTP panel (includes/auth.js) under
+    // dash-otp-* names, since Style/Auth.css itself is not linked here.
+    // ------------------------------------------------------------------
+    const mobileVerifyBtn = document.querySelector('[data-dash-mobile-verify]');
+    const mobileVerifiedBadge = document.querySelector('[data-dash-mobile-verified]');
+    const mobileOtpOverlay = document.querySelector('[data-dash-mobile-otp-overlay]');
+    const mobileOtpDialog = document.querySelector('[data-dash-mobile-otp-dialog]');
+    const mobileOtpPhoneEl = document.querySelector('[data-dash-mobile-otp-phone]');
+    const mobileOtpBoxes = mobileOtpOverlay ? Array.from(mobileOtpOverlay.querySelectorAll('[data-dash-otp-box]')) : [];
+    const mobileOtpError = document.querySelector('[data-dash-mobile-otp-error]');
+    const mobileOtpResendBtn = document.querySelector('[data-dash-mobile-otp-resend]');
+    const mobileOtpTimerEl = document.querySelector('[data-dash-mobile-otp-timer]');
+    const mobileOtpConfirmBtn = document.querySelector('[data-dash-mobile-otp-confirm]');
+
+    // Matches Supabase's real (not just this UI's displayed) SMS resend
+    // floor — same 60s this project's OWNER_ACTION_LIST.md already
+    // documents as the email-OTP gotcha ("the Resend code button re-enables
+    // after 30 seconds, but Supabase only accepts a new request... after
+    // 60"). Set to the REAL floor here instead of repeating that mismatch.
+    const MOBILE_OTP_RESEND_SECONDS = 60;
+    const MOBILE_OTP_CLOSE_DELAY_MS = 250;
+
+    let mobileOtpTimerId = null;
+    let mobileOtpHideTimer = null;
+    let mobileOtpIsOpen = false;
+    let mobileOtpLastFocused = null;
+    // The number currently awaiting a code, in both forms this flow needs:
+    // E.164 (what Supabase Auth's phone OTP calls require) and local
+    // 09XXXXXXXXX (what actually gets written to profiles.contact_num).
+    // Both null whenever no verification is in flight.
+    let mobileOtpPendingE164 = null;
+    let mobileOtpPendingLocal = null;
+
+    // Maps a real Supabase Auth error to a customer-facing message. "SMS
+    // provider not configured" is by far the most likely failure during
+    // development/a thesis demo (docs/OWNER_ACTION_LIST.md, item E5) — the
+    // exact wording GoTrue uses for this has shifted across versions
+    // ("Unsupported phone provider", "phone signups are disabled", "sms
+    // provider not configured", etc.), so this matches on a PAIR of
+    // substrings (a phone/sms mention AND a provider/disabled/unsupported
+    // mention) rather than one exact string — loose enough to catch the
+    // real variants, tight enough not to swallow an unrelated error that
+    // merely mentions "phone" (e.g. "Invalid phone number format" should
+    // still show verbatim, not this generic message). Same defensive
+    // "match on signals, not one exact string" idea as
+    // isOverviewSchemaMismatch() above.
+    function friendlyPhoneProviderError(error) {
+        const message = String(error?.message || '').toLowerCase();
+        const mentionsPhone = message.includes('phone') || message.includes('sms');
+        const mentionsProviderIssue = message.includes('provider') || message.includes('disabled')
+            || message.includes('not enabled') || message.includes('unsupported') || message.includes('not allowed');
+        if (mentionsPhone && mentionsProviderIssue) {
+            return "SMS verification isn't set up yet — ask the owner to enable Phone sign-in in Supabase.";
+        }
+        return error?.message || 'Could not send a verification code. Please try again.';
+    }
+
+    function resetMobileOtpBoxes() {
+        mobileOtpBoxes.forEach((box) => {
+            box.value = '';
+            box.classList.remove('is-filled');
+        });
+        if (mobileOtpError) mobileOtpError.classList.remove('is-visible');
+    }
+
+    function startMobileOtpResendCountdown() {
+        if (mobileOtpTimerId) window.clearInterval(mobileOtpTimerId);
+        let remaining = MOBILE_OTP_RESEND_SECONDS;
+        if (mobileOtpResendBtn) mobileOtpResendBtn.disabled = true;
+
+        const tick = () => {
+            if (mobileOtpTimerEl) mobileOtpTimerEl.textContent = `Resend available in ${remaining}s`;
+            if (remaining <= 0) {
+                window.clearInterval(mobileOtpTimerId);
+                mobileOtpTimerId = null;
+                if (mobileOtpTimerEl) mobileOtpTimerEl.textContent = '';
+                if (mobileOtpResendBtn) mobileOtpResendBtn.disabled = false;
+                return;
+            }
+            remaining -= 1;
+        };
+        tick();
+        mobileOtpTimerId = window.setInterval(tick, 1000);
+    }
+
+    function openMobileOtpModal(invoker) {
+        if (!mobileOtpOverlay || !mobileOtpDialog) return;
+        mobileOtpLastFocused = invoker || document.activeElement;
+
+        if (mobileOtpHideTimer) {
+            window.clearTimeout(mobileOtpHideTimer);
+            mobileOtpHideTimer = null;
+        }
+
+        if (mobileOtpPhoneEl) mobileOtpPhoneEl.textContent = mobileOtpPendingLocal || 'your mobile number';
+        resetMobileOtpBoxes();
+
+        mobileOtpOverlay.hidden = false;
+        // Force a synchronous layout flush so the browser commits the
+        // hidden->visible state before [data-open] flips opacity to 1 —
+        // same trick openFeedbackModal() above uses (ported from
+        // includes/landingPage.js's court viewer originally).
+        void mobileOtpOverlay.offsetWidth;
+        mobileOtpOverlay.setAttribute('data-open', '');
+        mobileOtpIsOpen = true;
+        if (mobileOtpBoxes[0]) {
+            mobileOtpBoxes[0].focus();
+        } else {
+            mobileOtpDialog.focus();
+        }
+        startMobileOtpResendCountdown();
+    }
+
+    function closeMobileOtpModal() {
+        if (!mobileOtpIsOpen) return;
+        mobileOtpIsOpen = false;
+
+        mobileOtpOverlay.removeAttribute('data-open');
+        if (mobileOtpHideTimer) window.clearTimeout(mobileOtpHideTimer);
+        mobileOtpHideTimer = window.setTimeout(() => {
+            mobileOtpOverlay.hidden = true;
+            mobileOtpHideTimer = null;
+        }, MOBILE_OTP_CLOSE_DELAY_MS);
+
+        if (mobileOtpTimerId) {
+            window.clearInterval(mobileOtpTimerId);
+            mobileOtpTimerId = null;
+        }
+        if (mobileOtpTimerEl) mobileOtpTimerEl.textContent = '';
+
+        // L4 fix (post-Revision-5 review) — clear the in-flight phone-change
+        // state on EVERY path that closes this modal (Cancel, Escape,
+        // backdrop click, and both branches of the Confirm handler below),
+        // not just the two call sites that used to null these out by hand
+        // right after calling close(). A caller that still needs the
+        // pending value once verifyOtp() succeeds (the profiles.update()
+        // below) must read it into a local BEFORE calling this function.
+        mobileOtpPendingE164 = null;
+        mobileOtpPendingLocal = null;
+
+        if (mobileOtpLastFocused && typeof mobileOtpLastFocused.focus === 'function' && document.contains(mobileOtpLastFocused)) {
+            mobileOtpLastFocused.focus();
+        }
+        mobileOtpLastFocused = null;
+    }
+
+    document.querySelectorAll('[data-dash-mobile-otp-cancel]').forEach((btn) => {
+        btn.addEventListener('click', closeMobileOtpModal);
+    });
+
+    if (mobileOtpOverlay) {
+        // Backdrop click only — same `e.target === root` guard as the
+        // Feedback modal's own overlay listener above.
+        mobileOtpOverlay.addEventListener('click', (e) => {
+            if (e.target === mobileOtpOverlay) closeMobileOtpModal();
+        });
+    }
+
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && mobileOtpIsOpen) closeMobileOtpModal();
+    });
+
+    // Auto-advance/backspace/paste — ported verbatim from
+    // Pages/Index.html's email OTP boxes (includes/auth.js) under
+    // dash-otp-* names.
+    mobileOtpBoxes.forEach((box, index) => {
+        box.addEventListener('input', () => {
+            box.value = box.value.replace(/[^0-9]/g, '').slice(0, 1);
+            box.classList.toggle('is-filled', box.value.length === 1);
+            if (box.value && mobileOtpBoxes[index + 1]) mobileOtpBoxes[index + 1].focus();
+        });
+
+        box.addEventListener('keydown', (e) => {
+            if (e.key === 'Backspace' && !box.value && mobileOtpBoxes[index - 1]) {
+                mobileOtpBoxes[index - 1].focus();
+            }
+            // Nit (post-Revision-5 review) — Enter anywhere in the 6 boxes
+            // submits the code the same way clicking Confirm does, once all
+            // 6 digits are filled. Delegates to the real button (instead of
+            // duplicating its handler) so disabled/in-flight state is
+            // respected automatically.
+            if (e.key === 'Enter') {
+                const code = mobileOtpBoxes.map((b) => b.value).join('');
+                if (code.length === 6 && mobileOtpConfirmBtn && !mobileOtpConfirmBtn.disabled) {
+                    mobileOtpConfirmBtn.click();
+                }
+            }
+        });
+
+        box.addEventListener('paste', (e) => {
+            const clipboard = e.clipboardData || window.clipboardData;
+            if (!clipboard) return;
+            const pasted = clipboard.getData('text').replace(/[^0-9]/g, '');
+            if (!pasted) return;
+            e.preventDefault();
+            pasted.split('').slice(0, mobileOtpBoxes.length).forEach((digit, i) => {
+                if (mobileOtpBoxes[i]) {
+                    mobileOtpBoxes[i].value = digit;
+                    mobileOtpBoxes[i].classList.add('is-filled');
+                }
+            });
+            const next = mobileOtpBoxes[Math.min(pasted.length, mobileOtpBoxes.length - 1)];
+            if (next) next.focus();
+        });
+    });
+
+    if (mobileVerifyBtn) {
+        mobileVerifyBtn.addEventListener('click', async () => {
+            if (!window.sb || !window.inigosyncProfile) {
+                window.InigoToast?.show('Unable to reach the server right now. Please try again shortly.', true);
+                return;
+            }
+
+            const settingsPanel = document.querySelector('[data-dash-panel="settings"]');
+            const mobileInput = settingsPanel ? settingsPanel.querySelector('[data-dash-settings-mobile]') : null;
+
+            const mobileCheck = window.validatePhMobile(mobileInput?.value || '');
+            if (!mobileCheck.valid) {
+                window.InigoToast?.show(mobileCheck.message, true);
+                mobileInput?.focus();
+                return;
+            }
+
+            // Re-verifying the SAME number that's already proven is a
+            // no-op, not a fresh OTP round trip — "already verified" only
+            // ever means THIS EXACT number previously completed
+            // verifyOtp() successfully (see database/schema/
+            // 013_profile_phone_verified.sql's own header note on why
+            // contact_num and phone_verified are always written together,
+            // so this comparison can never point at a stale pairing).
+            if (window.inigosyncProfile.phone_verified && mobileCheck.normalized === window.inigosyncProfile.contact_num) {
+                window.InigoToast?.show('This number is already verified.');
+                return;
+            }
+
+            // E.164 for Supabase Auth's phone OTP calls — PH mobile numbers
+            // are always +63 followed by the 10 digits after the leading 0
+            // (validatePhMobile()'s `normalized` is always exactly 11
+            // digits starting with "09").
+            const e164 = `+63${mobileCheck.normalized.slice(1)}`;
+
+            const originalLabel = mobileVerifyBtn.textContent;
+            mobileVerifyBtn.disabled = true;
+            mobileVerifyBtn.textContent = 'Sending code…';
+
+            const { data, error } = await window.sb.auth.updateUser({ phone: e164 });
+
+            mobileVerifyBtn.disabled = false;
+            mobileVerifyBtn.textContent = originalLabel;
+
+            if (error) {
+                console.error('[dashboard] updateUser({ phone }) failed', error);
+                window.InigoToast?.show(friendlyPhoneProviderError(error), true);
+                return;
+            }
+
+            // M1 fix (post-Revision-5 review) — GoTrue only queues a real
+            // `phone_change` OTP (surfaced here as `data.user.new_phone`)
+            // when the Phone provider's "Enable phone confirmations"
+            // setting is ON. With it off, updateUser({ phone }) resolves
+            // with NO error and NO code sent — silently succeeding while
+            // leaving the customer staring at a modal that can never
+            // complete. `data.user.new_phone === e164` is the only signal
+            // GoTrue gives back that a code was actually queued, so it
+            // gates whether the OTP modal even opens (docs/
+            // OWNER_ACTION_LIST.md item E5).
+            if (!data?.user?.new_phone || data.user.new_phone !== e164) {
+                console.error('[dashboard] updateUser({ phone }) queued no pending change — phone confirmations are likely OFF', data);
+                window.InigoToast?.show('No verification code was sent — the owner needs to turn on phone confirmations in Supabase.', true);
+                return;
+            }
+
+            mobileOtpPendingE164 = e164;
+            mobileOtpPendingLocal = mobileCheck.normalized;
+            openMobileOtpModal(mobileVerifyBtn);
+        });
+    }
+
+    if (mobileOtpResendBtn) {
+        mobileOtpResendBtn.addEventListener('click', async () => {
+            if (!window.sb || !mobileOtpPendingE164) return;
+            mobileOtpResendBtn.disabled = true;
+            try {
+                const { data, error } = await window.sb.auth.updateUser({ phone: mobileOtpPendingE164 });
+                if (error) throw error;
+                // M1 fix — same pending-change guard as Verify above; without
+                // it, resending into a provider with phone confirmations off
+                // would restart the 60s cooldown around a code that was
+                // never actually sent.
+                if (!data?.user?.new_phone || data.user.new_phone !== mobileOtpPendingE164) {
+                    window.InigoToast?.show('No verification code was sent — the owner needs to turn on phone confirmations in Supabase.', true);
+                    mobileOtpResendBtn.disabled = false;
+                    return;
+                }
+                startMobileOtpResendCountdown();
+            } catch (err) {
+                console.error('[dashboard] resend phone OTP failed', err);
+                window.InigoToast?.show(friendlyPhoneProviderError(err), true);
+                mobileOtpResendBtn.disabled = false;
+            }
+        });
+    }
+
+    if (mobileOtpConfirmBtn) {
+        mobileOtpConfirmBtn.addEventListener('click', async () => {
+            if (!window.sb || !window.inigosyncProfile || !mobileOtpPendingE164 || !mobileOtpPendingLocal) return;
+
+            const code = mobileOtpBoxes.map((box) => box.value).join('');
+            if (code.length !== 6) {
+                if (mobileOtpError) mobileOtpError.classList.add('is-visible');
+                return;
+            }
+
+            // L4 fix (post-Revision-5 review) — closeMobileOtpModal() now
+            // nulls mobileOtpPendingE164/mobileOtpPendingLocal itself (so
+            // Cancel/Escape/backdrop-close also clear them), so anything
+            // below that still needs the pending phone must read it into a
+            // local BEFORE the modal is closed.
+            const pendingE164 = mobileOtpPendingE164;
+            const pendingLocal = mobileOtpPendingLocal;
+
+            const originalLabel = mobileOtpConfirmBtn.textContent;
+            mobileOtpConfirmBtn.disabled = true;
+            mobileOtpConfirmBtn.textContent = 'Verifying…';
+
+            // THE real verification — no fake/client-generated code exists
+            // anywhere in this file (a hard constraint of this revision).
+            const { error: verifyError } = await window.sb.auth.verifyOtp({
+                phone: pendingE164,
+                token: code,
+                type: 'phone_change',
+            });
+
+            mobileOtpConfirmBtn.disabled = false;
+            mobileOtpConfirmBtn.textContent = originalLabel;
+
+            if (verifyError) {
+                console.error('[dashboard] verifyOtp(phone_change) failed', verifyError);
+                if (mobileOtpError) mobileOtpError.classList.add('is-visible');
+                resetMobileOtpBoxes();
+                if (mobileOtpBoxes[0]) mobileOtpBoxes[0].focus();
+                return;
+            }
+
+            // Only NOW — after a real confirmed code — is it safe to
+            // persist the new number. Schema-mismatch retry (same idiom as
+            // every other profiles.update() in this file) — phone_verified
+            // only exists once database/schema/013_profile_phone_verified.sql
+            // is applied; the number itself still saves either way.
+            let { error: saveError } = await window.sb
+                .from('profiles')
+                .update({ contact_num: pendingLocal, phone_verified: true })
+                .eq('id', window.inigosyncProfile.id);
+
+            if (saveError && isOverviewSchemaMismatch(saveError)) {
+                ({ error: saveError } = await window.sb
+                    .from('profiles')
+                    .update({ contact_num: pendingLocal })
+                    .eq('id', window.inigosyncProfile.id));
+            }
+
+            if (saveError) {
+                console.error('[dashboard] contact_num update after verifyOtp failed', saveError);
+                window.InigoToast?.show(saveError.message || 'Verified, but could not save your new number. Please try again.', true);
+                closeMobileOtpModal();
+                return;
+            }
+
+            window.inigosyncProfile.contact_num = pendingLocal;
+            window.inigosyncProfile.phone_verified = true;
+            renderProfile(window.inigosyncProfile);
+            window.InigoToast?.show('Mobile number verified.');
+            closeMobileOtpModal();
+        });
+    }
+
+    // Loads phone_verified in a request of its own — same reasoning as
+    // fetchProfileNameParts() above: asking includes/authGuard.js's shared
+    // login-gate `profiles` select for a column that doesn't exist yet
+    // (013_profile_phone_verified.sql not applied) would fail that ENTIRE
+    // select with Postgres 42703 and sign every customer out. Scoping this
+    // to Account Settings means a missing column only ever means "the
+    // Verified badge never shows", never a broken login.
+    async function fetchProfilePhoneVerified(profileId) {
+        if (!window.sb || !profileId) return null;
+        const { data, error } = await window.sb
+            .from('profiles')
+            .select('phone_verified')
+            .eq('id', profileId)
+            .maybeSingle();
+        if (error) {
+            if (!isOverviewSchemaMismatch(error)) {
+                console.error('[dashboard] failed to load phone_verified', error);
+            }
+            return null;
+        }
+        return data;
+    }
+
+    // Shows/hides the "Verified" badge next to the mobile number field.
+    // profile.phone_verified is undefined until fetchProfilePhoneVerified()
+    // below resolves at least once (it isn't part of includes/authGuard.js's
+    // shared profile fetch) — the badge simply starts hidden and is only
+    // ever shown once a real `true` is known, never assumed.
+    function renderMobileVerifiedBadge(profile) {
+        if (!mobileVerifiedBadge) return;
+        mobileVerifiedBadge.hidden = !profile.phone_verified;
+    }
+
+    // Paints whatever's already known immediately (same "show something
+    // honest now, refine when the real data arrives" pattern as
+    // populateSettingsNameFields() above), then upgrades once the scoped
+    // fetch resolves.
+    function populateMobileVerifiedBadge(profile) {
+        renderMobileVerifiedBadge(profile);
+        fetchProfilePhoneVerified(profile.id).then((data) => {
+            if (!data) return;
+            profile.phone_verified = Boolean(data.phone_verified);
+            renderMobileVerifiedBadge(profile);
+        });
+    }
+
     function renderProfile(profile) {
         const initials = (profile.full_name || profile.email || '?')
             .split(' ').map((p) => p[0]).slice(0, 2).join('').toUpperCase();
@@ -2844,17 +3764,22 @@ document.addEventListener('DOMContentLoaded', () => {
             const mobileInput = settingsPanel.querySelector('[data-dash-settings-mobile]');
             if (emailInput) emailInput.value = profile.email || '';
             // Digits-only on load too, matching the field's own [data-digits-only]
-            // contract (increment 13). Both write paths (signup and this panel's
-            // own Save below) already run contact_num through
-            // window.validatePhMobile first, whose `normalized` is always the
-            // spaceless local 09XXXXXXXXX form — so this is a defensive strip for
-            // any value that got into the database another way, not a fix for
+            // contract (increment 13). Both write paths (signup, and this
+            // panel's own mobile-verification flow above, Revision 5's D6)
+            // already run contact_num through window.validatePhMobile
+            // first, whose `normalized` is always the spaceless local
+            // 09XXXXXXXXX form — so this is a defensive strip for any value
+            // that got into the database another way, not a fix for
             // anything either write path produces today.
             if (mobileInput) mobileInput.value = digitsOnly(profile.contact_num).slice(0, 11);
 
             // First/Middle/Surname (§9, D3) — see populateSettingsNameFields()
             // above for the full_name-parsing fallback.
             populateSettingsNameFields(profile);
+
+            // Mobile "Verified" badge (Revision 5, D6) — see
+            // populateMobileVerifiedBadge() above.
+            populateMobileVerifiedBadge(profile);
         }
     }
 
@@ -2932,87 +3857,21 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     });
 
-    const profileSaveBtn = document.querySelector('[data-dash-settings-save="profile"]');
-    if (profileSaveBtn) {
-        profileSaveBtn.addEventListener('click', async () => {
-            if (!window.sb || !window.inigosyncProfile) return;
-            const settingsPanel = document.querySelector('[data-dash-panel="settings"]');
-            const firstInput = settingsPanel.querySelector('[data-dash-settings-firstname]');
-            const middleInput = settingsPanel.querySelector('[data-dash-settings-middlename]');
-            const lastInput = settingsPanel.querySelector('[data-dash-settings-lastname]');
-            const mobileInput = settingsPanel.querySelector('[data-dash-settings-mobile]');
-
-            const first_name = (firstInput?.value || '').trim();
-            const middle_name = (middleInput?.value || '').trim();
-            const last_name = (lastInput?.value || '').trim();
-
-            // Surname/First name required, Middle name optional — same split
-            // includes/auth.js's signup form already enforces (many
-            // Filipino users legitimately have no middle name).
-            if (!first_name) {
-                window.InigoToast?.show('Enter your first name.', true);
-                firstInput?.focus();
-                return;
-            }
-            if (!last_name) {
-                window.InigoToast?.show('Enter your surname.', true);
-                lastInput?.focus();
-                return;
-            }
-
-            // D3 — keeps full_name (the compatibility field
-            // includes/owner_dashboard.js and includes/staff_dashboard.js
-            // still read/write) in sync with the three boxes, using the same
-            // composition includes/auth.js's signup form already uses.
-            const full_name = composeFullName(first_name, middle_name, last_name);
-
-            // PH mobile validation (spec: Account Settings must validate
-            // updates to the registered mobile number). Normalized to the
-            // local 09XXXXXXXXX form regardless of which accepted format
-            // was typed, so contact_num is always stored one consistent way.
-            const mobileCheck = window.validatePhMobile(mobileInput?.value || '');
-            if (!mobileCheck.valid) {
-                window.InigoToast?.show(mobileCheck.message, true);
-                return;
-            }
-            const contact_num = mobileCheck.normalized;
-
-            profileSaveBtn.disabled = true;
-
-            // Try the full column set first (D3); if database/schema/
-            // 008_profile_name_parts.sql hasn't been applied yet, retry with
-            // just the columns that predate this phase so full_name/
-            // contact_num still save — the same "retry without the missing
-            // column" idiom this file's fetchOverviewWalkins() already uses
-            // for walk_in_booking.duration_minutes. middle_name is sent as
-            // null (not '') when blank, matching the column's own "NULL
-            // means not provided" contract (database/schema/
-            // 008_profile_name_parts.sql).
-            let { error } = await window.sb
-                .from('profiles')
-                .update({ full_name, first_name, middle_name: middle_name || null, last_name, contact_num })
-                .eq('id', window.inigosyncProfile.id);
-
-            if (error && isOverviewSchemaMismatch(error)) {
-                ({ error } = await window.sb
-                    .from('profiles')
-                    .update({ full_name, contact_num })
-                    .eq('id', window.inigosyncProfile.id));
-            }
-
-            profileSaveBtn.disabled = false;
-
-            if (error) {
-                window.InigoToast?.show(error.message || 'Could not save your changes.', true);
-                return;
-            }
-
-            window.inigosyncProfile.full_name = full_name;
-            window.inigosyncProfile.contact_num = contact_num;
-            renderProfile(window.inigosyncProfile);
-            window.InigoToast?.show('Profile updated.');
-        });
-    }
+    // Revision 5 (implementation_plan.md) — the Personal Information card's
+    // "Save Changes"/"Cancel" pair and the profile-save handler that used to
+    // live here are GONE, not merely disabled: names and email are
+    // read-only now (Pages/user_dashboard.html no longer renders either
+    // button), and the mobile number's only write path is the OTP-gated
+    // flow above (mobileOtpConfirmBtn's click handler), which writes
+    // contact_num itself once a real code is confirmed. There is nothing
+    // left on this card for a Save button to do, so removing the handler
+    // outright — rather than leaving it attached to a button that no longer
+    // exists — is the "no dead listeners" cleanup this revision calls for.
+    // composeFullName()/parseFullName() above stay: parseFullName() still
+    // feeds populateSettingsNameFields()'s full_name-parsing fallback for
+    // the (now read-only) name fields; only composeFullName() (the inverse,
+    // used solely by this deleted save path) would have become dead code,
+    // so it is removed alongside this handler.
 
     // ------------------------------------------------------------------
     // Change Password — 2-step wizard (§9, D4). Step 1 collects only the
@@ -3130,19 +3989,12 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    // ------------------------------------------------------------------
-    // Account Settings — Personal Information's Cancel button. Discards
-    // in-progress edits back to the last-saved values instead of leaving a
-    // button that has no effect. Change Password no longer has a Cancel
-    // button of its own (§9, D4's 2-step wizard only specifies Next / Go
-    // Back / Save Password), so this only ever matches "profile" now.
-    // ------------------------------------------------------------------
-    document.querySelectorAll('[data-dash-settings-cancel]').forEach((btn) => {
-        btn.addEventListener('click', () => {
-            const mode = btn.dataset.dashSettingsCancel;
-            if (mode === 'profile' && window.inigosyncProfile) {
-                renderProfile(window.inigosyncProfile);
-            }
-        });
-    });
+    // Account Settings — Personal Information's Cancel button (and the
+    // [data-dash-settings-cancel] handler that used to discard in-progress
+    // edits back to the last-saved values) is gone as of Revision 5
+    // (implementation_plan.md): the name fields are read-only now, so there
+    // is nothing left to "cancel" back to. Pages/user_dashboard.html no
+    // longer renders this button at all — removed here too, rather than
+    // wiring a click handler to a selector that will only ever match zero
+    // elements.
 });
