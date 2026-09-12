@@ -90,13 +90,15 @@
             </li>
         </ul>
 
-        <div class="admin-sidebar-foot">
-            <div class="admin-nav-divider"></div>
-            <button type="button" class="admin-nav-link admin-logout" data-admin-logout>
-                <svg viewBox="0 0 24 24" fill="none"><path d="M9 21H5a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><path d="M16 17l5-5-5-5M21 12H9" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
-                Log Out
-            </button>
-        </div>
+        <!-- Revision A2 (implementation_plan.md, decision B1) — the sidebar's
+             own Log Out button lived here (in a .admin-sidebar-foot pinned
+             to the bottom via margin-top:auto); removed outright now that
+             the profile dropdown's own Log Out (below, in
+             .admin-profile-menu) is the one and only sign-out control. Its
+             handler was always bound via
+             document.querySelectorAll('[data-admin-logout]')
+             (includes/authGuard.js), so removing this one instance changes
+             nothing about how the dropdown's Log Out works. -->
     </aside>
 
     <!-- ================= MAIN ================= -->
@@ -168,6 +170,19 @@
                     </button>
 
                     <div class="admin-profile-menu">
+                        <!-- Revision A2 (implementation_plan.md, decision B2)
+                             — opens data-admin-panel="profile" below, a
+                             panel that (like the customer dashboard's own
+                             profile panel) lives OUTSIDE .admin-nav on
+                             purpose: setActivePanel('profile')
+                             (includes/owner_dashboard.js) only toggles
+                             .is-active on [data-admin-nav] buttons that are
+                             .closest('.admin-nav'), so opening this never
+                             highlights anything in the sidebar. -->
+                        <button type="button" data-admin-nav="profile">
+                            <svg viewBox="0 0 24 24" fill="none"><rect x="3.5" y="5" width="17" height="14" rx="2.4" stroke="currentColor" stroke-width="1.7"/><circle cx="9.5" cy="11" r="2" stroke="currentColor" stroke-width="1.6"/><path d="M6.5 16c.6-1.5 1.7-2.3 3-2.3s2.4.8 3 2.3" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><path d="M14.5 9.5h3M14.5 12.5h2" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+                            View Profile
+                        </button>
                         <button type="button" data-admin-nav="settings">
                             <svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="8" r="4" stroke="currentColor" stroke-width="1.8"/><path d="M4 20c1.5-4 5-6 8-6s6.5 2 8 6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
                             Account Settings
@@ -302,38 +317,18 @@
                 <div class="admin-panel-head">
                     <div>
                         <h2>Staff Management</h2>
-                        <p>Add, update, or remove staff accounts and configure payment settings.</p>
+                        <!-- Revision A2 (implementation_plan.md, decision B4)
+                             — "…and configure payment settings" dropped now
+                             that the Payment Configuration card below is
+                             gone (see the comment where it used to live). -->
+                        <p>Add, update, or remove staff accounts.</p>
                     </div>
-                    <button type="button" class="admin-btn-primary" data-admin-toggle-staff-form>+ Add New Staff</button>
-                </div>
-
-                <div class="admin-card admin-add-panel" data-admin-staff-form>
-                    <div class="admin-card-head"><h3>New Staff Account</h3></div>
-                    <p class="admin-form-hint">An email invite is sent to this address with a link for them to set their own password — nobody but the staff member ever knows it.</p>
-                    <div class="admin-form-row">
-                        <div class="admin-form-group">
-                            <span class="admin-form-label">Full name</span>
-                            <input type="text" class="admin-input" placeholder="Juan Dela Cruz" data-admin-staff-name>
-                        </div>
-                        <div class="admin-form-group">
-                            <span class="admin-form-label">Email address</span>
-                            <input type="email" class="admin-input" placeholder="staff@inigossportscenter.com" data-admin-staff-email>
-                        </div>
-                    </div>
-                    <div class="admin-form-row">
-                        <div class="admin-form-group">
-                            <span class="admin-form-label">Position</span>
-                            <select class="admin-select" data-admin-staff-role>
-                                <option>Front Desk / Secretary</option>
-                                <option>Court Attendant</option>
-                                <option>Weekend Relief Staff</option>
-                            </select>
-                        </div>
-                    </div>
-                    <div class="admin-form-actions">
-                        <button type="button" class="admin-btn-ghost" data-admin-toggle-staff-form>Cancel</button>
-                        <button type="button" class="admin-btn-save" data-admin-staff-submit>Send Invite</button>
-                    </div>
+                    <!-- Revision A2 (decision B3) — opens
+                         [data-admin-staff-modal] (bottom of this document)
+                         instead of toggling an inline .admin-add-panel
+                         card; hook renamed from data-admin-toggle-staff-form
+                         to data-admin-staff-add. -->
+                    <button type="button" class="admin-btn-primary" data-admin-staff-add>+ Add New Staff</button>
                 </div>
 
                 <div class="admin-card">
@@ -419,38 +414,17 @@
                     </div>
                 </div>
 
-                <div class="admin-card">
-                    <div class="admin-card-head">
-                        <div>
-                            <h3>Payment Configuration</h3>
-                            <p class="admin-card-sub">Choose which payment methods customers can use at checkout.</p>
-                        </div>
-                    </div>
-
-                    <div class="admin-toggle-row">
-                        <div class="admin-toggle-row-copy">
-                            <h4>GCash</h4>
-                            <p>Accept online GCash payments for downpayments and full payments.</p>
-                        </div>
-                        <button type="button" class="admin-switch is-on" data-admin-payment-toggle aria-label="Toggle GCash"></button>
-                    </div>
-                    <div class="admin-toggle-row">
-                        <div class="admin-toggle-row-copy">
-                            <h4>Cash on-site</h4>
-                            <p>Allow customers and walk-ins to pay in cash at the front desk.</p>
-                        </div>
-                        <button type="button" class="admin-switch is-on" data-admin-payment-toggle aria-label="Toggle Cash"></button>
-                    </div>
-
-                    <div class="admin-form-group" style="margin-top: 18px;">
-                        <span class="admin-form-label">Default downpayment percentage</span>
-                        <input type="number" class="admin-input" value="50" min="0" max="100" data-admin-downpayment-pct style="max-width: 160px;">
-                    </div>
-
-                    <div class="admin-form-actions">
-                        <button type="button" class="admin-btn-save" data-admin-payment-save>Save Payment Settings</button>
-                    </div>
-                </div>
+                <!-- Payment Configuration card — REMOVED (Revision A2,
+                     implementation_plan.md, decision B4). It used to live
+                     here and read/write `app_settings`
+                     (database/schema/007_app_settings.sql: gcash_enabled,
+                     cash_enabled, downpayment_pct) via
+                     window.InigoAppSettings. That table, its defaults, and
+                     every other reader of it (the customer booking wizard,
+                     the staff walk-in form) are untouched — only this admin
+                     UI for editing them is gone. See
+                     includes/owner_dashboard.js for the matching removal
+                     note. -->
             </section>
 
             <!-- ============================================================
@@ -663,7 +637,121 @@
                 </div>
             </section>
 
+            <!-- ============================================================
+                 PROFILE PANEL — Revision A2 (implementation_plan.md,
+                 decision B2). Opened only from the profile dropdown's "View
+                 Profile" (no sidebar entry — setActivePanel('profile') in
+                 includes/owner_dashboard.js never highlights anything in
+                 .admin-nav, same as this page's customer-dashboard
+                 counterpart). Every value here is painted by
+                 renderAdminProfile()/loadAdminProfileMemberSince() from the
+                 real signed-in profile — no hardcoded placeholders beyond
+                 the "—" not-loaded-yet convention used everywhere else on
+                 this page.
+                 ============================================================ -->
+            <section class="admin-panel" data-admin-panel="profile">
+                <div class="admin-panel-head">
+                    <div>
+                        <h2>My Profile</h2>
+                        <p>Your account, at a glance.</p>
+                    </div>
+                </div>
+
+                <div class="admin-card admin-profile-hero">
+                    <div class="admin-avatar admin-profile-hero-avatar">RD</div>
+                    <div class="admin-profile-hero-info">
+                        <h3 data-admin-profile-name>Rosalinda Driz</h3>
+                        <span class="admin-role-pill">Owner</span>
+                    </div>
+                </div>
+
+                <div class="admin-card">
+                    <div class="admin-card-head"><h3>Account details</h3></div>
+                    <dl class="admin-profile-dl">
+                        <div class="admin-profile-dl-row">
+                            <dt>Email</dt>
+                            <dd data-admin-profile-email>—</dd>
+                        </div>
+                        <div class="admin-profile-dl-row">
+                            <dt>Mobile</dt>
+                            <dd data-admin-profile-mobile>—</dd>
+                        </div>
+                        <div class="admin-profile-dl-row">
+                            <dt>Member since</dt>
+                            <dd data-admin-profile-member-since>—</dd>
+                        </div>
+                    </dl>
+                </div>
+
+                <!-- Quick stats — "Courts listed" is set by
+                     loadAndRenderCourts() (same InigoCourtsData.getCourts
+                     call Court Listings already makes); "Active staff
+                     accounts" shares the data-admin-stat="active-staff"
+                     hook with the Booking Overview tile, so
+                     refreshOverviewStats() updates both at once from the
+                     one query it already runs. -->
+                <div class="admin-stat-grid admin-profile-stats">
+                    <div class="admin-stat-card">
+                        <span class="admin-stat-value" data-admin-stat="courts-listed">—</span>
+                        <span class="admin-stat-label">Courts listed</span>
+                    </div>
+                    <div class="admin-stat-card">
+                        <span class="admin-stat-value" data-admin-stat="active-staff">—</span>
+                        <span class="admin-stat-label">Active staff accounts</span>
+                    </div>
+                </div>
+
+                <div class="admin-form-actions" style="justify-content: flex-start;">
+                    <button type="button" class="admin-btn-save" data-admin-nav="settings">Edit in Account Settings</button>
+                </div>
+            </section>
+
         </main>
+    </div>
+</div>
+
+<!-- ================================================================
+     ADD NEW STAFF MODAL — Revision A2 (implementation_plan.md, decision
+     B3). Same .admin-modal-overlay/.admin-modal shell + open/close idiom
+     (Esc/backdrop mousedown+click/Cancel/×, focus-first-field,
+     reset-on-open) as the Court modal just below — see
+     includes/owner_dashboard.js's openStaffModal()/closeStaffModal().
+     data-admin-staff-form now lives on the dialog itself (previously on
+     the dropped inline .admin-add-panel card); every field's data-* hook
+     is unchanged, so the existing invite/submit handler
+     (data-admin-staff-submit) needed no logic changes. -->
+<div class="admin-modal-overlay" data-admin-staff-modal hidden>
+    <div class="admin-modal" role="dialog" aria-modal="true" aria-labelledby="adminStaffModalTitle" tabindex="-1" data-admin-staff-form data-admin-staff-dialog>
+        <button type="button" class="admin-modal-close" data-admin-staff-modal-close aria-label="Close">
+            <svg viewBox="0 0 24 24" fill="none"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+        </button>
+
+        <h3 id="adminStaffModalTitle">New Staff Account</h3>
+        <p class="admin-form-hint">An email invite is sent to this address with a link for them to set their own password — nobody but the staff member ever knows it.</p>
+
+        <div class="admin-form-row">
+            <div class="admin-form-group">
+                <span class="admin-form-label">Full name</span>
+                <input type="text" class="admin-input" placeholder="Juan Dela Cruz" data-admin-staff-name>
+            </div>
+            <div class="admin-form-group">
+                <span class="admin-form-label">Email address</span>
+                <input type="email" class="admin-input" placeholder="staff@inigossportscenter.com" data-admin-staff-email>
+            </div>
+        </div>
+        <div class="admin-form-group">
+            <span class="admin-form-label">Position</span>
+            <select class="admin-select" data-admin-staff-role>
+                <option>Front Desk / Secretary</option>
+                <option>Court Attendant</option>
+                <option>Weekend Relief Staff</option>
+            </select>
+        </div>
+
+        <div class="admin-form-actions">
+            <button type="button" class="admin-btn-ghost" data-admin-staff-modal-close>Cancel</button>
+            <button type="button" class="admin-btn-save" data-admin-staff-submit>Send Invite</button>
+        </div>
     </div>
 </div>
 
@@ -715,24 +803,16 @@
                 </select>
             </div>
         </div>
+        <!-- Revision A2 (implementation_plan.md, decision B7) — "Billing
+             unit" (Per hour / Per game) removed outright; every court now
+             bills '/hr' (hardcoded in includes/owner_dashboard.js's save
+             payload, not read from a field). Rate pairs with Status
+             instead, freeing the row Photo now needs below. -->
         <div class="admin-form-row">
             <div class="admin-form-group">
-                <span class="admin-form-label">Rate (optional — leave blank until confirmed)</span>
+                <span class="admin-form-label">Rate per hour (₱) <span class="admin-form-label-hint">— optional, leave blank until confirmed</span></span>
                 <input type="number" class="admin-input" placeholder="e.g. 300" min="0" step="0.01" data-admin-court-rate>
             </div>
-            <div class="admin-form-group">
-                <span class="admin-form-label">Billing unit</span>
-                <select class="admin-select" data-admin-court-rate-unit>
-                    <option value="/hr">Per hour</option>
-                    <option value="/game">Per game</option>
-                </select>
-            </div>
-        </div>
-        <div class="admin-form-group">
-            <span class="admin-form-label">Description</span>
-            <input type="text" class="admin-input" placeholder="e.g. Full court · Indoor · Scoreboard" data-admin-court-description>
-        </div>
-        <div class="admin-form-row">
             <div class="admin-form-group">
                 <span class="admin-form-label">Status</span>
                 <select class="admin-select" data-admin-court-op-status>
@@ -740,15 +820,33 @@
                     <option value="Maintenance">Maintenance</option>
                 </select>
             </div>
-            <div class="admin-form-group">
-                <span class="admin-form-label">Photo</span>
-                <div class="admin-image-field">
-                    <input type="url" class="admin-input" placeholder="https://…" data-admin-court-image-url>
-                    <button type="button" class="admin-btn-ghost" data-admin-court-image-upload-trigger>Upload photo</button>
-                </div>
-                <input type="file" accept="image/jpeg,image/png,image/webp" class="admin-visually-hidden" data-admin-court-image-file>
-            </div>
         </div>
+        <div class="admin-form-group">
+            <span class="admin-form-label">Description</span>
+            <input type="text" class="admin-input" placeholder="e.g. Full court · Indoor · Scoreboard" data-admin-court-description>
+        </div>
+
+        <!-- Photos — Revision A2 (implementation_plan.md, decision B6).
+             Replaces the old single Image URL + Upload row: a Cover photo
+             slot plus one slot per unit once Quantity above is > 1, both
+             rendered by includes/owner_dashboard.js's
+             renderCourtPhotoSlots() and re-derived live whenever
+             Quantity/Unit change (deriveCourtPhotoUnits()). Each slot's
+             Upload opens includes/imageTools.js's openCropEditor() (a
+             fixed 16:10 frame, drag-to-pan, 1×–4× zoom) before the result
+             reaches uploadToMedia(). The URL field is a collapsed fallback
+             for pasting an already-hosted https:// cover photo instead of
+             uploading a file. -->
+        <div class="admin-form-group">
+            <span class="admin-form-label">Photos</span>
+            <div class="admin-photo-grid" data-admin-court-photo-grid></div>
+            <details class="admin-photo-url-fallback">
+                <summary>or paste an https:// URL for the cover photo</summary>
+                <input type="url" class="admin-input" placeholder="https://…" data-admin-court-image-url>
+            </details>
+            <input type="file" accept="image/jpeg,image/png,image/webp" class="admin-visually-hidden" data-admin-court-photo-file>
+        </div>
+
         <div class="admin-form-actions">
             <button type="button" class="admin-btn-ghost" data-admin-court-modal-close>Cancel</button>
             <button type="button" class="admin-btn-save" data-admin-court-submit>Add Court</button>
@@ -774,15 +872,17 @@
 <script src="../includes/courts-data.js"></script>
 <script src="../includes/courtsData.js"></script>
 
-<!-- Payment/app settings data layer (E2, implementation_plan.md) — same
-     fetch-with-fallback shape as courtsData.js above. Must load before
-     owner_dashboard.js, which reads AND writes it (Payment Configuration). -->
-<script src="../includes/appSettings.js"></script>
+<!-- includes/appSettings.js (Payment Configuration's old data layer) is no
+     longer loaded here — Revision A2 (implementation_plan.md, decision B4)
+     removed the only reader/writer of it on this page. The file itself,
+     its `app_settings` table, and its other consumers (the customer
+     booking wizard, the staff walk-in form) are untouched. -->
 
-<!-- Shared image downscale/crop helpers (Revision A1, decision A5/A6/A9) —
-     Media Manager slides, Court Listings photos, and the Account Settings
-     avatar upload all use window.InigoImageTools. Must load before
-     owner_dashboard.js. -->
+<!-- Shared image downscale/crop helpers (Revision A1 decision A5/A6/A9;
+     Revision A2 decision B6 adds openCropEditor) — Media Manager slides,
+     Court Listings' Cover/per-unit photos + crop dialog, and the Account
+     Settings avatar upload all use window.InigoImageTools. Must load
+     before owner_dashboard.js. -->
 <script src="../includes/imageTools.js"></script>
 
 <!-- Script for owner dashboard functionality -->

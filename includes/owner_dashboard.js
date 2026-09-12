@@ -1,7 +1,7 @@
 // IñigoSync — Owner Dashboard controller
 // Staff Management, Account Settings, Court Listings, the Booking Overview
-// stat tiles/Recent bookings/Booking status breakdown, Media Manager, and
-// Payment Configuration all talk to the real Supabase database.
+// stat tiles/Recent bookings/Booking status breakdown, and Media Manager
+// all talk to the real Supabase database.
 // (Booking trend chart setup lives in event/chart.js, loaded below.)
 //
 // Revision A1 (implementation_plan.md) brought this page up to the same
@@ -15,6 +15,15 @@
 // Password wizard in Account Settings (A9). See that section of
 // implementation_plan.md for the full rationale; individual blocks below
 // cite the specific decision letter they implement.
+//
+// Revision A2 (implementation_plan.md) followed up: the sidebar Log Out is
+// gone (B1, dropdown keeps it), the dropdown gained a View Profile panel
+// (B2), Add New Staff moved into a modal (B3), Payment Configuration was
+// removed outright (B4), a responsive/consistency pass touched
+// Style/owner_dashboard.css (B5), the Court modal gained a Cover + per-unit
+// Photos section with a crop editor (B6, includes/imageTools.js's
+// openCropEditor()), and courts are per-hour only (B7, no more Billing
+// unit / "Per game").
 
 document.addEventListener('DOMContentLoaded', () => {
     // ------------------------------------------------------------------
@@ -26,10 +35,17 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const panelMeta = {
         overview: { title: 'Booking Overview', subtitle: 'Reservation trends, staff activity, and business performance at a glance.' },
-        staff: { title: 'Staff Management', subtitle: 'Add, update, or remove staff accounts and configure payment settings.' },
+        // Revision A2 (implementation_plan.md, decision B4) — "…and
+        // configure payment settings" dropped now that Payment
+        // Configuration is gone (see this file's own removal note below).
+        staff: { title: 'Staff Management', subtitle: 'Add, update, or remove staff accounts.' },
         courts: { title: 'Court Listings', subtitle: 'Add new courts, update details, or activate/deactivate existing ones.' },
         media: { title: 'Media Manager', subtitle: "Whatever you upload here shows up on the website's home featured slideshow — both the landing page and the customer dashboard." },
         settings: { title: 'Account Settings', subtitle: 'Update your personal details and manage your owner password.' },
+        // Revision A2, decision B2 — not in .admin-nav, only reachable from
+        // the profile dropdown's "View Profile"; setActivePanel() below
+        // still works unmodified since it just looks this key up.
+        profile: { title: 'My Profile', subtitle: 'Your account, at a glance.' },
     };
 
     function setActivePanel(name) {
@@ -516,15 +532,99 @@ document.addEventListener('DOMContentLoaded', () => {
     document.addEventListener('inigosync:profile-ready', refreshOverviewStats);
 
     // ------------------------------------------------------------------
-    // Staff Management — toggle add-staff form, create/reset/edit/delete
+    // Staff Management — Add New Staff modal (Revision A2, decision B3).
+    // Same open/close idiom as the Court modal further down this file (S1's
+    // mousedown+click backdrop-detection, Esc, focus-first-field,
+    // reset-on-open) — ported rather than shared, matching how every other
+    // modal-adjacent helper in this file is self-contained (see
+    // isSchemaMismatchError's own comment above). The old inline
+    // .admin-add-panel[data-admin-staff-form] card (shown/hidden via
+    // .is-open) is gone; the "+ Add New Staff" trigger's hook was renamed
+    // from data-admin-toggle-staff-form to data-admin-staff-add. Submit
+    // logic (staffSubmitBtn below) is unchanged other than how it closes
+    // the dialog on success.
     // ------------------------------------------------------------------
-    const staffFormToggleBtns = document.querySelectorAll('[data-admin-toggle-staff-form]');
+    const staffModal = document.querySelector('[data-admin-staff-modal]');
     const staffForm = document.querySelector('[data-admin-staff-form]');
+    const staffAddBtns = document.querySelectorAll('[data-admin-staff-add]');
 
-    staffFormToggleBtns.forEach((btn) => {
-        btn.addEventListener('click', () => {
-            if (staffForm) staffForm.classList.toggle('is-open');
+    function resetStaffForm() {
+        if (!staffForm) return;
+        const nameInput = staffForm.querySelector('[data-admin-staff-name]');
+        const emailInput = staffForm.querySelector('[data-admin-staff-email]');
+        if (nameInput) nameInput.value = '';
+        if (emailInput) emailInput.value = '';
+        const roleSelect = staffForm.querySelector('[data-admin-staff-role]');
+        if (roleSelect) roleSelect.selectedIndex = 0;
+    }
+
+    const STAFF_MODAL_CLOSE_DELAY_MS = 250;
+    let staffModalHideTimer = null;
+    let staffModalIsOpen = false;
+    let staffModalLastFocused = null;
+
+    function openStaffModal() {
+        if (!staffModal || !staffForm) return;
+        staffModalLastFocused = document.activeElement;
+        resetStaffForm();
+
+        if (staffModalHideTimer) {
+            window.clearTimeout(staffModalHideTimer);
+            staffModalHideTimer = null;
+        }
+        staffModal.hidden = false;
+        // Force a synchronous layout flush so the browser commits the
+        // hidden->visible state before [data-open] flips opacity to 1 —
+        // same trick the Court modal below uses.
+        void staffModal.offsetWidth;
+        staffModal.setAttribute('data-open', '');
+        staffModalIsOpen = true;
+
+        const firstField = staffForm.querySelector('input, select');
+        if (firstField) firstField.focus();
+    }
+
+    function closeStaffModal() {
+        if (!staffModalIsOpen || !staffModal) return;
+        staffModalIsOpen = false;
+
+        staffModal.removeAttribute('data-open');
+        if (staffModalHideTimer) window.clearTimeout(staffModalHideTimer);
+        staffModalHideTimer = window.setTimeout(() => {
+            staffModal.hidden = true;
+            staffModalHideTimer = null;
+        }, STAFF_MODAL_CLOSE_DELAY_MS);
+
+        if (staffModalLastFocused && typeof staffModalLastFocused.focus === 'function' && document.contains(staffModalLastFocused)) {
+            staffModalLastFocused.focus();
+        }
+        staffModalLastFocused = null;
+    }
+
+    staffAddBtns.forEach((btn) => {
+        btn.addEventListener('click', openStaffModal);
+    });
+
+    document.querySelectorAll('[data-admin-staff-modal-close]').forEach((btn) => {
+        btn.addEventListener('click', closeStaffModal);
+    });
+
+    // S1 (Revision A1 fix, ported) — see the identical comment on the Court
+    // modal's own backdrop listeners further down for why this needs both
+    // mousedown and click on the overlay rather than a plain 'click'.
+    let staffModalMouseDownOnBackdrop = false;
+    if (staffModal) {
+        staffModal.addEventListener('mousedown', (e) => {
+            staffModalMouseDownOnBackdrop = e.target === staffModal;
         });
+        staffModal.addEventListener('click', (e) => {
+            if (e.target === staffModal && staffModalMouseDownOnBackdrop) closeStaffModal();
+            staffModalMouseDownOnBackdrop = false;
+        });
+    }
+
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && staffModalIsOpen) closeStaffModal();
     });
 
     const staffTable = document.querySelector('[data-admin-staff-table]');
@@ -573,10 +673,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
 
                 refreshStaffList();
-
-                if (nameInput) nameInput.value = '';
-                if (emailInput) emailInput.value = '';
-                if (staffForm) staffForm.classList.remove('is-open');
+                resetStaffForm();
+                closeStaffModal();
             } catch (err) {
                 window.alert(err.message || 'Could not send the invite. Please try again.');
             } finally {
@@ -808,89 +906,20 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // ------------------------------------------------------------------
-    // Payment Configuration — toggle switches + real load/save against
-    // `app_settings` (database/schema/007_app_settings.sql, E2). Loaded
-    // through window.InigoAppSettings (includes/appSettings.js) — the same
-    // fetch-with-fallback data layer includes/Dashboard.js and
-    // includes/staff_dashboard.js read — so this form starts on whatever
-    // every other dashboard currently sees: the real saved row, or the
-    // identical hardcoded fallback if the migration hasn't been applied yet.
+    // Payment Configuration — REMOVED (Revision A2, implementation_plan.md,
+    // decision B4). This used to be a card in Staff Management with two
+    // .admin-switch toggles (GCash/Cash) and a downpayment-percentage
+    // input, reading/writing the singleton `app_settings` row
+    // (database/schema/007_app_settings.sql) through
+    // window.InigoAppSettings (includes/appSettings.js). That table, its
+    // documented defaults (GCash + Cash on, 50% downpayment), and every
+    // other reader of it — the customer booking wizard, the staff walk-in
+    // form — are completely untouched; only this admin editing UI is gone.
+    // includes/appSettings.js is no longer even loaded on this page (see
+    // Pages/owner_dashboard.html's script-tag comment) since nothing here
+    // reads or writes it any more. Re-add a form here (or elsewhere) if the
+    // owner wants to edit these again — the data layer already supports it.
     // ------------------------------------------------------------------
-    const paymentToggles = document.querySelectorAll('[data-admin-payment-toggle]');
-    const downpaymentPctInput = document.querySelector('[data-admin-downpayment-pct]');
-
-    paymentToggles.forEach((toggle) => {
-        toggle.addEventListener('click', () => {
-            toggle.classList.toggle('is-on');
-        });
-    });
-
-    function applyPaymentSettingsToForm(settings) {
-        if (paymentToggles[0]) paymentToggles[0].classList.toggle('is-on', settings.gcashEnabled);
-        if (paymentToggles[1]) paymentToggles[1].classList.toggle('is-on', settings.cashEnabled);
-        if (downpaymentPctInput) downpaymentPctInput.value = settings.downpaymentPct;
-    }
-
-    if (window.InigoAppSettings) {
-        window.InigoAppSettings.getSettings().then(applyPaymentSettingsToForm);
-    }
-
-    const paymentSaveBtn = document.querySelector('[data-admin-payment-save]');
-    if (paymentSaveBtn) {
-        paymentSaveBtn.addEventListener('click', async () => {
-            const gcashOn = paymentToggles[0] ? paymentToggles[0].classList.contains('is-on') : true;
-            const cashOn = paymentToggles[1] ? paymentToggles[1].classList.contains('is-on') : true;
-            const pct = Number(downpaymentPctInput ? downpaymentPctInput.value : NaN);
-
-            if (!Number.isFinite(pct) || pct < 0 || pct > 100) {
-                window.InigoToast?.show('Downpayment percentage must be a number between 0 and 100.', true);
-                downpaymentPctInput?.focus();
-                return;
-            }
-
-            if (!window.sb) {
-                window.InigoToast?.show('Unable to reach the server right now. Please try again shortly.', true);
-                return;
-            }
-
-            const originalLabel = paymentSaveBtn.textContent;
-            paymentSaveBtn.disabled = true;
-            paymentSaveBtn.textContent = 'Saving…';
-
-            // Single-row upsert — `id` is always `true` (see
-            // database/schema/007_app_settings.sql's singleton-row design),
-            // so one call handles both "first ever save" (insert) and every
-            // save after that (update); no read-then-branch needed.
-            const { error } = await window.sb.from('app_settings').upsert({
-                id: true,
-                gcash_enabled: gcashOn,
-                cash_enabled: cashOn,
-                downpayment_pct: pct,
-                updated_at: new Date().toISOString(),
-            }, { onConflict: 'id' });
-
-            paymentSaveBtn.disabled = false;
-            paymentSaveBtn.textContent = originalLabel;
-
-            if (error) {
-                // Most likely cause pre-migration: `app_settings` doesn't
-                // exist yet. Either way this is a real, specific failure —
-                // never a fake "Payment settings saved." toast over a save
-                // that didn't happen (implementation_plan.md success
-                // criterion #2).
-                window.InigoToast?.show(
-                    isSchemaMismatchError(error)
-                        ? "This needs a database update that hasn't been applied yet (see database/schema/007_app_settings.sql)."
-                        : (error.message || 'Could not save payment settings. Please try again.'),
-                    true
-                );
-                return;
-            }
-
-            window.InigoAppSettings?.invalidateSettings();
-            window.InigoToast?.show('Payment settings saved.');
-        });
-    }
 
     // ------------------------------------------------------------------
     // Court Listings — real CRUD against the `court` table (Phase 2; see
@@ -921,6 +950,66 @@ document.addEventListener('DOMContentLoaded', () => {
     // — the rendered card markup alone doesn't carry all of it.
     let currentCourts = [];
 
+    // ------------------------------------------------------------------
+    // Court modal — Photos (Revision A2, decision B6). courtModalState is
+    // the modal's own draft of what Save will write: a single Cover URL
+    // (the same column the form always saved to, `image_url`) plus an
+    // array of per-unit photos (`unit_images`, one entry per bookable unit
+    // once Quantity > 1 — see database/schema/006_court_unit_images.sql).
+    // Reset to blank on every resetCourtForm() (Add mode) and overwritten
+    // from the real court on openCourtModal(court) (Edit mode).
+    // ------------------------------------------------------------------
+    let courtModalState = { coverUrl: null, unitImages: [], activeUploadSlot: null };
+
+    // Same noun mapping as includes/courtsData.js's own (unexported)
+    // unitNoun() — duplicated locally rather than importing it, matching
+    // this file's existing convention of keeping every helper
+    // self-contained (see isSchemaMismatchError's own comment above).
+    // Used only to label the Photos section's live per-unit slots.
+    const COURT_UNIT_NOUN = { court: 'Court', courts: 'Court', lane: 'Lane', lanes: 'Lane', table: 'Table', tables: 'Table' };
+    function courtUnitNoun(unit) {
+        const key = String(unit || '').trim().toLowerCase();
+        if (COURT_UNIT_NOUN[key]) return COURT_UNIT_NOUN[key];
+        const word = key.replace(/s$/, '');
+        return word ? word.charAt(0).toUpperCase() + word.slice(1) : 'Unit';
+    }
+
+    // Re-derives the per-unit photo slots for the CURRENT Quantity/Unit
+    // field values — called on modal open and again live whenever either
+    // field changes. Sized to `quantity` exactly (growing pads new slots
+    // with a derived label + no photo yet; shrinking drops the tail), and
+    // keeps each already-set slot's photo/label by POSITION so adjusting
+    // Quantity never orphans an upload already made in this session.
+    // Returns [] outright for quantity <= 1 — a single-unit court has
+    // nothing to pick between, so only the Cover slot applies (same rule
+    // includes/courtsData.js's resolveCourtUnits() documents for the
+    // customer-facing picker).
+    function deriveCourtPhotoUnits(quantity, unitValue, existingUnitImages) {
+        const count = Math.max(0, Math.floor(Number(quantity) || 0));
+        if (count <= 1) return [];
+        const noun = courtUnitNoun(unitValue);
+        const source = Array.isArray(existingUnitImages) ? existingUnitImages : [];
+        const units = [];
+        for (let i = 0; i < count; i++) {
+            const existing = source[i] || null;
+            units.push({
+                label: (existing && existing.label) ? existing.label : `${noun} ${i + 1}`,
+                imageUrl: existing ? (existing.imageUrl || null) : null,
+            });
+        }
+        return units;
+    }
+
+    // `unit_images` column shape is snake_case {label, image_url}
+    // (database/schema/006_court_unit_images.sql); courtModalState.unitImages
+    // stays in the camelCase {label, imageUrl} shape
+    // includes/courtsData.js's normalizeUnitImages()/resolveCourtUnits()
+    // already use, so this is the ONE place the two shapes are bridged, at
+    // save time.
+    function unitImagesToDbShape(unitImages) {
+        return (unitImages || []).map((u) => ({ label: u.label || null, image_url: u.imageUrl || null }));
+    }
+
     function applyCourtFilter() {
         const activeChip = document.querySelector('[data-admin-court-filter].is-active');
         const filter = activeChip ? activeChip.dataset.adminCourtFilter : 'all';
@@ -950,12 +1039,93 @@ document.addEventListener('DOMContentLoaded', () => {
         courtForm.querySelectorAll('input[type="text"], input[type="number"], input[type="url"]').forEach((el) => { el.value = ''; });
         const quantityInput = courtForm.querySelector('[data-admin-court-quantity]');
         if (quantityInput) quantityInput.value = '1';
-        ['[data-admin-court-unit]', '[data-admin-court-rate-unit]', '[data-admin-court-op-status]'].forEach((selector) => {
+        // Revision A2, decision B7 — data-admin-court-rate-unit no longer
+        // exists (Billing unit removed; every court now bills '/hr').
+        ['[data-admin-court-unit]', '[data-admin-court-op-status]'].forEach((selector) => {
             const el = courtForm.querySelector(selector);
             if (el) el.selectedIndex = 0;
         });
         const sportSelect = courtForm.querySelector('[data-admin-court-sport]');
         if (sportSelect && sportSelect.options.length) sportSelect.selectedIndex = 0;
+
+        // Revision A2, decision B6 — a fresh Add starts with no cover and
+        // no per-unit photos; openCourtModal() below overwrites this again
+        // with the court's real values when editing.
+        courtModalState = { coverUrl: null, unitImages: [], activeUploadSlot: null };
+        renderCourtPhotoSlots();
+    }
+
+    // ------------------------------------------------------------------
+    // Court modal — Photos rendering/wiring (Revision A2, decision B6).
+    // ------------------------------------------------------------------
+    function courtPhotoSlotThumbHtml(url) {
+        const safe = url && isSafeImageUrl(url) ? url : null;
+        return safe
+            ? `<img src="${window.escapeHtml(safe)}" alt="" loading="lazy">`
+            : '<span class="admin-photo-slot-empty">No photo yet</span>';
+    }
+
+    function courtPhotoSlotHtml(kind, index, label, url) {
+        const hasPhoto = Boolean(url && isSafeImageUrl(url));
+        return `
+            <div class="admin-photo-slot" data-admin-photo-slot data-slot-kind="${kind}"${index === null ? '' : ` data-slot-index="${index}"`}>
+                <div class="admin-photo-slot-thumb">${courtPhotoSlotThumbHtml(url)}</div>
+                <div class="admin-photo-slot-body">
+                    <span class="admin-photo-slot-label">${window.escapeHtml(label)}</span>
+                    <div class="admin-photo-slot-actions">
+                        <button type="button" class="admin-btn-chip-secondary" data-admin-photo-upload>Upload</button>
+                        ${hasPhoto ? '<button type="button" class="admin-btn-chip-danger" data-admin-photo-remove>Remove</button>' : ''}
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+
+    function renderCourtPhotoSlots() {
+        const grid = document.querySelector('[data-admin-court-photo-grid]');
+        if (!grid) return;
+
+        const slots = [courtPhotoSlotHtml('cover', null, 'Cover photo', courtModalState.coverUrl)];
+        courtModalState.unitImages.forEach((unit, index) => {
+            slots.push(courtPhotoSlotHtml('unit', index, unit.label, unit.imageUrl));
+        });
+
+        grid.innerHTML = slots.join('');
+        wireCourtPhotoSlotActions(grid);
+    }
+
+    function wireCourtPhotoSlotActions(scope) {
+        scope.querySelectorAll('[data-admin-photo-slot]').forEach((slotEl) => {
+            const kind = slotEl.dataset.slotKind;
+            const index = kind === 'unit' ? Number(slotEl.dataset.slotIndex) : null;
+
+            const uploadBtn = slotEl.querySelector('[data-admin-photo-upload]');
+            if (uploadBtn) {
+                uploadBtn.addEventListener('click', () => {
+                    courtModalState.activeUploadSlot = kind === 'cover' ? { kind: 'cover' } : { kind: 'unit', index };
+                    if (courtPhotoFileInput) courtPhotoFileInput.click();
+                });
+            }
+
+            const removeBtn = slotEl.querySelector('[data-admin-photo-remove]');
+            if (removeBtn) {
+                removeBtn.addEventListener('click', () => {
+                    if (kind === 'cover') {
+                        removeUploadedMediaBestEffort(courtModalState.coverUrl);
+                        courtModalState.coverUrl = null;
+                        const urlInput = document.querySelector('[data-admin-court-image-url]');
+                        if (urlInput) urlInput.value = '';
+                    } else {
+                        const unit = courtModalState.unitImages[index];
+                        if (unit) {
+                            removeUploadedMediaBestEffort(unit.imageUrl);
+                            unit.imageUrl = null;
+                        }
+                    }
+                    renderCourtPhotoSlots();
+                });
+            }
+        });
     }
 
     // ------------------------------------------------------------------
@@ -994,10 +1164,22 @@ document.addEventListener('DOMContentLoaded', () => {
             setValue('[data-admin-court-quantity]', court.quantity || 1);
             setValue('[data-admin-court-unit]', court.unit || 'courts');
             setValue('[data-admin-court-rate]', court.rate !== null ? court.rate : '');
-            setValue('[data-admin-court-rate-unit]', court.rateUnit || '/hr');
+            // Revision A2, decision B7 — data-admin-court-rate-unit no
+            // longer exists; every court bills '/hr' (see courtSubmitBtn's
+            // save payload below).
             setValue('[data-admin-court-description]', court.description || '');
             setValue('[data-admin-court-op-status]', court.status || 'Available');
             setValue('[data-admin-court-image-url]', court.imageUrl || '');
+
+            // Revision A2, decision B6 — Photos state/slots for Edit mode:
+            // cover mirrors the URL field just set above; per-unit slots
+            // are derived from the court's own quantity/unit + whatever
+            // unit_images it already has (includes/courtsData.js's
+            // normalizeCourt() already parses that column into the
+            // {label, imageUrl} shape deriveCourtPhotoUnits expects).
+            courtModalState.coverUrl = court.imageUrl || null;
+            courtModalState.unitImages = deriveCourtPhotoUnits(court.quantity, court.unit, court.unitImages || []);
+            renderCourtPhotoSlots();
         }
 
         if (courtModalHideTimer) {
@@ -1051,9 +1233,10 @@ document.addEventListener('DOMContentLoaded', () => {
     // event's target is the overlay even though the user never intended to
     // close the modal. Tracked via 'mousedown' on the overlay instead: only
     // treat it as a real backdrop click when BOTH the mousedown and the
-    // click landed on the overlay element itself, not a descendant.
-    // (This is the only overlay-close modal in this file at the moment —
-    // apply the same pair of listeners to any future one.)
+    // click landed on the overlay element itself, not a descendant. (The
+    // Staff modal above uses the identical pair of listeners under its own
+    // staffModalMouseDownOnBackdrop name — apply the same pattern to any
+    // future overlay-close modal added to this file.)
     let courtModalMouseDownOnBackdrop = false;
     if (courtModal) {
         courtModal.addEventListener('mousedown', (e) => {
@@ -1068,6 +1251,34 @@ document.addEventListener('DOMContentLoaded', () => {
     document.addEventListener('keydown', (e) => {
         if (e.key === 'Escape' && courtModalIsOpen) closeCourtModal();
     });
+
+    // Revision A2, decision B6 — Photos section live wiring: Quantity/Unit
+    // changing re-derives the per-unit slots (growing/shrinking/relabeling,
+    // keeping already-uploaded photos by position — see
+    // deriveCourtPhotoUnits's own comment above); typing directly into the
+    // "paste an https:// URL" fallback keeps courtModalState.coverUrl (the
+    // single source of truth Save reads) in sync with whatever the admin
+    // typed, exactly like an Upload does.
+    const courtQuantityInput = document.querySelector('[data-admin-court-quantity]');
+    const courtUnitSelect = document.querySelector('[data-admin-court-unit]');
+    function handleCourtUnitFieldsChange() {
+        courtModalState.unitImages = deriveCourtPhotoUnits(
+            courtQuantityInput ? courtQuantityInput.value : 0,
+            courtUnitSelect ? courtUnitSelect.value : '',
+            courtModalState.unitImages
+        );
+        renderCourtPhotoSlots();
+    }
+    if (courtQuantityInput) courtQuantityInput.addEventListener('input', handleCourtUnitFieldsChange);
+    if (courtUnitSelect) courtUnitSelect.addEventListener('change', handleCourtUnitFieldsChange);
+
+    const courtImageUrlInput = document.querySelector('[data-admin-court-image-url]');
+    if (courtImageUrlInput) {
+        courtImageUrlInput.addEventListener('input', () => {
+            courtModalState.coverUrl = courtImageUrlInput.value.trim() || null;
+            renderCourtPhotoSlots();
+        });
+    }
 
     // Escapes every interpolated field — a court name/description written
     // by any staff-or-admin session (RLS lets staff write `court` too, see
@@ -1097,7 +1308,15 @@ document.addEventListener('DOMContentLoaded', () => {
         const rateHtml = court.rate !== null
             ? `₱${window.escapeHtml(String(court.rate))} <span>${window.escapeHtml(court.rateUnit)}</span>`
             : '<span>Rate TBA</span>';
+        // Revision A2, decision B6 — a small "N photos" chip whenever at
+        // least one per-unit photo has actually been uploaded (not merely
+        // a placeholder slot with no image yet); the cover itself already
+        // renders above via `media`, same column as always.
+        const uploadedUnitPhotoCount = Array.isArray(court.unitImages)
+            ? court.unitImages.filter((u) => u.imageUrl).length
+            : 0;
         const tags = [court.sportName, `${court.quantity} ${court.unit}`]
+            .concat(uploadedUnitPhotoCount > 0 ? [`${uploadedUnitPhotoCount} photo${uploadedUnitPhotoCount === 1 ? '' : 's'}`] : [])
             .concat(String(court.description || '').split('·').map((s) => s.trim()).filter(Boolean))
             .filter(Boolean);
         const tagsHtml = tags.map((t) => `<span>${window.escapeHtml(t)}</span>`).join('');
@@ -1134,6 +1353,10 @@ document.addEventListener('DOMContentLoaded', () => {
             : '<p style="color: var(--color-ink-faint); padding: 8px 4px;">No courts yet — add one above.</p>';
         wireCourtCardActions(courtGrid);
         applyCourtFilter();
+        // Revision A2, decision B2 — the Profile panel's "Courts listed"
+        // quick stat reuses this exact count (InigoCourtsData.getCourts
+        // with includeInactive:true, same call as just above).
+        setAdminStat('courts-listed', courts.length);
     }
 
     if (courtSubmitBtn) {
@@ -1143,10 +1366,8 @@ document.addEventListener('DOMContentLoaded', () => {
             const quantityInput = document.querySelector('[data-admin-court-quantity]');
             const unitSelect = document.querySelector('[data-admin-court-unit]');
             const rateInput = document.querySelector('[data-admin-court-rate]');
-            const rateUnitSelect = document.querySelector('[data-admin-court-rate-unit]');
             const descriptionInput = document.querySelector('[data-admin-court-description]');
             const opStatusSelect = document.querySelector('[data-admin-court-op-status]');
-            const imageUrlInput = document.querySelector('[data-admin-court-image-url]');
 
             const name = nameInput ? nameInput.value.trim() : '';
             if (!name) {
@@ -1181,15 +1402,18 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             const rate = rateRaw === '' ? null : Number(rateRaw);
 
-            // Revision A1 security requirement — the URL input is the ONE
+            // Revision A1 security requirement — courtModalState.coverUrl
+            // (kept in sync with the "paste a URL" fallback field AND every
+            // Cover Upload — see handleCourtUnitFieldsChange's neighbouring
+            // listener and wireCourtPhotoSlotActions above) is the ONE
             // remaining free-text path into an <img src>; reject anything
             // that isn't https:// or a relative project path before it
             // ever reaches the database (renderAdminCourtCard() also
             // re-checks this on render, as defense in depth).
-            const imageUrlRaw = imageUrlInput ? imageUrlInput.value.trim() : '';
-            if (imageUrlRaw && !isSafeImageUrl(imageUrlRaw)) {
+            const coverUrl = courtModalState.coverUrl ? courtModalState.coverUrl.trim() : '';
+            if (coverUrl && !isSafeImageUrl(coverUrl)) {
                 window.InigoToast?.show('Image URL must start with https:// (or be left blank).', true);
-                imageUrlInput?.focus();
+                document.querySelector('[data-admin-court-image-url]')?.focus();
                 return;
             }
 
@@ -1200,15 +1424,27 @@ document.addEventListener('DOMContentLoaded', () => {
                 unit: unitSelect ? unitSelect.value : 'courts',
                 description: (descriptionInput && descriptionInput.value.trim()) ? descriptionInput.value.trim() : null,
                 rate,
-                rate_unit: rateUnitSelect ? rateUnitSelect.value : '/hr',
+                // Revision A2, decision B7 — "Per game" billing is gone;
+                // every court bills per hour now, always, regardless of
+                // what (if anything) it billed before.
+                rate_unit: '/hr',
                 status: opStatusSelect ? opStatusSelect.value : 'Available',
-                image_url: imageUrlRaw || null,
+                image_url: coverUrl || null,
+                // Revision A2, decision B6 — per-unit photos, bridged to
+                // the column's snake_case {label, image_url} shape.
+                unit_images: unitImagesToDbShape(courtModalState.unitImages),
             };
 
             const editingId = courtForm.dataset.editingId;
             const originalLabel = courtSubmitBtn.textContent;
             courtSubmitBtn.disabled = true;
             courtSubmitBtn.textContent = editingId ? 'Saving…' : 'Adding…';
+
+            // Revision A2, decision B6 — set when a save had to drop
+            // unit_images and retry because the column doesn't exist yet
+            // (pre-006 database), so the success toast below can say so
+            // instead of silently pretending per-unit photos saved.
+            let unitImagesSchemaMissing = false;
 
             let error;
             if (editingId) {
@@ -1221,8 +1457,14 @@ document.addEventListener('DOMContentLoaded', () => {
                 // count that would silently report success on a write that
                 // never happened. Edits never touch `slug` — renaming a
                 // court can't collide with, or orphan, another row's slug.
-                const { error: updateError, data: updateData } = await window.sb
+                let { error: updateError, data: updateData } = await window.sb
                     .from('court').update(payload).eq('id', editingId).select();
+                if (updateError && isSchemaMismatchError(updateError)) {
+                    unitImagesSchemaMissing = true;
+                    const { unit_images, ...payloadWithoutUnitImages } = payload;
+                    ({ error: updateError, data: updateData } = await window.sb
+                        .from('court').update(payloadWithoutUnitImages).eq('id', editingId).select());
+                }
                 error = updateError || ((!updateData || updateData.length === 0)
                     ? { message: 'Could not save changes — you may not have permission, or this court may no longer exist.' }
                     : null);
@@ -1235,6 +1477,11 @@ document.addEventListener('DOMContentLoaded', () => {
                     // a short unique suffix rather than failing outright.
                     slug = `${slug}-${Date.now().toString(36)}`;
                     ({ error } = await window.sb.from('court').insert({ ...payload, slug, display_order: maxOrder + 1 }));
+                }
+                if (error && isSchemaMismatchError(error)) {
+                    unitImagesSchemaMissing = true;
+                    const { unit_images, ...payloadWithoutUnitImages } = payload;
+                    ({ error } = await window.sb.from('court').insert({ ...payloadWithoutUnitImages, slug, display_order: maxOrder + 1 }));
                 }
             }
 
@@ -1249,8 +1496,16 @@ document.addEventListener('DOMContentLoaded', () => {
                 return;
             }
 
-            window.InigoToast?.show(editingId ? 'Court updated.' : 'Court added.');
+            window.InigoToast?.show(
+                unitImagesSchemaMissing && courtModalState.unitImages.length
+                    ? `${editingId ? 'Court updated' : 'Court added'}, but per-unit photos need a database update (see database/schema/006_court_unit_images.sql).`
+                    : (editingId ? 'Court updated.' : 'Court added.')
+            );
             closeCourtModal();
+            // Revision A2, decision B6 — invalidateCourts() happens inside
+            // loadAndRenderCourts() itself (see its own comment above), so
+            // the freshly-saved unit_images/image_url are what the
+            // customer dashboard's unit picker sees on its own next load.
             loadAndRenderCourts();
         });
     }
@@ -1303,50 +1558,73 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    // Court modal's Photo field — Upload (to the `media` bucket, path
-    // `courts/<slug>-<ts>.jpg`) alongside the existing URL input. Uses the
+    // Court modal's Photos section (Revision A2, decision B6) — ONE shared
+    // hidden file input for every slot (Cover + each unit); which slot a
+    // given upload targets is tracked in courtModalState.activeUploadSlot,
+    // set by wireCourtPhotoSlotActions' Upload button handler right before
+    // this input is .click()ed. Each upload goes through
+    // includes/imageTools.js's openCropEditor() first (fixed 16:10 frame,
+    // drag-to-pan, 1×–4× zoom) so every photo — cover or per-unit — is
+    // consistently framed before it ever reaches uploadToMedia(). Uses the
     // court's real slug when editing, or derives one from whatever's
     // currently typed in the Name field when adding (courtsData.js's own
-    // slugify(), same helper the Add/Edit save handler above would use for
-    // a brand-new court's `slug` column).
-    const courtImageFileInput = document.querySelector('[data-admin-court-image-file]');
-    const courtImageUploadBtn = document.querySelector('[data-admin-court-image-upload-trigger]');
+    // slugify(), same helper the Add/Edit save handler above uses for a
+    // brand-new court's `slug` column).
+    const courtPhotoFileInput = document.querySelector('[data-admin-court-photo-file]');
 
-    if (courtImageUploadBtn && courtImageFileInput) {
-        courtImageUploadBtn.addEventListener('click', () => courtImageFileInput.click());
+    function currentCourtSlugForUpload() {
+        const editingId = courtForm ? courtForm.dataset.editingId : null;
+        const editingCourt = editingId ? currentCourts.find((c) => String(c.id) === String(editingId)) : null;
+        if (editingCourt && editingCourt.slug) return editingCourt.slug;
+        const nameInput = document.querySelector('[data-admin-court-name]');
+        return window.InigoCourtsData.slugify(nameInput ? nameInput.value : '');
     }
 
-    if (courtImageFileInput) {
-        courtImageFileInput.addEventListener('change', async () => {
-            const file = courtImageFileInput.files && courtImageFileInput.files[0];
-            courtImageFileInput.value = '';
-            if (!file) return;
+    if (courtPhotoFileInput) {
+        courtPhotoFileInput.addEventListener('change', async () => {
+            const file = courtPhotoFileInput.files && courtPhotoFileInput.files[0];
+            courtPhotoFileInput.value = '';
+            const slot = courtModalState.activeUploadSlot;
+            courtModalState.activeUploadSlot = null;
+            if (!file || !slot) return;
 
             if (!window.InigoImageTools || !window.sb) {
                 window.InigoToast?.show('Unable to reach the server right now. Please try again shortly.', true);
                 return;
             }
 
-            const imageUrlInput = document.querySelector('[data-admin-court-image-url]');
-            const originalLabel = courtImageUploadBtn.textContent;
-            courtImageUploadBtn.disabled = true;
-            courtImageUploadBtn.textContent = 'Uploading…';
+            let blob;
+            try {
+                blob = await window.InigoImageTools.openCropEditor(file, { aspect: 16 / 10, maxW: 1600, maxH: 1000, quality: 0.85 });
+            } catch (err) {
+                window.InigoToast?.show(err.message || 'Could not process that image.', true);
+                return;
+            }
+            if (!blob) return; // user cancelled the crop dialog
+
+            const slug = currentCourtSlugForUpload();
+            const path = slot.kind === 'cover'
+                ? `courts/${slug}/cover-${Date.now()}.jpg`
+                : `courts/${slug}/unit-${slot.index + 1}-${Date.now()}.jpg`;
 
             try {
-                const blob = await window.InigoImageTools.downscaleImageToBlob(file, { maxW: 1600, maxH: 900, quality: 0.85 });
-                const nameInput = document.querySelector('[data-admin-court-name]');
-                const editingId = courtForm ? courtForm.dataset.editingId : null;
-                const editingCourt = editingId ? currentCourts.find((c) => String(c.id) === String(editingId)) : null;
-                const slugSource = (editingCourt && editingCourt.slug) || window.InigoCourtsData.slugify(nameInput ? nameInput.value : '');
-                const path = `courts/${slugSource}-${Date.now()}.jpg`;
                 const url = await uploadToMedia(path, blob);
-                if (imageUrlInput) imageUrlInput.value = url;
+                if (slot.kind === 'cover') {
+                    removeUploadedMediaBestEffort(courtModalState.coverUrl);
+                    courtModalState.coverUrl = url;
+                    const urlInput = document.querySelector('[data-admin-court-image-url]');
+                    if (urlInput) urlInput.value = url;
+                } else {
+                    const unit = courtModalState.unitImages[slot.index];
+                    if (unit) {
+                        removeUploadedMediaBestEffort(unit.imageUrl);
+                        unit.imageUrl = url;
+                    }
+                }
+                renderCourtPhotoSlots();
                 window.InigoToast?.show('Photo uploaded.');
             } catch (err) {
                 window.InigoToast?.show(err.message || 'Could not upload that image.', true);
-            } finally {
-                courtImageUploadBtn.disabled = false;
-                courtImageUploadBtn.textContent = originalLabel;
             }
         });
     }
@@ -2040,10 +2318,48 @@ document.addEventListener('DOMContentLoaded', () => {
             const hint = getAdminEmailPendingHint(emailInput);
             if (hint) hint.hidden = !skipEmailRepaint;
         }
+
+        // Revision A2, decision B2 — the Profile panel's Email/Mobile
+        // definition-list rows. authGuard.js's own profiles select already
+        // includes contact_num (unlike created_at — see
+        // loadAdminProfileMemberSince() below for that one), so no extra
+        // fetch is needed for either of these two.
+        const profileEmailEl = document.querySelector('[data-admin-profile-email]');
+        if (profileEmailEl) profileEmailEl.textContent = profile.email || '—';
+        const profileMobileEl = document.querySelector('[data-admin-profile-mobile]');
+        if (profileMobileEl) profileMobileEl.textContent = profile.contact_num || '—';
     }
 
     document.addEventListener('inigosync:profile-ready', (e) => renderAdminProfile(e.detail));
     if (window.inigosyncProfile) renderAdminProfile(window.inigosyncProfile);
+
+    // ------------------------------------------------------------------
+    // Profile panel — "Member since" (Revision A2, decision B2).
+    // authGuard.js selects a fixed column list from `profiles` that does
+    // NOT include created_at (see its own header comment), so this is a
+    // small, separate, tolerate-failure fetch — same "—" not-loaded-yet
+    // convention as every other placeholder on this page, never a fake
+    // date.
+    // ------------------------------------------------------------------
+    function formatAdminMemberSince(createdAt) {
+        const d = new Date(createdAt);
+        if (!createdAt || Number.isNaN(d.getTime())) return '—';
+        return d.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+    }
+
+    async function loadAdminProfileMemberSince() {
+        const el = document.querySelector('[data-admin-profile-member-since]');
+        if (!el || !window.sb || !window.inigosyncProfile) return;
+        const { data, error } = await window.sb
+            .from('profiles')
+            .select('created_at')
+            .eq('id', window.inigosyncProfile.id)
+            .single();
+        el.textContent = (!error && data) ? formatAdminMemberSince(data.created_at) : '—';
+    }
+
+    document.addEventListener('inigosync:profile-ready', loadAdminProfileMemberSince);
+    if (window.inigosyncProfile) loadAdminProfileMemberSince();
 
     // ------------------------------------------------------------------
     // Account Settings — Personal Information save (Revision A1, decision

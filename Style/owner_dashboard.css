@@ -20,6 +20,16 @@
     --color-court-green: #3e7a5e;
     --color-alert: #d6482f;
     --color-line: rgba(244, 239, 230, 0.12);
+
+    /* Revision A2 (implementation_plan.md, decision B5) — one card system:
+       every card-like surface (stat cards, the chart/recent-bookings/
+       status-breakdown/staff/settings/profile .admin-card, plus the
+       court/slide cards' own outer shell) shares this same radius/border;
+       .admin-card also uses --admin-card-pad. Previously .admin-stat-card
+       used 14px/22px and .admin-slide-card used 14px while everything else
+       used 16px/26px — now there is one value each. */
+    --admin-card-radius: 16px;
+    --admin-card-pad: 24px;
 }
 
 /* Light mode (mirrors Style/LandingPage.css :root[data-theme="light"]) */
@@ -144,7 +154,6 @@ body.admin-body {
 .admin-nav-link.is-active { background: var(--color-primary); color: #14110d; }
 
 .admin-nav-divider { height: 1px; background: var(--color-line); margin: 16px 6px; }
-.admin-sidebar-foot { margin-top: auto; }
 .admin-logout { color: var(--color-alert); }
 .admin-logout:hover { background: color-mix(in srgb, var(--color-alert) 12%, transparent); color: var(--color-alert); }
 .admin-sidebar-scrim { display: none; }
@@ -167,7 +176,16 @@ body.admin-body {
     z-index: 4;
 }
 
-.admin-topbar-left { display: flex; align-items: center; gap: 14px; }
+/* Revision A2, decision B5-f — min-width: 0 on both this flex item and
+   .admin-topbar-title below (a nested flex item of THIS element) lets a
+   long panel subtitle (e.g. Media Manager's) wrap across more lines
+   instead of claiming its full unbroken-text width when computing this
+   row's flex distribution — without it, a long subtitle fights
+   .admin-topbar-actions for space and squeezes .admin-clock's pill down
+   until ITS text wraps into a distorted circle (verified with a
+   screenshot; .admin-clock has no white-space: nowrap of its own, by
+   design, so its normal fix is upstream space, not itself). */
+.admin-topbar-left { display: flex; align-items: center; gap: 14px; min-width: 0; }
 
 .admin-mobile-toggle {
     display: none;
@@ -213,9 +231,10 @@ body.admin-sidebar-open .admin-toggle-bar:nth-child(3) {
     transform: rotate(-45deg);
 }
 
+.admin-topbar-title { min-width: 0; }
 .admin-topbar-title h1 { font-family: var(--font-display); font-weight: 600; font-size: var(--fs-xl); }
 .admin-topbar-title p { font-size: var(--fs-md); color: var(--color-ink-faint); margin-top: 2px; }
-.admin-topbar-actions { display: flex; align-items: center; gap: 18px; }
+.admin-topbar-actions { display: flex; align-items: center; gap: 18px; flex-shrink: 0; }
 
 /* Theme toggle button — this file previously had no rules for it at all,
    so it rendered as an unstyled native button and collapsed to ~3px wide
@@ -497,8 +516,8 @@ button.admin-notif-item:focus-visible {
 .admin-stat-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 18px; }
 
 .admin-stat-card {
-    background: var(--color-bg-card); border: 1px solid var(--color-line); border-radius: 14px;
-    padding: 22px; display: flex; flex-direction: column; gap: 10px;
+    background: var(--color-bg-card); border: 1px solid var(--color-line); border-radius: var(--admin-card-radius);
+    padding: var(--admin-card-pad); display: flex; flex-direction: column; gap: 10px;
 }
 
 .admin-stat-icon {
@@ -512,8 +531,12 @@ button.admin-notif-item:focus-visible {
 .admin-stat-value { font-family: var(--font-display); font-size: var(--fs-2xl); font-weight: var(--fw-semibold); }
 .admin-stat-label { font-size: var(--fs-sm); color: var(--color-ink-faint); }
 
-/* Generic card */
-.admin-card { background: var(--color-bg-card); border: 1px solid var(--color-line); border-radius: 16px; padding: 26px; }
+/* Generic card — Revision A2, decision B5: shared by stat cards, the
+   chart/recent-bookings/status-breakdown cards, Staff/Court/Media/
+   Settings/Profile panel cards. .admin-card-head (title left, actions
+   right, wraps) is the one card-header layout used everywhere a card
+   needs one. */
+.admin-card { background: var(--color-bg-card); border: 1px solid var(--color-line); border-radius: var(--admin-card-radius); padding: var(--admin-card-pad); }
 
 .admin-card-head {
     display: flex; align-items: center; justify-content: space-between; margin-bottom: 18px; gap: 14px; flex-wrap: wrap;
@@ -548,6 +571,17 @@ button.admin-notif-item:focus-visible {
 
 /* Charts */
 .admin-grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; align-items: start; }
+/* Revision A2, decision B5 — a grid item's automatic min-width is its
+   content's min-content size, and Recent bookings/Booking status this
+   month nest a table with min-width: 680px (.admin-table). Without this,
+   even the single ~340px-wide column at narrow widths still tried to grow
+   to fit that table, forcing the WHOLE PAGE to scroll horizontally
+   instead of just the table (verified: this alone caused
+   document.documentElement.scrollWidth to blow out to ~748px at a 360px
+   viewport). min-width: 0 lets the card shrink to its actual grid-track
+   width, so .admin-table-wrap's own overflow-x: auto scrolls the table
+   internally as intended. */
+.admin-grid-2 > .admin-card { min-width: 0; }
 .admin-chart-wrap { position: relative; height: 250px; }
 
 /* Booking Trends card header — title/caption left, total + range toggle right */
@@ -705,12 +739,6 @@ button.admin-notif-item:focus-visible {
 }
 .admin-notice svg { width: 17px; height: 17px; color: var(--color-primary); flex-shrink: 0; margin-top: 1px; }
 
-/* Add / edit forms (toggleable panels) — still used by Staff Management's
-   inline add-staff form. Court Listings' own form moved into the modal
-   below (Revision A1, decision A6) and no longer uses this class. */
-.admin-add-panel { display: none; }
-.admin-add-panel.is-open { display: block; }
-
 .admin-form-group { display: flex; flex-direction: column; gap: 8px; margin-bottom: 18px; }
 .admin-form-group:last-child { margin-bottom: 0; }
 .admin-form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
@@ -745,15 +773,10 @@ button.admin-notif-item:focus-visible {
 }
 .admin-toggle-visibility:hover { color: var(--color-ink); background: color-mix(in srgb, var(--color-ink) 8%, transparent); }
 
-/* Toggle switches (payment configuration, slide "Published" state) */
-.admin-toggle-row {
-    display: flex; align-items: center; justify-content: space-between; gap: 16px;
-    padding: 14px 0; border-bottom: 1px solid var(--color-line);
-}
-.admin-toggle-row:last-of-type { border-bottom: none; }
-.admin-toggle-row-copy h4 { font-size: var(--fs-md); font-weight: 600; }
-.admin-toggle-row-copy p { font-size: var(--fs-xs); color: var(--color-ink-faint); margin-top: 2px; }
-
+/* Toggle switch — Revision A2 (implementation_plan.md, decision B4)
+   removed Payment Configuration (the only user of .admin-toggle-row/
+   .admin-toggle-row-copy, now deleted); .admin-switch itself stays,
+   still used by the Media Manager slide cards' Published toggle. */
 .admin-switch {
     position: relative; width: 46px; height: 26px; flex-shrink: 0;
     background: var(--color-bg-elevated); border: 1px solid var(--color-line);
@@ -767,10 +790,14 @@ button.admin-notif-item:focus-visible {
 .admin-switch.is-on::after { transform: translateX(20px); background: var(--color-primary); }
 
 /* Court grid */
-.admin-court-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
+/* Revision A2, decision B5 — auto-fill instead of a fixed 3-column grid;
+   see the identical note on .admin-slide-grid above. The 1080px/640px
+   fixed-column overrides that used to live in the Responsive section
+   below are gone now that this adapts on its own. */
+.admin-court-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 20px; }
 
 .admin-court-card {
-    background: var(--color-bg-card); border: 1px solid var(--color-line); border-radius: 16px;
+    background: var(--color-bg-card); border: 1px solid var(--color-line); border-radius: var(--admin-card-radius);
     overflow: hidden; display: flex; flex-direction: column; transition: transform 0.25s ease, border-color 0.25s ease;
 }
 .admin-court-card:hover { transform: translateY(-4px); border-color: var(--color-primary); }
@@ -856,10 +883,14 @@ button.admin-notif-item:focus-visible {
 
 .admin-modal {
     position: relative;
-    width: 100%;
-    max-width: 560px;
-    max-height: calc(100vh - 48px);
-    overflow-y: auto;
+    /* Revision A2, decision B5-e — wider (720px cap, up from 560px) now
+       that the Court modal's Photos section needs the room, and sized off
+       the viewport directly (100% - 24px) rather than the overlay's own
+       24px padding, so there's still a visible gap to the backdrop at
+       every width down to the smallest phones. */
+    width: min(720px, 100% - 24px);
+    max-height: 90vh;
+    overflow: auto;
     background: var(--color-bg-card);
     border: 1px solid var(--color-line);
     border-radius: 18px;
@@ -908,21 +939,54 @@ button.admin-notif-item:focus-visible {
     border-color: var(--color-primary);
 }
 
-/* Court modal's Photo field — URL input + Upload button side by side. */
-.admin-image-field {
+/* ==========================================================================
+   Court modal — Photos section (Revision A2, implementation_plan.md,
+   decision B6). Replaces the old .admin-image-field (URL input + Upload
+   button side by side) with a Cover slot + one slot per unit, rendered by
+   includes/owner_dashboard.js's renderCourtPhotoSlots(). Each slot reuses
+   the existing .admin-btn-chip-secondary/.admin-btn-chip-danger button
+   look the Media Manager slide cards already established, rather than
+   introducing a third button style.
+   ========================================================================== */
+.admin-photo-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+    gap: 12px;
+    margin-top: 8px;
+}
+
+.admin-photo-slot {
+    border: 1px solid var(--color-line);
+    border-radius: 12px;
+    overflow: hidden;
+    background: var(--color-bg-elevated);
     display: flex;
-    gap: 10px;
+    flex-direction: column;
+}
+
+.admin-photo-slot-thumb {
+    position: relative;
+    height: 90px;
+    background: linear-gradient(135deg, var(--color-bg-elevated), var(--color-bg-card));
+    display: flex;
     align-items: center;
-    flex-wrap: wrap;
+    justify-content: center;
 }
-.admin-image-field .admin-input {
-    flex: 1 1 200px;
-    min-width: 0;
+.admin-photo-slot-thumb img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.admin-photo-slot-empty { font-size: var(--fs-xs); color: var(--color-ink-faint); text-align: center; padding: 0 8px; }
+
+.admin-photo-slot-body { padding: 10px; display: flex; flex-direction: column; gap: 8px; }
+.admin-photo-slot-label {
+    font-family: var(--font-body); font-size: var(--fs-xs); font-weight: 600; color: var(--color-ink-dim);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
-.admin-image-field .admin-btn-ghost {
-    flex: 0 0 auto;
-    padding: 12px 18px;
-}
+.admin-photo-slot-actions { display: flex; gap: 6px; }
+.admin-photo-slot-actions button { flex: 1; }
+
+.admin-photo-url-fallback { margin-top: 12px; }
+.admin-photo-url-fallback summary { font-size: var(--fs-sm); color: var(--color-ink-faint); cursor: pointer; }
+.admin-photo-url-fallback summary:hover { color: var(--color-ink); }
+.admin-photo-url-fallback .admin-input { margin-top: 10px; }
 
 @media (prefers-reduced-motion: reduce) {
     .admin-modal-overlay,
@@ -1072,16 +1136,67 @@ button.admin-notif-item:focus-visible {
 }
 
 /* ==========================================================================
+   Profile panel (Revision A2, implementation_plan.md, decision B2) — the
+   dropdown's "View Profile" destination. Flex layouts throughout (rather
+   than a fixed-column grid) so the hero row and the two quick-stat cards
+   wrap on their own at narrow widths with no extra breakpoint needed,
+   matching this file's existing wrap-first idiom (.admin-card-head,
+   .admin-panel-head).
+   ========================================================================== */
+.admin-profile-hero { display: flex; align-items: center; gap: 22px; flex-wrap: wrap; }
+.admin-profile-hero-avatar { width: 96px; height: 96px; font-size: var(--fs-2xl); }
+.admin-profile-hero-info { display: flex; flex-direction: column; gap: 8px; }
+.admin-profile-hero-info h3 { font-family: var(--font-display); font-size: var(--fs-xl); font-weight: 600; }
+
+.admin-role-pill {
+    display: inline-block;
+    align-self: flex-start;
+    padding: 4px 12px;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--color-primary) 16%, transparent);
+    color: var(--color-primary);
+    font-family: var(--font-display);
+    font-size: var(--fs-xs);
+    font-weight: var(--fw-semibold);
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+}
+
+.admin-profile-dl { display: flex; flex-direction: column; gap: 14px; }
+.admin-profile-dl-row {
+    display: flex; justify-content: space-between; align-items: baseline; gap: 14px; flex-wrap: wrap;
+    padding-bottom: 14px; border-bottom: 1px solid var(--color-line);
+}
+.admin-profile-dl-row:last-child { border-bottom: none; padding-bottom: 0; }
+.admin-profile-dl-row dt {
+    margin: 0; font-family: var(--font-display); font-size: var(--fs-xs); letter-spacing: 0.06em;
+    text-transform: uppercase; color: var(--color-ink-faint);
+}
+.admin-profile-dl-row dd { margin: 0; font-size: var(--fs-md); color: var(--color-ink); font-weight: 600; text-align: right; }
+
+/* Reuses .admin-stat-card's own look via .admin-stat-grid, but as a
+   wrapping flex row sized to exactly the 2 quick-stat cards this panel
+   has — the plain 4-column .admin-stat-grid would otherwise leave two
+   empty tracks on wide screens (the same "stretched/empty grid" problem
+   Court Listings' own cards solve with a fluid layout). */
+.admin-profile-stats { display: flex; gap: 18px; flex-wrap: wrap; }
+.admin-profile-stats .admin-stat-card { flex: 1 1 180px; }
+
+/* ==========================================================================
    Media Manager
    ========================================================================== */
 /* Revision A2 (implementation_plan.md) — "rotates every 5s" is a plain
    caption sentence, so it inherits the body font. */
 .admin-media-hint { font-size: var(--fs-xs); color: var(--color-ink-faint); white-space: nowrap; }
 
-.admin-slide-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-top: 4px; }
+/* Revision A2, decision B5 — auto-fill instead of a fixed 3-column grid,
+   so a partial last row shares the row's width instead of leaving empty
+   tracks, and the grid naturally reduces to fewer columns (down to one)
+   as the viewport narrows with no extra breakpoint needed. */
+.admin-slide-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 16px; margin-top: 4px; }
 
 .admin-slide-card {
-    border: 1px solid var(--color-line); border-radius: 14px; overflow: hidden;
+    border: 1px solid var(--color-line); border-radius: var(--admin-card-radius); overflow: hidden;
     background: var(--color-bg-elevated); display: flex; flex-direction: column;
 }
 .admin-slide-thumb { position: relative; }
@@ -1175,14 +1290,18 @@ button.admin-notif-item:focus-visible {
 }
 
 /* ==========================================================================
-   Responsive
+   Responsive — Revision A2, implementation_plan.md, decision B5. Existing
+   breakpoints (1080/860/640) are reused where the rule they already carry
+   still applies; 768px is new (topbar wrap) and the old 420px stat-grid
+   rule is now 520px, both per that decision's exact thresholds.
    ========================================================================== */
 @media (max-width: 1080px) {
     .admin-stat-grid { grid-template-columns: repeat(2, 1fr); }
     .admin-grid-2 { grid-template-columns: 1fr; }
-    .admin-court-grid { grid-template-columns: repeat(2, 1fr); }
     .admin-settings-grid { grid-template-columns: 1fr; }
-    .admin-slide-grid { grid-template-columns: repeat(2, 1fr); }
+    /* .admin-court-grid/.admin-slide-grid no longer need a breakpoint here
+       — both are repeat(auto-fill, minmax(260px,1fr)) now, so they adapt
+       on their own at every width. */
 }
 
 @media (max-width: 860px) {
@@ -1202,19 +1321,35 @@ button.admin-notif-item:focus-visible {
     .admin-chart-controls { width: 100%; justify-content: space-between; }
 }
 
+/* Topbar wrap (decision B5-f) — below this, the title block (mobile
+   toggle + h1/subtitle) and the actions row (clock/theme/notif/profile)
+   no longer fit on one line; each becomes its own full-width row instead
+   of forcing a horizontal scrollbar. */
+@media (max-width: 768px) {
+    .admin-topbar { flex-wrap: wrap; row-gap: 12px; }
+    .admin-topbar-left { width: 100%; }
+    .admin-topbar-actions { width: 100%; justify-content: flex-end; flex-wrap: wrap; row-gap: 8px; }
+}
+
 @media (max-width: 640px) {
     .admin-topbar { padding: 16px 18px; }
     .admin-content { padding: 22px 18px 50px; }
     .admin-stat-grid { grid-template-columns: 1fr 1fr; }
-    .admin-court-grid { grid-template-columns: 1fr; }
     .admin-profile-card { flex-direction: column; align-items: flex-start; }
     .admin-clock { display: none; }
-    .admin-slide-grid { grid-template-columns: 1fr; }
     .admin-toggle-pill { width: 100%; }
     .admin-pill-btn { flex: 1; text-align: center; }
     .admin-chart-total { width: 100%; }
 }
 
-@media (max-width: 420px) {
+@media (max-width: 520px) {
     .admin-stat-grid { grid-template-columns: 1fr; }
+}
+
+/* Revision A2 follow-up — a hint paragraph that opens a modal body (the
+   staff invite explainer) needs breathing room before the first field
+   label; elsewhere .admin-form-hint sits under a field and keeps margin 0. */
+.admin-modal .admin-form-hint + .admin-form-group,
+.admin-modal .admin-form-hint + .admin-form-row {
+    margin-top: 14px;
 }

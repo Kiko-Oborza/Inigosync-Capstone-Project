@@ -1,3 +1,29 @@
+# Owner Dashboard — Revision A2 (nav/profile/staff modal/no payment card/responsive/court photos with crop/per-hour only)
+
+## Context
+Follow-up to Revision A1 after the user reviewed the owner page. Also fixes the CSS comment bug (`*/` inside comments in LandingPage.css/owner_dashboard.css) that dropped the dark-mode `:root` block.
+
+## Decisions
+| # | Decision |
+|---|----------|
+| B1 | Remove the sidebar **Log Out** nav item (`[data-admin-logout]` in `.admin-nav`); the profile dropdown keeps Log Out. |
+| B2 | Profile dropdown gains **View Profile** → new `data-admin-panel="profile"` (not in the sidebar, like the customer page's profile panel): avatar, full name, role tag "Owner", email, mobile (`contact_num`), member since (`profiles.created_at`), quick stats (courts listed, active staff), and an "Edit in Account Settings" button. Painted by `renderAdminProfile()`. |
+| B3 | Staff → **+ Add New Staff opens a modal** (`[data-admin-staff-modal]`, same `.admin-modal` shell as the court modal); inline `.admin-add-panel` card removed. Submit logic unchanged. |
+| B4 | **Payment Configuration card removed** from Staff Management (markup + its JS block). `includes/appSettings.js` and the customer booking's payment options are untouched (they keep reading `app_settings` / defaults). Panel subtitle updated. |
+| B5 | **Responsive/consistency pass** on `owner_dashboard.css`: one card system (`.admin-card` padding/radius/head), `.admin-stat-grid` 4→2→1 columns, `.admin-grid-2` stacks ≤ 1080px, tables scroll horizontally in `.admin-table-wrap`, court/slide grids `auto-fill minmax(260px,1fr)`, modals full-width ≤ 640px, topbar wraps on mobile, sidebar drawer unchanged. Verify at 360 / 768 / 1280. |
+| B6 | **Court photos with crop**: in the court modal, a **Cover photo** slot plus **one slot per unit** (derived from quantity+unit, e.g. Court 1…Court 9; labels editable? no — derived). Each slot: thumbnail, Upload, Remove. Upload opens a **crop editor modal** (vanilla: image in a fixed-aspect frame 16:10, drag to pan, zoom slider, Apply/Cancel) → canvas crop → JPEG ≤ 1600×1000 → `media` bucket (`courts/<slug>/cover-<ts>.jpg`, `courts/<slug>/unit-<n>-<ts>.jpg`) → cover saves to the court's image column (as today), units save to `unit_images` JSON `[{label, image_url}]` (database/schema/006_court_unit_images.sql). Cover URL text input stays as fallback. `courtsData.js` already reads `unit_images`. Crop helper lives in `includes/imageTools.js` (`openCropEditor(file, {aspect}) → Promise<Blob>` + DOM for the modal injected once). |
+| B7 | **Per-hour only**: remove the "Per game" option and the Billing unit select from the court modal; always send `rate_unit: '/hr'`; card/receipt labels keep reading `rateUnit` (now always "/hr"). |
+
+## Success criteria
+1. No Log Out in the sidebar; dropdown has View Profile + Account Settings + Log Out; View Profile shows the owner's real data.
+2. Add New Staff is a modal; Payment Configuration gone; staff invite still works.
+3. Owner page has no horizontal overflow at 360px; cards align at 768/1280.
+4. Court modal: cover + per-unit upload with crop; saved URLs appear on the customer dashboard's unit picker; Per game gone.
+5. Dark/light both render (CSS comment scanner clean).
+
+
+---
+
 # Owner (Admin) Dashboard — Revision A1 + system-wide typography
 
 ## Context
