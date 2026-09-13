@@ -607,6 +607,30 @@
                     </div>
                 </div>
 
+                <!-- Profile Photo — mirrors the owner dashboard's Profile
+                     Photo card (Pages/owner_dashboard.html) exactly: same
+                     upload/downscale/store pipeline via the shared
+                     includes/imageTools.js (a 256×256 center-cropped JPEG
+                     data URL written straight to profiles.avatar_url — no
+                     Storage bucket needed for avatars). renderStaffProfile()
+                     (includes/staff_dashboard.js) paints this SAME
+                     .staff-avatar element as the topbar and the profile
+                     panel hero. -->
+                <div class="staff-card">
+                    <div class="staff-card-head"><h3>Profile Photo</h3></div>
+                    <div class="staff-avatar-upload-row">
+                        <div class="staff-avatar staff-avatar-upload-preview">RD</div>
+                        <div class="staff-avatar-upload-controls">
+                            <div class="staff-avatar-upload-actions">
+                                <button type="button" class="staff-btn-primary" data-staff-avatar-upload-trigger>Upload Photo</button>
+                                <button type="button" class="staff-btn-ghost" data-staff-avatar-remove hidden>Remove Photo</button>
+                                <input type="file" accept="image/*" class="staff-visually-hidden" data-staff-avatar-file>
+                            </div>
+                            <p class="staff-form-hint">Any image file, up to 5&nbsp;MB — we'll resize and crop it automatically.</p>
+                        </div>
+                    </div>
+                </div>
+
                 <div class="staff-card">
                     <div class="staff-card-head"><h3>Personal Information</h3></div>
                     <div class="staff-form-row">
@@ -788,6 +812,11 @@
      dashboard (Pages/user_dashboard.html). Must load before
      staff_dashboard.js. -->
 <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+<!-- Shared image downscale helper (window.InigoImageTools) — Account
+     Settings' Profile Photo card uses downscaleImageToDataUrl() for the
+     avatar upload pipeline, same as the owner/customer dashboards. Must
+     load before staff_dashboard.js. -->
+<script src="../includes/imageTools.js"></script>
 <script src="../includes/staff_dashboard.js"></script>
 </body>
 </html>

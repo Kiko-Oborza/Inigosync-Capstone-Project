@@ -2195,6 +2195,89 @@ document.addEventListener('DOMContentLoaded', () => {
     window.setInterval(refreshStaffNotifications, STAFF_NOTIF_REFRESH_MS);
 
     // ------------------------------------------------------------------
+    // Account Settings — Profile Photo upload/remove. Same pipeline as the
+    // owner dashboard's Profile Photo card (Pages/owner_dashboard.html,
+    // includes/owner_dashboard.js), via the shared includes/imageTools.js:
+    // a 256×256 center-cropped JPEG data URL written straight into
+    // profiles.avatar_url — no Storage bucket needed for avatars.
+    // ------------------------------------------------------------------
+    const STAFF_AVATAR_OUTPUT_SIZE = 256;
+    const STAFF_AVATAR_JPEG_QUALITY = 0.82;
+
+    const staffAvatarFileInput = document.querySelector('[data-staff-avatar-file]');
+    const staffAvatarUploadBtn = document.querySelector('[data-staff-avatar-upload-trigger]');
+    const staffAvatarRemoveBtn = document.querySelector('[data-staff-avatar-remove]');
+
+    // Only a data: URL (freshly downscaled) or an https:// URL is ever
+    // painted as an <img src> in renderStaffProfile() below — guards
+    // against a malformed/unexpected avatar_url value resolving as a
+    // relative/unsafe URL.
+    function isRenderableStaffAvatarUrl(value) {
+        return typeof value === 'string' && value.length > 0 && (value.startsWith('data:') || value.startsWith('https://'));
+    }
+
+    async function saveStaffAvatarUrl(avatarUrl) {
+        if (!window.sb || !window.inigosyncProfile) {
+            window.InigoToast?.show('Unable to reach the server right now. Please try again shortly.', true);
+            return false;
+        }
+        const { error } = await window.sb.from('profiles').update({ avatar_url: avatarUrl }).eq('id', window.inigosyncProfile.id);
+        if (error) {
+            console.error('[staff] avatar_url update failed', error);
+            window.InigoToast?.show(error.message || 'Could not save your photo. Please try again.', true);
+            return false;
+        }
+        window.inigosyncProfile.avatar_url = avatarUrl;
+        renderStaffProfile(window.inigosyncProfile);
+        return true;
+    }
+
+    if (staffAvatarUploadBtn && staffAvatarFileInput) {
+        staffAvatarUploadBtn.addEventListener('click', () => staffAvatarFileInput.click());
+    }
+
+    if (staffAvatarFileInput) {
+        staffAvatarFileInput.addEventListener('change', async () => {
+            const file = staffAvatarFileInput.files && staffAvatarFileInput.files[0];
+            staffAvatarFileInput.value = '';
+            if (!file || !window.InigoImageTools) return;
+
+            const originalLabel = staffAvatarUploadBtn ? staffAvatarUploadBtn.textContent : '';
+            if (staffAvatarUploadBtn) {
+                staffAvatarUploadBtn.disabled = true;
+                staffAvatarUploadBtn.textContent = 'Uploading…';
+            }
+            if (staffAvatarRemoveBtn) staffAvatarRemoveBtn.disabled = true;
+
+            try {
+                const dataUrl = await window.InigoImageTools.downscaleImageToDataUrl(file, { size: STAFF_AVATAR_OUTPUT_SIZE, quality: STAFF_AVATAR_JPEG_QUALITY });
+                const ok = await saveStaffAvatarUrl(dataUrl);
+                if (ok) window.InigoToast?.show('Profile photo updated.');
+            } catch (err) {
+                console.error('[staff] avatar upload failed', err);
+                window.InigoToast?.show((err && err.message) || 'Could not process that image. Please try a different file.', true);
+            } finally {
+                if (staffAvatarUploadBtn) {
+                    staffAvatarUploadBtn.disabled = false;
+                    staffAvatarUploadBtn.textContent = originalLabel;
+                }
+                if (staffAvatarRemoveBtn) staffAvatarRemoveBtn.disabled = false;
+            }
+        });
+    }
+
+    if (staffAvatarRemoveBtn) {
+        staffAvatarRemoveBtn.addEventListener('click', async () => {
+            staffAvatarRemoveBtn.disabled = true;
+            if (staffAvatarUploadBtn) staffAvatarUploadBtn.disabled = true;
+            const ok = await saveStaffAvatarUrl(null);
+            staffAvatarRemoveBtn.disabled = false;
+            if (staffAvatarUploadBtn) staffAvatarUploadBtn.disabled = false;
+            if (ok) window.InigoToast?.show('Profile photo removed.');
+        });
+    }
+
+    // ------------------------------------------------------------------
     // Profile panel — Revision S1, decision S7. Opened only from the
     // topbar dropdown's "View Profile" (data-staff-panel="profile" lives
     // outside .staff-nav, so setActivePanel() never highlights anything in
@@ -2206,15 +2289,16 @@ document.addEventListener('DOMContentLoaded', () => {
     function renderStaffProfile(profile) {
         const initials = (profile.full_name || profile.email || '?')
             .split(' ').map((p) => p[0]).slice(0, 2).join('').toUpperCase();
-        const avatarUrl = profile.avatar_url || null;
+        const avatarUrl = isRenderableStaffAvatarUrl(profile.avatar_url) ? profile.avatar_url : null;
 
         document.querySelectorAll('.staff-avatar').forEach((el) => {
             if (avatarUrl) {
-                el.innerHTML = `<img class="staff-avatar-img" src="${window.escapeHtml(avatarUrl)}" alt="Profile photo">`;
+                el.innerHTML = `<img class="staff-avatar-img" src="${window.escapeHtml(avatarUrl)}" alt="">`;
             } else {
                 el.textContent = initials;
             }
         });
+        if (staffAvatarRemoveBtn) staffAvatarRemoveBtn.hidden = !avatarUrl;
 
         document.querySelectorAll('[data-staff-profile-name]').forEach((el) => { el.textContent = profile.full_name || 'Staff'; });
 

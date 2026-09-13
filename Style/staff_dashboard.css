@@ -446,7 +446,7 @@ body.staff-sidebar-open .staff-toggle-bar:nth-child(3) {
    (profiles.avatar_url) vs. the initials fallback; see
    includes/staff_dashboard.js's renderStaffProfile(), same img-vs-initials
    idiom as includes/owner_dashboard.js's renderAdminProfile(). */
-.staff-avatar-img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.staff-avatar-img { width: 100%; height: 100%; object-fit: cover; display: block; border-radius: inherit; }
 
 .staff-profile-trigger .staff-caret {
     width: 12px; height: 12px; color: var(--color-ink-faint); transition: transform 0.2s;
@@ -1208,6 +1208,46 @@ body.staff-sidebar-open .staff-toggle-bar:nth-child(3) {
     text-transform: uppercase; color: var(--color-ink-faint);
 }
 .staff-profile-dl-row dd { margin: 0; font-size: var(--fs-md); color: var(--color-ink); font-weight: 600; text-align: right; }
+
+/* Profile Photo card (Account Settings) — port of the owner dashboard's
+   .admin-avatar-upload-* (Style/owner_dashboard.css) under staff-* names.
+   Wired up by includes/staff_dashboard.js's avatar upload/remove handlers +
+   renderStaffProfile(). */
+.staff-avatar-upload-row {
+    display: flex;
+    align-items: center;
+    gap: 22px;
+    flex-wrap: wrap;
+}
+
+.staff-avatar-upload-preview {
+    width: 88px;
+    height: 88px;
+    font-size: var(--fs-2xl);
+}
+
+.staff-avatar-upload-controls {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    min-width: 0;
+}
+
+.staff-avatar-upload-actions {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+/* Visually hides the Profile Photo card's <input type="file"> (triggered
+   programmatically via data-staff-avatar-upload-trigger) while keeping it
+   in the accessibility tree — port of Style/owner_dashboard.css's
+   .admin-visually-hidden. */
+.staff-visually-hidden {
+    position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+    overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
+}
 
 /* Legacy Staff Profile panel classes (pre-Revision-S1 design) — unused now
    that the profile panel above uses .staff-profile-hero/.staff-profile-dl
