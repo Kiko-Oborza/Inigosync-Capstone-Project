@@ -1,3 +1,16 @@
+# Staff Portal — Revision S2 (Time-In payment popup)
+
+## Decisions (user, 2026-09-13)
+| # | Decision |
+|---|----------|
+| S11 | **Time-In opens a popup** (staff modal shell) showing the booking (customer, court/unit, date, time, hours) and a payment block: Total = `amount_total` or rate × hours; Paid so far = `amount_paid`; **Balance due** = total − paid. If balance > 0: staff MUST pick **Cash / Online payment** and confirm "Collect ₱X & Time-In" (no manual amounts). If balance = 0: plain "Time-In". If the rate is unknown: show **"Rate TBA"** — nothing to collect, plain "Time-In" (no manual entry, per user). |
+| S12 | Migration `017_booking_payment.sql`: `booking` + `walk_in_booking` gain `amount_total numeric(10,2) null`, `amount_paid numeric(10,2) not null default 0`, `payment_option text null` (booking only: 'full' / 'downpayment'), `balance_payment_method text null`, `balance_paid_at timestamptz null`. Idempotent. Comments must not contain "table <word>" / "on <word>" phrases (Supabase editor RLS scanner). |
+| S13 | Customer booking insert saves `payment_option` (from the wizard's Full / Downpayment radio) and `amount_total` (rate × hours when known); `amount_paid` stays 0 until PayMongo. Walk-in wizard saves `amount_total` and `amount_paid = amount_total` (paid at the desk) when the rate is known, plus `payment_method` as today. Both with schema-mismatch retry dropping the new columns. |
+| S14 | Confirm in the popup updates the row: `checked_in_at = now()`, and when collecting: `amount_paid = amount_paid + balance`, `balance_payment_method`, `balance_paid_at = now()`, `amount_total` (fill if null). Overview/Transactions Payment column shows "Paid · Cash" / "Due ₱300" / "Rate TBA". |
+
+
+---
+
 # Staff Portal — Revision S1 (time-in only, no confirm/decline, walk-in wizard, court schedule grid, transactions = time-ins, notifications, dropdown profile, password wizard)
 
 ## Context

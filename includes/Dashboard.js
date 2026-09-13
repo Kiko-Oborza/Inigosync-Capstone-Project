@@ -1711,7 +1711,20 @@ document.addEventListener('DOMContentLoaded', () => {
             //    default/PK instead of letting the DB fill it in — the
             //    same class of bug as the `sports: null` 400 this comment
             //    replaces.
-            const { error } = await window.sb.from('booking').insert({
+            // Revision S2 (implementation_plan.md, decisions S12/S13a) —
+            // payment_option (the wizard's Full/Downpayment radio,
+            // bookingState.paymentType — already exactly 'full'/
+            // 'downpayment', the two values database/schema/
+            // 017_booking_payment.sql expects) and amount_total (rate ×
+            // hours when hasKnownRate() above is true, else null — the same
+            // "Rate TBA" honesty rule this page already enforces everywhere
+            // else) only exist once that migration is applied. Tries the
+            // full payload first and, on a schema-mismatch error, retries
+            // with the pre-S2 payload — same "drop the unknown columns,
+            // never fake success" idiom this project already uses
+            // everywhere a column might not exist yet (isOverviewSchemaMismatch()
+            // below, e.g. fetchOverviewBookings()).
+            const bookingPayload = {
                 customer_id: window.inigosyncProfile.id,
                 sports: bookingState.sport || bookingState.court,
                 courts: bookingState.court,
@@ -1720,7 +1733,22 @@ document.addEventListener('DOMContentLoaded', () => {
                 end_at: endIso,
                 duration_minutes: hours * 60,
                 status: 'pending',
-            });
+                payment_option: bookingState.paymentType,
+                amount_total: hasKnownRate() ? bookingState.rate * hours : null,
+            };
+            let { error } = await window.sb.from('booking').insert(bookingPayload);
+            if (error && isOverviewSchemaMismatch(error)) {
+                ({ error } = await window.sb.from('booking').insert({
+                    customer_id: bookingPayload.customer_id,
+                    sports: bookingPayload.sports,
+                    courts: bookingPayload.courts,
+                    court_unit: bookingPayload.court_unit,
+                    time_date: bookingPayload.time_date,
+                    end_at: bookingPayload.end_at,
+                    duration_minutes: bookingPayload.duration_minutes,
+                    status: bookingPayload.status,
+                }));
+            }
 
             if (error) {
                 // Always log the full error (code/message/details) for

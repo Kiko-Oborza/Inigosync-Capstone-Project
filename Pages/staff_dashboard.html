@@ -523,10 +523,15 @@
                                     <th>Timed in</th>
                                     <th>Timed out</th>
                                     <th>Status</th>
+                                    <!-- Revision S2 (implementation_plan.md, decisions S11/S14) — Time-In
+                                         is now also offered here (opens the same [data-staff-timein-modal]
+                                         Booking Overview uses), not just in Overview, per the plan's "opened
+                                         by every Time-In button (Overview + Transactions)". -->
+                                    <th>Action</th>
                                 </tr>
                             </thead>
                             <tbody>
-                                <tr><td colspan="9" style="text-align:center; color: var(--color-ink-faint);">Loading transaction records…</td></tr>
+                                <tr><td colspan="10" style="text-align:center; color: var(--color-ink-faint);">Loading transaction records…</td></tr>
                             </tbody>
                         </table>
                     </div>
@@ -690,6 +695,72 @@
         </main>
     </div>
 </div>
+
+<!-- ================================================================
+     TIME-IN PAYMENT MODAL — Revision S2 (implementation_plan.md,
+     decisions S11/S14). Sits outside .staff-shell (same reasoning as the
+     owner dashboard's own [data-admin-court-modal]/[data-admin-staff-modal]
+     — a page-level overlay, not something nested inside the scrollable
+     .staff-content). Opened by every Time-In button (Booking Overview +
+     Transaction Records, both via includes/staff_dashboard.js's
+     wireTimeInButtons()) instead of writing checked_in_at immediately —
+     shows the booking/walk-in's Total/Paid so far/Balance due and, when a
+     balance is owed, requires picking Cash/Online payment before the
+     confirm button both collects it and times the customer in. Same
+     .staff-modal-overlay/.staff-modal shell + open/close idiom (Esc/backdrop
+     mousedown+click/Cancel/×, focus management) as the owner dashboard's
+     .admin-modal-overlay/.admin-modal, ported here since no modal shell
+     existed on this page yet (see Style/staff_dashboard.css). -->
+<div class="staff-modal-overlay" data-staff-timein-modal hidden>
+    <div class="staff-modal" role="dialog" aria-modal="true" aria-labelledby="staffTimeInModalTitle" tabindex="-1" data-staff-timein-dialog>
+        <button type="button" class="staff-modal-close" data-staff-timein-close aria-label="Close">
+            <svg viewBox="0 0 24 24" fill="none"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+        </button>
+
+        <h3 id="staffTimeInModalTitle">Time-In</h3>
+
+        <div class="staff-timein-body">
+            <div class="staff-summary-row"><span>Customer</span><strong data-staff-timein-customer>—</strong></div>
+            <div class="staff-summary-row"><span>Court</span><strong data-staff-timein-court>—</strong></div>
+            <div class="staff-summary-row"><span>Date</span><strong data-staff-timein-date>—</strong></div>
+            <div class="staff-summary-row"><span>Time</span><strong data-staff-timein-time>—</strong></div>
+            <div class="staff-summary-row"><span>Hours</span><strong data-staff-timein-hours>—</strong></div>
+
+            <div class="staff-summary-divider"></div>
+
+            <div class="staff-summary-row"><span>Total</span><strong class="staff-timein-amount" data-staff-timein-total>—</strong></div>
+            <div class="staff-summary-row"><span>Paid so far</span><strong class="staff-timein-amount" data-staff-timein-paid>—</strong></div>
+            <div class="staff-summary-row"><span>Balance due</span><strong class="staff-timein-amount" data-staff-timein-balance>—</strong></div>
+
+            <p class="staff-form-hint" data-staff-timein-note hidden></p>
+
+            <!-- Balance > 0 only — decision S11: no manual amount entry
+                 anywhere, just a required Cash / Online payment choice.
+                 Neither radio is preselected (unlike the walk-in wizard's
+                 own Step 4, which defaults to Cash). -->
+            <div class="staff-payment-options" data-staff-timein-payment-wrap hidden>
+                <label class="staff-payment-option" data-staff-payment-option>
+                    <span class="staff-payment-option-head">
+                        <input type="radio" name="staff-timein-payment" data-staff-timein-method="Cash">
+                        Cash
+                    </span>
+                </label>
+                <label class="staff-payment-option" data-staff-payment-option>
+                    <span class="staff-payment-option-head">
+                        <input type="radio" name="staff-timein-payment" data-staff-timein-method="Online payment">
+                        Online payment
+                    </span>
+                </label>
+            </div>
+        </div>
+
+        <div class="staff-form-actions">
+            <button type="button" class="staff-btn-ghost" data-staff-timein-cancel>Cancel</button>
+            <button type="button" class="staff-btn-primary" data-staff-timein-confirm disabled>Time-In</button>
+        </div>
+    </div>
+</div>
+
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script src="../Config/supabaseClient.js"></script>
 <script src="../includes/authGuard.js"></script>

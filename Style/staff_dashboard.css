@@ -753,6 +753,15 @@ body.staff-sidebar-open .staff-toggle-bar:nth-child(3) {
 
 .staff-payment-options { display: flex; gap: 10px; }
 
+/* Restates plain `display: none` at equal specificity to the rule above —
+   an author `display: flex` rule otherwise beats the UA `[hidden]` rule
+   (same fix documented on .staff-modal-overlay[hidden] further below).
+   Never triggered by the walk-in wizard's own Step 4 (its
+   .staff-payment-options is hidden via its PARENT .staff-wizard-panel
+   instead), but the Revision S2 Time-In popup toggles `hidden` directly on
+   this element (data-staff-timein-payment-wrap) when no balance is owed. */
+.staff-payment-options[hidden] { display: none; }
+
 .staff-payment-option {
     flex: 1; display: flex; flex-direction: column; gap: 4px; padding: 13px 14px; border-radius: 10px;
     border: 1px solid var(--color-line); background: var(--color-bg-elevated); cursor: pointer; transition: border-color 0.2s;
@@ -968,7 +977,9 @@ body.staff-sidebar-open .staff-toggle-bar:nth-child(3) {
 @media (prefers-reduced-motion: reduce) {
     .staff-wizard-step-num,
     .staff-notif-menu,
-    .staff-profile-menu {
+    .staff-profile-menu,
+    .staff-modal-overlay,
+    .staff-modal {
         transition: none;
     }
 }
@@ -1222,6 +1233,114 @@ body.staff-sidebar-open .staff-toggle-bar:nth-child(3) {
 .staff-profile-meta-item span:last-child { font-size: var(--fs-md); color: var(--color-ink); font-weight: 600; }
 
 /* ==========================================================================
+   Generic modal shell (Revision S2, implementation_plan.md, decisions S11/
+   S14) — port of the owner dashboard's .admin-modal-overlay/.admin-modal
+   (Style/owner_dashboard.css, itself a port of the customer dashboard's own
+   .dash-modal-overlay/.dash-modal) under staff-* names, since no modal shell
+   existed on this page yet. Used today by the Time-In payment popup
+   ([data-staff-timein-modal]); any later staff dialog can reuse this same
+   shell rather than styling a third one.
+   ========================================================================== */
+.staff-modal-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 50;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+    background: rgba(10, 8, 6, 0.6);
+    opacity: 0;
+    transition: opacity 0.25s ease;
+}
+
+.staff-modal-overlay[data-open] {
+    opacity: 1;
+}
+
+/* Restates plain `display: none` at equal specificity to the author rule
+   above — an author `display: flex` rule otherwise beats the UA `[hidden]`
+   rule and the "closed" modal keeps painting (same fix
+   Style/owner_dashboard.css documents for .admin-modal-overlay[hidden]). */
+.staff-modal-overlay[hidden] {
+    display: none;
+}
+
+.staff-modal {
+    position: relative;
+    /* Smaller cap than the owner dashboard's 720px form modal — this one
+       only ever holds a short payment summary, never a multi-field form. */
+    width: min(440px, 100% - 24px);
+    max-height: 90vh;
+    overflow: auto;
+    background: var(--color-bg-card);
+    border: 1px solid var(--color-line);
+    border-radius: 18px;
+    padding: 26px;
+    box-shadow: 0 24px 60px rgba(0, 0, 0, 0.45);
+    transform: translateY(12px);
+    transition: transform 0.25s ease;
+}
+
+.staff-modal-overlay[data-open] .staff-modal {
+    transform: translateY(0);
+}
+
+.staff-modal h3 {
+    font-family: var(--font-display);
+    font-weight: 600;
+    font-size: var(--fs-lg);
+    margin-bottom: 18px;
+    padding-right: 34px; /* clears the absolutely-positioned close button */
+}
+
+.staff-modal-close {
+    position: absolute;
+    top: 16px;
+    right: 16px;
+    width: 34px;
+    height: 34px;
+    border-radius: 50%;
+    border: 1px solid var(--color-line);
+    background: transparent;
+    color: var(--color-ink-dim);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: color 0.2s, border-color 0.2s;
+}
+
+.staff-modal-close svg { width: 16px; height: 16px; }
+
+.staff-modal-close:hover {
+    color: var(--color-ink);
+    border-color: var(--color-primary);
+}
+
+/* ==========================================================================
+   Time-In payment popup (Revision S2, decisions S11/S14) — booking summary
+   rows (reusing .staff-summary-row/.staff-summary-divider from the walk-in
+   wizard's own summary) plus a Cash/Online payment picker (reusing
+   .staff-payment-options/.staff-payment-option from the walk-in wizard's
+   Step 4) shown only when a balance is owed.
+   ========================================================================== */
+.staff-timein-body {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    margin-bottom: 20px;
+}
+
+/* Revision A2 (implementation_plan.md) convention — a peso figure takes
+   --font-numeric (tabular-nums), same as every other price on this page
+   (.staff-summary-total, .staff-receipt-total). */
+.staff-timein-amount {
+    font-family: var(--font-numeric);
+    font-variant-numeric: tabular-nums;
+}
+
+/* ==========================================================================
    Theme toggle (topbar) — mirrors Style/LandingPage.css .theme-toggle
    ========================================================================== */
 .theme-toggle {
@@ -1364,4 +1483,14 @@ body.staff-sidebar-open .staff-toggle-bar:nth-child(3) {
 [data-staff-panel="transactions"] .staff-table td:nth-child(4),
 [data-staff-panel="overview"] .staff-table td:nth-child(3) {
     white-space: nowrap;
+}
+
+/* Revision S2 follow-up — the dialog itself receives focus on open (for
+   Escape handling / screen readers), but the browser's default focus ring
+   drew a thick orange border around the whole popup. Match the owner
+   page's modals: no ring on the container; focus rings stay on the
+   buttons/inputs inside it. */
+.staff-modal:focus,
+.staff-modal:focus-visible {
+    outline: none;
 }

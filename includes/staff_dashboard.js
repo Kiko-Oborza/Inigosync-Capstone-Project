@@ -387,6 +387,86 @@ document.addEventListener('DOMContentLoaded', () => {
         console.error('[staff] window.InigoBusinessHours is missing — check that includes/businessHours.js loads before includes/staff_dashboard.js.');
     }
 
+    // ------------------------------------------------------------------
+    // Payment helpers — Revision S2 (implementation_plan.md, decisions S12/
+    // S14). Shared by the Booking Overview row renderer, the Transaction
+    // Records row renderer, and the Time-In payment popup (further below)
+    // so all three read a booking/walk-in's money the exact same way and
+    // can never disagree.
+    // ------------------------------------------------------------------
+
+    // Peso amount, always 2 decimals (Revision S2, S11).
+    function formatStaffPeso(amount) {
+        return `₱${Number(amount).toFixed(2)}`;
+    }
+
+    // Court list for the rate × hours fallback below, when a row's own
+    // amount_total is still null (a pre-Revision-S2 row, database/schema/
+    // 017_booking_payment.sql not applied yet, or a genuinely Rate-TBA
+    // court). window.InigoCourtsData.getCourts() memoizes its own promise,
+    // so this is cheap even though the walk-in wizard (loadWalkinCourts()
+    // below) and the Court Schedule (refreshCourtSchedule() further below)
+    // each already hold their own copy — a small dedicated cache here keeps
+    // this feature self-contained instead of reaching into either of theirs.
+    let timeInCourtsCache = [];
+    async function loadTimeInCourtsCache() {
+        if (!window.InigoCourtsData) return;
+        timeInCourtsCache = await window.InigoCourtsData.getCourts();
+    }
+    loadTimeInCourtsCache();
+
+    function findStaffCourtByName(name) {
+        if (!name) return null;
+        return timeInCourtsCache.find((c) => c.name === name) || null;
+    }
+
+    // { start, end, hours, total, paid, balance } for a merged Overview/
+    // Transactions row (mergeBookingRows() above). row.raw.amount_total/
+    // amount_paid only exist once 017_booking_payment.sql is applied —
+    // select('*') already tolerates their absence (both simply read as
+    // `undefined`, same "column may not exist yet" idiom every other reader
+    // in this file uses), so this degrades to the rate × hours fallback
+    // below instead of throwing. total stays null ("Rate TBA") when neither
+    // a recorded amount_total nor a resolvable court rate exists — never an
+    // invented peso figure.
+    function timeInPaymentInfo(row) {
+        const { start, end } = rowWindow(row);
+        const hours = Math.max(1, Math.round((end.getTime() - start.getTime()) / 3600000));
+
+        const rawTotal = row.raw.amount_total;
+        let total = (rawTotal === null || rawTotal === undefined || rawTotal === '') ? null : Number(rawTotal);
+        if (total === null || Number.isNaN(total)) {
+            const court = findStaffCourtByName(row.courts);
+            const hasRate = Boolean(court && court.rate !== null && court.rate !== undefined);
+            total = hasRate ? court.rate * hours : null;
+        }
+
+        const rawPaid = row.raw.amount_paid;
+        const paid = (rawPaid === null || rawPaid === undefined || Number.isNaN(Number(rawPaid))) ? 0 : Number(rawPaid);
+
+        const balance = total === null ? null : Math.max(0, total - paid);
+        return { start, end, hours, total, paid, balance };
+    }
+
+    // Overview/Transactions Payment column (Revision S2, S14) — one label:
+    // "Paid · <method>" once amount_paid covers amount_total, "Due ₱X" while
+    // a balance remains, "Rate TBA" while the total itself is unknown. A
+    // walk-in that has no known total still recorded HOW it paid
+    // (payment_method, database/schema/016_walkin_checkin.sql) even without
+    // a peso figure, so it shows that instead of a bare "Rate TBA".
+    function staffPaymentLabel(row) {
+        const info = timeInPaymentInfo(row);
+        const walkinMethod = (row.sourceType === 'walkin' && row.payment && row.payment !== '—') ? row.payment : null;
+
+        if (info.total === null) return walkinMethod || 'Rate TBA';
+        if (info.total > 0 && info.paid >= info.total) {
+            const method = row.raw.balance_payment_method || walkinMethod;
+            return method ? `Paid · ${method}` : 'Paid';
+        }
+        if (info.balance > 0) return `Due ${formatStaffPeso(info.balance)}`;
+        return walkinMethod || 'Rate TBA';
+    }
+
     // Re-wires a table's filter chips + search box against its CURRENT
     // <tbody> rows. Called after every render (rows are always fully
     // replaced, not patched) — the chips/search input themselves are never
@@ -525,7 +605,10 @@ document.addEventListener('DOMContentLoaded', () => {
         const unitLabel = row.unit ? window.escapeHtml(row.unit) : '';
         const sourceLabel = row.sourceType === 'walkin' ? 'Walk-in' : 'Online';
         const sourceClass = row.sourceType === 'walkin' ? 'walkin' : 'online';
-        const paymentLabel = window.escapeHtml(row.payment || '—');
+        // Revision S2 (implementation_plan.md, S14) — Paid · <method> / Due
+        // ₱X / Rate TBA, derived from real amounts instead of just the
+        // source label (staffPaymentLabel(), Shared helpers section above).
+        const paymentLabel = window.escapeHtml(staffPaymentLabel(row));
         const statusLabel = window.escapeHtml(staffStatusLabel(status));
 
         const tr = document.createElement('tr');
@@ -578,69 +661,18 @@ document.addEventListener('DOMContentLoaded', () => {
         wireFilterableTable('overview');
     }
 
-    async function timeInBooking(bookingId) {
-        const { data, error } = await window.sb.from('booking').update({ checked_in_at: new Date().toISOString() }).eq('booking_id', bookingId).select();
-        if (error) {
-            if (isSchemaMismatchError(error) || error.code === '42501') return { error: 'Ask the owner to run 004 and 016.' };
-            return { error: error.message || 'Could not time this booking in.' };
-        }
-        if (!data || data.length === 0) return { error: 'Ask the owner to run 004 and 016.' };
-        return { ok: true };
-    }
-
-    async function timeInWalkin(idField, idValue) {
-        const { data, error } = await window.sb.from('walk_in_booking').update({ checked_in_at: new Date().toISOString() }).eq(idField, idValue).select();
-        if (error) {
-            if (isSchemaMismatchError(error) || error.code === '42501') return { error: 'Ask the owner to run 004 and 016.' };
-            return { error: error.message || 'Could not time this walk-in in.' };
-        }
-        if (!data || data.length === 0) return { error: 'Ask the owner to run 004 and 016.' };
-        return { ok: true };
-    }
-
-    // Event delegation on the table BODY (not per-row buttons) — rows are
-    // fully replaced on every refresh, so listeners bound directly to a
-    // button would not survive a re-render.
-    async function handleOverviewAction(e) {
-        const btn = e.target.closest('[data-staff-action="timein"]');
-        if (!btn || btn.disabled) return;
-        const tr = btn.closest('tr');
-        if (!tr) return;
-        const row = overviewRows[Number(tr.dataset.rowIndex)];
-        if (!row || !window.sb) return;
-
-        const originalLabel = btn.textContent;
-        btn.disabled = true;
-        btn.textContent = 'Timing in…';
-
-        let result;
-        if (row.sourceType === 'booking') {
-            result = await timeInBooking(row.raw.booking_id);
-        } else {
-            const idField = walkinIdField(row.raw);
-            result = idField ? await timeInWalkin(idField, row.raw[idField]) : { error: "Can't identify this walk-in record." };
-        }
-
-        if (result.error) {
-            btn.disabled = false;
-            btn.textContent = originalLabel;
-            window.InigoToast?.show(result.error, true);
-            return;
-        }
-
-        writeAuditLog(
-            'booking_timed_in',
-            row.sourceType === 'booking' ? 'booking' : 'walk_in_booking',
-            row.sourceType === 'booking' ? row.raw.booking_id : null,
-            { customerName: row.customerName, court: row.courts }
-        );
-        window.InigoToast?.show('Customer timed in.');
-        refreshBookingOverview();
-        refreshCourtSchedule();
-        refreshTransactions();
-    }
-
-    if (overviewTableBody) overviewTableBody.addEventListener('click', handleOverviewAction);
+    // Revision S2 (implementation_plan.md, decisions S11/S14) — Time-In no
+    // longer writes checked_in_at directly from this row action; it opens
+    // the Time-In payment popup instead (openTimeInModal()/
+    // wireTimeInButtons(), defined in the "Time-In payment popup" section
+    // below — hoisted `function` declarations, safe to call from here
+    // regardless of source order). The popup performs the update
+    // (applyTimeInPatch()) once the staff member confirms, writes the audit
+    // log entry, and refreshes Overview/Schedule/Transactions/Notifications
+    // itself — the same work the old inline handler here used to do,
+    // now made once instead of being duplicated for Transaction Records'
+    // identical button (wired the same way further below).
+    wireTimeInButtons(overviewTableBody, () => overviewRows);
 
     refreshBookingOverview();
     document.addEventListener('inigosync:profile-ready', refreshBookingOverview);
@@ -1270,6 +1302,17 @@ document.addEventListener('DOMContentLoaded', () => {
             const endIso = new Date(`${todayStr}T${String(walkinState.endHour + 1).padStart(2, '0')}:00:00`).toISOString();
             const paymentLabel = walkinState.payment === 'online' ? 'Online payment' : 'Cash';
 
+            // Revision S2 (implementation_plan.md, decisions S12/S13b) —
+            // amount_total (rate × hours when the court's rate is known,
+            // else null — same "Rate TBA" honesty rule the summary/receipt
+            // above already use) and amount_paid (a walk-in pays at the
+            // desk, so it equals amount_total the moment the rate is known;
+            // zero otherwise) only exist once database/schema/
+            // 017_booking_payment.sql is applied.
+            const hasRate = walkinState.court.rate !== null && walkinState.court.rate !== undefined;
+            const amountTotal = hasRate ? walkinState.court.rate * hours : null;
+            const amountPaid = amountTotal !== null ? amountTotal : 0;
+
             const fullPayload = {
                 staff_id: window.inigosyncProfile.id,
                 sports: walkinState.court.sportName || walkinState.court.name,
@@ -1283,34 +1326,60 @@ document.addEventListener('DOMContentLoaded', () => {
                 payment_method: paymentLabel,
                 status: 'pending',
                 payment_id: null,
+                amount_total: amountTotal,
+                amount_paid: amountPaid,
             };
 
             walkinSaveBtn.disabled = true;
             walkinSaveBtn.textContent = 'Saving…';
 
             // court_unit/end_at/payment_method only exist once
-            // database/schema/016_walkin_checkin.sql is applied — try
-            // including them first, and fall back to the pre-migration
-            // insert shape (customer_name/customer_mobile/duration_minutes
-            // already exist per 004_staff_module.sql) if that's specifically
-            // what fails, same "never fake success" schema-mismatch retry
-            // idiom this file has always used for walk-in inserts.
+            // database/schema/016_walkin_checkin.sql is applied;
+            // amount_total/amount_paid only exist once
+            // 017_booking_payment.sql is applied. Three tiers, not two: a
+            // database with 016 but not yet 017 (the expected state right
+            // after this revision ships, until the owner runs 017) should
+            // still keep its per-unit availability/end time/payment method
+            // — it only has to drop the two NEWEST columns, not fall all the
+            // way back to the pre-016 shape. Same "never fake success"
+            // schema-mismatch retry idiom this file has always used for
+            // walk-in inserts, just with an extra rung.
             let { data, error } = await window.sb.from('walk_in_booking').insert(fullPayload).select();
             let usedReducedPayload = false;
+            let missingPaymentColumnsOnly = false;
             if (error && isSchemaMismatchError(error)) {
-                const reducedPayload = {
+                const paymentColumnsDroppedPayload = {
                     staff_id: fullPayload.staff_id,
                     sports: fullPayload.sports,
                     courts: fullPayload.courts,
+                    court_unit: fullPayload.court_unit,
                     customer_name: fullPayload.customer_name,
                     customer_mobile: fullPayload.customer_mobile,
                     time_date: fullPayload.time_date,
+                    end_at: fullPayload.end_at,
                     duration_minutes: fullPayload.duration_minutes,
+                    payment_method: fullPayload.payment_method,
                     status: fullPayload.status,
                     payment_id: fullPayload.payment_id,
                 };
-                ({ data, error } = await window.sb.from('walk_in_booking').insert(reducedPayload).select());
-                usedReducedPayload = true;
+                ({ data, error } = await window.sb.from('walk_in_booking').insert(paymentColumnsDroppedPayload).select());
+                if (!error) {
+                    missingPaymentColumnsOnly = true;
+                } else if (isSchemaMismatchError(error)) {
+                    const reducedPayload = {
+                        staff_id: fullPayload.staff_id,
+                        sports: fullPayload.sports,
+                        courts: fullPayload.courts,
+                        customer_name: fullPayload.customer_name,
+                        customer_mobile: fullPayload.customer_mobile,
+                        time_date: fullPayload.time_date,
+                        duration_minutes: fullPayload.duration_minutes,
+                        status: fullPayload.status,
+                        payment_id: fullPayload.payment_id,
+                    };
+                    ({ data, error } = await window.sb.from('walk_in_booking').insert(reducedPayload).select());
+                    usedReducedPayload = true;
+                }
             }
 
             walkinSaveBtn.disabled = false;
@@ -1327,9 +1396,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
             writeAuditLog('walkin_recorded', 'walk_in_booking', idField ? String(savedRow[idField]) : null, { customerName: walkinState.name, court: walkinState.court.name });
 
-            window.InigoToast?.show(usedReducedPayload
-                ? 'Walk-in recorded — court/unit, end time, and payment method need a database update to be saved (see database/schema/016_walkin_checkin.sql).'
-                : 'Walk-in recorded.');
+            let saveNote = 'Walk-in recorded.';
+            if (usedReducedPayload) {
+                saveNote = 'Walk-in recorded — court/unit, end time, and payment method need a database update to be saved (see database/schema/016_walkin_checkin.sql).';
+            } else if (missingPaymentColumnsOnly) {
+                saveNote = 'Walk-in recorded — payment amounts need database/schema/017_booking_payment.sql.';
+            }
+            window.InigoToast?.show(saveNote);
 
             renderStaffReceipt({
                 id: receiptId,
@@ -1391,6 +1464,303 @@ document.addEventListener('DOMContentLoaded', () => {
     renderWalkinWizard();
     updateWalkinSummary();
     renderWalkinTimePickers();
+
+    // ------------------------------------------------------------------
+    // Time-In payment popup — Revision S2 (implementation_plan.md, decisions
+    // S11/S14). Opened by every Time-In button (Booking Overview above and
+    // Transaction Records further below, both via wireTimeInButtons()
+    // below) INSTEAD of writing checked_in_at immediately (Revision S1's
+    // behaviour) — shows the booking/walk-in's Total/Paid so far/Balance
+    // due (timeInPaymentInfo(), Shared helpers section above) and, when a
+    // balance is owed, requires picking Cash/Online payment before the
+    // confirm button both collects it and times the customer in. Same
+    // mousedown+click backdrop-detection / Esc / focus-management modal
+    // idiom as includes/owner_dashboard.js's [data-admin-court-modal]/
+    // [data-admin-staff-modal], ported here under staff-modal-*/
+    // staff-timein-* names (Style/staff_dashboard.css's new
+    // .staff-modal-overlay/.staff-modal rules).
+    // ------------------------------------------------------------------
+    const timeInModal = document.querySelector('[data-staff-timein-modal]');
+    const timeInDialog = document.querySelector('[data-staff-timein-dialog]');
+    const timeInCustomerEl = document.querySelector('[data-staff-timein-customer]');
+    const timeInCourtEl = document.querySelector('[data-staff-timein-court]');
+    const timeInDateEl = document.querySelector('[data-staff-timein-date]');
+    const timeInTimeEl = document.querySelector('[data-staff-timein-time]');
+    const timeInHoursEl = document.querySelector('[data-staff-timein-hours]');
+    const timeInTotalEl = document.querySelector('[data-staff-timein-total]');
+    const timeInPaidEl = document.querySelector('[data-staff-timein-paid]');
+    const timeInBalanceEl = document.querySelector('[data-staff-timein-balance]');
+    const timeInNoteEl = document.querySelector('[data-staff-timein-note]');
+    const timeInPaymentWrap = document.querySelector('[data-staff-timein-payment-wrap]');
+    const timeInPaymentOptionEls = document.querySelectorAll('[data-staff-timein-payment-wrap] [data-staff-payment-option]');
+    const timeInConfirmBtn = document.querySelector('[data-staff-timein-confirm]');
+    const timeInCancelBtn = document.querySelector('[data-staff-timein-cancel]');
+    const timeInCloseBtn = document.querySelector('[data-staff-timein-close]');
+
+    const TIMEIN_MODAL_CLOSE_DELAY_MS = 250;
+    let timeInModalHideTimer = null;
+    let timeInModalIsOpen = false;
+    let timeInModalLastFocused = null;
+    let timeInModalRow = null;
+    let timeInSelectedMethod = null;
+
+    // { table, idField, idValue } for either source type — booking_id for a
+    // booking (same column timeInBooking() used pre-S2), or whichever
+    // WALKIN_ID_CANDIDATES key is actually present for a walk-in.
+    function rowTableTarget(row) {
+        if (row.sourceType === 'booking') {
+            return { table: 'booking', idField: 'booking_id', idValue: row.raw.booking_id };
+        }
+        const idField = walkinIdField(row.raw);
+        return { table: 'walk_in_booking', idField, idValue: idField ? row.raw[idField] : null };
+    }
+
+    // Revision S2 — tries the FULL patch (checked_in_at plus, when
+    // collecting, the new payment columns from database/schema/
+    // 017_booking_payment.sql) first. If THAT specific update fails on a
+    // schema mismatch (017 not applied yet), retries with ONLY
+    // checked_in_at (the exact write Revision S1 already relied on), so
+    // Time-In itself still succeeds — same "never fake success, degrade
+    // instead" idiom the pre-S2 timeInBooking()/timeInWalkin() functions
+    // this replaces already used. `usedBasePatch` tells the caller whether
+    // that fallback happened, so it can toast accordingly instead of
+    // claiming a collection that was never actually saved.
+    async function applyTimeInPatch(table, idField, idValue, fullPatch, basePatch) {
+        if (!idField || idValue === null || idValue === undefined) return { error: "Can't identify this record." };
+
+        let { data, error } = await window.sb.from(table).update(fullPatch).eq(idField, idValue).select();
+
+        if (error && isSchemaMismatchError(error) && fullPatch !== basePatch) {
+            ({ data, error } = await window.sb.from(table).update(basePatch).eq(idField, idValue).select());
+            if (!error) {
+                if (!data || data.length === 0) return { error: 'Ask the owner to run 004 and 016.' };
+                return { ok: true, usedBasePatch: true };
+            }
+        }
+
+        if (error) {
+            // Either the only attempt (nothing to collect, so fullPatch WAS
+            // basePatch) or the base-patch retry above also failed — at
+            // this point a schema mismatch means even checked_in_at doesn't
+            // exist (004/016 missing), which needs the exact same owner
+            // action as an RLS rejection (42501).
+            if (error.code === '42501' || isSchemaMismatchError(error)) return { error: 'Ask the owner to run 004 and 016.' };
+            return { error: error.message || 'Could not time this in.' };
+        }
+        if (!data || data.length === 0) return { error: 'Ask the owner to run 004 and 016.' };
+        return { ok: true, usedBasePatch: false };
+    }
+
+    // Paints every field/row/note/button in the popup for `row` — called
+    // once on open (openTimeInModal below); nothing here mutates `row`
+    // itself, so re-opening the SAME row after a failed confirm just
+    // re-derives the identical state.
+    function renderTimeInModal(row) {
+        const info = timeInPaymentInfo(row);
+        const fallbackName = row.sourceType === 'walkin' ? 'Walk-in customer' : 'Customer';
+
+        if (timeInCustomerEl) timeInCustomerEl.textContent = row.customerName || fallbackName;
+        if (timeInCourtEl) timeInCourtEl.textContent = row.unit ? `${row.courts || '—'} · ${row.unit}` : (row.courts || '—');
+        if (timeInDateEl) timeInDateEl.textContent = formatWalkinDateLabel(info.start.toISOString());
+        if (timeInTimeEl) timeInTimeEl.textContent = `${formatIsoTime12h(info.start.toISOString())} – ${formatIsoTime12h(info.end.toISOString())}`;
+        if (timeInHoursEl) timeInHoursEl.textContent = `${info.hours} hr${info.hours === 1 ? '' : 's'}`;
+
+        const knownTotal = info.total !== null;
+        const needsPayment = knownTotal && info.balance > 0;
+
+        if (timeInTotalEl) timeInTotalEl.textContent = knownTotal ? formatStaffPeso(info.total) : 'Rate TBA';
+        if (timeInPaidEl) timeInPaidEl.textContent = knownTotal ? formatStaffPeso(info.paid) : 'Rate TBA';
+        if (timeInBalanceEl) timeInBalanceEl.textContent = knownTotal ? formatStaffPeso(info.balance) : 'Rate TBA';
+
+        timeInSelectedMethod = null;
+        timeInPaymentOptionEls.forEach((option) => {
+            option.classList.remove('is-selected');
+            const radio = option.querySelector('input[type="radio"]');
+            if (radio) radio.checked = false;
+        });
+        if (timeInPaymentWrap) timeInPaymentWrap.hidden = !needsPayment;
+
+        if (timeInNoteEl) {
+            if (!knownTotal) {
+                timeInNoteEl.textContent = 'Rate TBA — nothing to collect yet.';
+                timeInNoteEl.hidden = false;
+            } else if (!needsPayment) {
+                timeInNoteEl.textContent = 'Fully paid.';
+                timeInNoteEl.hidden = false;
+            } else {
+                timeInNoteEl.hidden = true;
+            }
+        }
+
+        if (timeInConfirmBtn) {
+            if (needsPayment) {
+                timeInConfirmBtn.textContent = `Collect ${formatStaffPeso(info.balance)} & Time-In`;
+                timeInConfirmBtn.disabled = true;
+            } else {
+                timeInConfirmBtn.textContent = 'Time-In';
+                timeInConfirmBtn.disabled = false;
+            }
+        }
+    }
+
+    function openTimeInModal(row) {
+        if (!timeInModal) return;
+        timeInModalRow = row;
+        timeInModalLastFocused = document.activeElement;
+        renderTimeInModal(row);
+
+        if (timeInModalHideTimer) { window.clearTimeout(timeInModalHideTimer); timeInModalHideTimer = null; }
+        timeInModal.hidden = false;
+        // Force a synchronous layout flush so the browser commits the
+        // hidden->visible state before [data-open] flips opacity to 1 —
+        // same trick includes/owner_dashboard.js's modals use.
+        void timeInModal.offsetWidth;
+        timeInModal.setAttribute('data-open', '');
+        timeInModalIsOpen = true;
+
+        // No single obvious "first field" to focus — the payment radios are
+        // hidden in two of the three cases — so the dialog itself gets
+        // initial focus (it carries tabindex="-1" precisely for this).
+        if (timeInDialog) timeInDialog.focus();
+    }
+
+    function closeTimeInModal() {
+        if (!timeInModalIsOpen || !timeInModal) return;
+        timeInModalIsOpen = false;
+        timeInModalRow = null;
+
+        timeInModal.removeAttribute('data-open');
+        if (timeInModalHideTimer) window.clearTimeout(timeInModalHideTimer);
+        timeInModalHideTimer = window.setTimeout(() => {
+            timeInModal.hidden = true;
+            timeInModalHideTimer = null;
+        }, TIMEIN_MODAL_CLOSE_DELAY_MS);
+
+        if (timeInModalLastFocused && typeof timeInModalLastFocused.focus === 'function' && document.contains(timeInModalLastFocused)) {
+            timeInModalLastFocused.focus();
+        }
+        timeInModalLastFocused = null;
+    }
+
+    // Shared by Booking Overview and Transaction Records — both tables
+    // render the identical Time-In button (staffActionCellHtml() above) and
+    // must open the identical popup; `getRows` reads whichever array that
+    // table's own refresh function most recently populated (overviewRows/
+    // transactionRows), since rows are fully replaced (not patched) on
+    // every refresh and a plain per-button listener would not survive that.
+    function wireTimeInButtons(tbody, getRows) {
+        if (!tbody) return;
+        tbody.addEventListener('click', (e) => {
+            const btn = e.target.closest('[data-staff-action="timein"]');
+            if (!btn || btn.disabled) return;
+            const tr = btn.closest('tr');
+            if (!tr) return;
+            const row = getRows()[Number(tr.dataset.rowIndex)];
+            if (!row) return;
+            openTimeInModal(row);
+        });
+    }
+
+    if (timeInCloseBtn) timeInCloseBtn.addEventListener('click', closeTimeInModal);
+    if (timeInCancelBtn) timeInCancelBtn.addEventListener('click', closeTimeInModal);
+
+    // Same mousedown+click pair as includes/owner_dashboard.js's modals — a
+    // plain 'click' listener on the overlay also fires when a drag STARTS
+    // inside the dialog and ENDS on the backdrop once released there; only
+    // treat it as a real backdrop click when BOTH events landed on the
+    // overlay element itself, not a descendant.
+    let timeInModalMouseDownOnBackdrop = false;
+    if (timeInModal) {
+        timeInModal.addEventListener('mousedown', (e) => {
+            timeInModalMouseDownOnBackdrop = e.target === timeInModal;
+        });
+        timeInModal.addEventListener('click', (e) => {
+            if (e.target === timeInModal && timeInModalMouseDownOnBackdrop) closeTimeInModal();
+            timeInModalMouseDownOnBackdrop = false;
+        });
+    }
+
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && timeInModalIsOpen) closeTimeInModal();
+    });
+
+    timeInPaymentOptionEls.forEach((option) => {
+        option.addEventListener('click', () => {
+            const radio = option.querySelector('input[type="radio"]');
+            if (!radio) return;
+            timeInPaymentOptionEls.forEach((o) => o.classList.remove('is-selected'));
+            option.classList.add('is-selected');
+            radio.checked = true;
+            timeInSelectedMethod = radio.dataset.staffTimeinMethod;
+            if (timeInConfirmBtn) timeInConfirmBtn.disabled = false;
+        });
+    });
+
+    if (timeInConfirmBtn) {
+        timeInConfirmBtn.addEventListener('click', async () => {
+            if (timeInConfirmBtn.disabled || !timeInModalRow || !window.sb) return;
+            const row = timeInModalRow;
+            const info = timeInPaymentInfo(row);
+            const knownTotal = info.total !== null;
+            const needsPayment = knownTotal && info.balance > 0;
+            if (needsPayment && !timeInSelectedMethod) return; // belt-and-suspenders — the button is disabled until a method is chosen
+
+            const nowIso = new Date().toISOString();
+            const basePatch = { checked_in_at: nowIso };
+            let fullPatch = basePatch;
+            if (needsPayment) {
+                // paid + balance === total exactly (balance is defined as
+                // total - paid), so this is simply "fully paid as of now" —
+                // computed from total directly rather than paid + balance,
+                // to avoid any float drift from adding the two back
+                // together.
+                fullPatch = {
+                    checked_in_at: nowIso,
+                    amount_paid: Number(info.total.toFixed(2)),
+                    balance_payment_method: timeInSelectedMethod,
+                    balance_paid_at: nowIso,
+                };
+                const rawTotal = row.raw.amount_total;
+                if (rawTotal === null || rawTotal === undefined) fullPatch.amount_total = info.total;
+            }
+
+            const { table, idField, idValue } = rowTableTarget(row);
+
+            const originalLabel = timeInConfirmBtn.textContent;
+            timeInConfirmBtn.disabled = true;
+            timeInConfirmBtn.textContent = 'Timing in…';
+
+            const result = await applyTimeInPatch(table, idField, idValue, fullPatch, basePatch);
+
+            if (result.error) {
+                timeInConfirmBtn.disabled = false;
+                timeInConfirmBtn.textContent = originalLabel;
+                window.InigoToast?.show(result.error, true);
+                return;
+            }
+
+            writeAuditLog(
+                'booking_timed_in',
+                table,
+                (idValue !== undefined && idValue !== null) ? String(idValue) : null,
+                { customerName: row.customerName, court: row.courts }
+            );
+
+            if (needsPayment && result.usedBasePatch) {
+                window.InigoToast?.show('Timed in — payment fields need database/schema/017_booking_payment.sql.', true);
+            } else if (needsPayment) {
+                window.InigoToast?.show(`Timed in · ${formatStaffPeso(info.balance)} collected (${timeInSelectedMethod}).`);
+            } else {
+                window.InigoToast?.show('Timed in.');
+            }
+
+            closeTimeInModal();
+            refreshBookingOverview();
+            refreshCourtSchedule();
+            refreshTransactions();
+            refreshStaffNotifications();
+        });
+    }
 
     // ------------------------------------------------------------------
     // Court Schedule — Revision S1, decision S5. Per-unit hourly
@@ -1584,6 +1954,11 @@ document.addEventListener('DOMContentLoaded', () => {
     const transactionsTableBody = document.querySelector('[data-staff-table="transactions"] tbody');
     const txFromInput = document.querySelector('[data-staff-tx-from]');
     const txToInput = document.querySelector('[data-staff-tx-to]');
+    // Revision S2 (implementation_plan.md, decisions S11/S14) — this
+    // table's own rows, indexed the same way overviewRows is above, so its
+    // Action column's Time-In button (added below) can open the same
+    // Time-In payment popup Booking Overview uses.
+    let transactionRows = [];
 
     if (txFromInput) txFromInput.value = todayDateInputValue();
     if (txToInput) txToInput.value = todayDateInputValue();
@@ -1605,7 +1980,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (bookingsRes.error && walkinsRes.error) {
             console.error('[staff] failed to load transaction records', bookingsRes.error, walkinsRes.error);
-            transactionsTableBody.innerHTML = '<tr><td colspan="9" style="text-align:center; color: var(--color-ink-faint);">Could not load transaction records right now.</td></tr>';
+            transactionsTableBody.innerHTML = '<tr><td colspan="10" style="text-align:center; color: var(--color-ink-faint);">Could not load transaction records right now.</td></tr>';
             return;
         }
         if (bookingsRes.error) console.error('[staff] failed to load bookings for transactions', bookingsRes.error);
@@ -1621,14 +1996,15 @@ document.addEventListener('DOMContentLoaded', () => {
             if (r.sourceType === 'booking') r.customerName = nameMap.get(String(r.customerId)) || 'Customer';
         });
 
+        transactionRows = merged;
         transactionsTableBody.innerHTML = '';
         if (merged.length === 0) {
-            transactionsTableBody.innerHTML = '<tr><td colspan="9" style="text-align:center; color: var(--color-ink-faint);">No transactions in this date range.</td></tr>';
+            transactionsTableBody.innerHTML = '<tr><td colspan="10" style="text-align:center; color: var(--color-ink-faint);">No transactions in this date range.</td></tr>';
             wireFilterableTable('transactions');
             return;
         }
 
-        merged.forEach((row) => {
+        merged.forEach((row, i) => {
             const status = staffDerivedStatus(row);
             const { end } = rowWindow(row);
             const timedIn = row.checked_in_at ? formatIsoTime12h(row.checked_in_at) : '—';
@@ -1640,22 +2016,26 @@ document.addEventListener('DOMContentLoaded', () => {
 
             const tr = document.createElement('tr');
             tr.dataset.status = row.sourceType; // source filter chips (all/online/walkin) key off this
+            tr.dataset.rowIndex = String(i);
             tr.innerHTML = `
                 <td>${window.escapeHtml(new Date(row.time_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }))}</td>
                 <td class="staff-cell-main">${window.escapeHtml(row.customerName || fallbackName)}</td>
                 <td>${window.escapeHtml(row.courts || '—')}${row.unit ? `<span class="staff-cell-sub">${window.escapeHtml(row.unit)}</span>` : ''}</td>
                 <td>${window.escapeHtml(formatIsoTime12h(row.time_date))} – ${window.escapeHtml(formatIsoTime12h(end.toISOString()))}</td>
                 <td><span class="staff-status ${row.sourceType === 'walkin' ? 'walkin' : 'online'}">${row.sourceType === 'walkin' ? 'Walk-in' : 'Online'}</span></td>
-                <td>${window.escapeHtml(row.payment || '—')}</td>
+                <td>${window.escapeHtml(staffPaymentLabel(row))}</td>
                 <td>${window.escapeHtml(timedIn)}</td>
                 <td>${window.escapeHtml(timedOut)}</td>
                 <td><span class="staff-status ${window.escapeHtml(status)}">${window.escapeHtml(staffStatusLabel(status))}</span></td>
+                <td>${staffActionCellHtml(row, status)}</td>
             `;
             transactionsTableBody.appendChild(tr);
         });
 
         wireFilterableTable('transactions');
     }
+
+    wireTimeInButtons(transactionsTableBody, () => transactionRows);
 
     refreshTransactions();
     document.addEventListener('inigosync:profile-ready', refreshTransactions);
