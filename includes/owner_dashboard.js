@@ -1,7 +1,7 @@
 // IñigoSync — Owner Dashboard controller
 // Staff Management, Account Settings, Court Listings, the Booking Overview
-// stat tiles/Recent bookings/Booking status breakdown, and Media Manager
-// all talk to the real Supabase database.
+// stat tiles/Website performance/Booking status breakdown, Media Manager,
+// and Feedbacks & Reviews all talk to the real Supabase database.
 // (Booking trend chart setup lives in event/chart.js, loaded below.)
 //
 // Revision A1 (implementation_plan.md) brought this page up to the same
@@ -24,6 +24,27 @@
 // Photos section with a crop editor (B6, includes/imageTools.js's
 // openCropEditor()), and courts are per-hour only (B7, no more Billing
 // unit / "Per game").
+//
+// Revision A3 (implementation_plan.md) followed up again: Change Password's
+// placeholders read as instructions, not fake passwords (C1); Staff
+// Management/the "Active staff accounts" stat are staff-only, no more owner
+// row (C2); Booking status this month drops Confirmed/Cancelled (C3);
+// Recent bookings was replaced by a Website performance card of 6 honest,
+// client-measurable checks (C4, refreshWebsitePerformance()); and a new
+// Feedbacks & Reviews tab renders a Google-Play-style ratings summary +
+// sortable/filterable list over the `feedback` table (C5).
+
+// Revision A3, decision C4 — "Errors this session" counter for the Website
+// performance card. Registered here, at the very top of this file (before
+// the DOMContentLoaded listener below, and before every other <script> this
+// file could theoretically outlive), so an error thrown at any point during
+// this page's lifetime — including before DOMContentLoaded fires — is
+// counted the first time refreshWebsitePerformance() reads
+// inigosyncSessionErrorCount. Never reset for the life of this tab: "this
+// session" means "since this page was loaded", not "since the last check".
+let inigosyncSessionErrorCount = 0;
+window.addEventListener('error', () => { inigosyncSessionErrorCount += 1; });
+window.addEventListener('unhandledrejection', () => { inigosyncSessionErrorCount += 1; });
 
 document.addEventListener('DOMContentLoaded', () => {
     // ------------------------------------------------------------------
@@ -41,6 +62,9 @@ document.addEventListener('DOMContentLoaded', () => {
         staff: { title: 'Staff Management', subtitle: 'Add, update, or remove staff accounts.' },
         courts: { title: 'Court Listings', subtitle: 'Add new courts, update details, or activate/deactivate existing ones.' },
         media: { title: 'Media Manager', subtitle: "Whatever you upload here shows up on the website's home featured slideshow — both the landing page and the customer dashboard." },
+        // Revision A3 (implementation_plan.md, decision C5) — new tab, after
+        // Media Manager in the sidebar.
+        feedback: { title: 'Feedbacks & Reviews', subtitle: 'What customers are saying about Iñigos.' },
         settings: { title: 'Account Settings', subtitle: 'Update your personal details and manage your owner password.' },
         // Revision A2, decision B2 — not in .admin-nav, only reachable from
         // the profile dropdown's "View Profile"; setActivePanel() below
@@ -64,6 +88,14 @@ document.addEventListener('DOMContentLoaded', () => {
             titleEl.textContent = meta.title;
             subtitleEl.textContent = meta.subtitle;
         }
+
+        // Revision A3, decision C5 — Feedbacks & Reviews loads its data on
+        // panel open rather than eagerly at startup (see loadFeedback's own
+        // comment). loadFeedback is a hoisted function declaration defined
+        // later in this file; calling it here is safe regardless of source
+        // order, same reasoning already documented below for
+        // closeAdminNotifMenu.
+        if (name === 'feedback') loadFeedback();
 
         closeMobileSidebar();
         closeProfileMenu();
@@ -351,6 +383,15 @@ document.addEventListener('DOMContentLoaded', () => {
                     .gte('time_date', monthStart.toISOString()).lt('time_date', monthEnd.toISOString()),
                 window.sb.from('booking').select('*', { count: 'exact', head: true })
                     .gte('time_date', dayStart.toISOString()).lt('time_date', dayEnd.toISOString()),
+                // Revision A3, decision C2 — staff ONLY now (.eq, not the old
+                // .in('role', ['staff', 'admin'])): this tile shares the
+                // data-admin-stat="active-staff" hook with the profile
+                // panel's own "Active staff accounts" stat, and both are
+                // meant to count the STAFF the owner manages, not the owner
+                // counting themselves. Mirrors refreshStaffList()'s own
+                // .eq('role', 'staff') below — same table, same filter,
+                // same reasoning.
+                //
                 // "Not disabled" — NOT .eq('status', 'active'). staffStatusBadge()
                 // below and the Deactivate button both treat "anything but
                 // disabled" (including a NULL status, which no frontend code
@@ -364,7 +405,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 // NULL-status row would still be silently dropped — the
                 // .or() below adds it back explicitly.
                 window.sb.from('profiles').select('*', { count: 'exact', head: true })
-                    .in('role', ['staff', 'admin']).or('status.neq.disabled,status.is.null'),
+                    .eq('role', 'staff').or('status.neq.disabled,status.is.null'),
                 window.InigoCourtsData ? window.InigoCourtsData.getSports() : Promise.resolve([]),
             ]);
         } catch (err) {
@@ -396,88 +437,30 @@ document.addEventListener('DOMContentLoaded', () => {
         setAdminStat('sports-listed', sportsIsFallback ? '—' : (sports || []).length);
         setAdminStat('active-staff', staffRes.error ? '—' : (staffRes.count || 0));
 
-        // Revision A1, decision A3 — both new Overview widgets refresh
+        // Revision A1, decision A3 — the Booking status breakdown refreshes
         // alongside the 4 stat tiles, from this SAME entry point (also
         // triggered on 'inigosync:profile-ready' below), rather than a
-        // second listener elsewhere.
-        refreshRecentBookings();
+        // second listener elsewhere. Revision A3, decision C4 — the old
+        // Recent bookings table (which used to also refresh from here) is
+        // gone; Website performance replaced it and runs on its own
+        // schedule — see refreshWebsitePerformance()'s own comment for why
+        // it isn't wired to this same entry point.
         refreshStatusBreakdown();
     }
 
     // ------------------------------------------------------------------
-    // Overview — Recent bookings (Revision A1, decision A3). Replaces the
-    // old hardcoded "Busiest courts this week" card: the real latest 8
-    // `booking` rows, newest first, with the customer's name (a SEPARATE
-    // `profiles` query by the collected customer_ids — no PostgREST embed,
-    // see fetchProfileNamesByIds's own comment) and the SAME derived
-    // "Unattended" status the customer dashboard shows.
-    // ------------------------------------------------------------------
-    async function refreshRecentBookings() {
-        const tableRoot = document.querySelector('[data-admin-recent-bookings]');
-        if (!tableRoot || !window.sb) return;
-        const tbody = tableRoot.querySelector('tbody');
-        if (!tbody) return;
-
-        let { data, error } = await window.sb
-            .from('booking')
-            .select('booking_id, customer_id, courts, time_date, end_at, status, checked_in_at')
-            .order('created_at', { ascending: false })
-            .limit(8);
-
-        if (error && isSchemaMismatchError(error)) {
-            // Pre-004/012 database — checked_in_at/end_at don't exist yet.
-            // Graceful degradation: still show the 4 columns the table
-            // asks for, just without the Unattended nuance or a time range.
-            ({ data, error } = await window.sb
-                .from('booking')
-                .select('booking_id, customer_id, courts, time_date, status')
-                .order('time_date', { ascending: false })
-                .limit(8));
-        }
-
-        if (error) {
-            console.error('[admin] failed to load recent bookings', error);
-            tbody.innerHTML = '<tr><td colspan="4" style="text-align:center; color: var(--color-ink-faint);">Could not load recent bookings.</td></tr>';
-            return;
-        }
-
-        const rows = data || [];
-        if (rows.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="4" style="text-align:center; color: var(--color-ink-faint);">No bookings yet.</td></tr>';
-            return;
-        }
-
-        const nameMap = await fetchProfileNamesByIds(rows.map((r) => r.customer_id));
-
-        // Every interpolated value here is either customer-entered (name,
-        // court) or derived from a fixed internal map (status) — escaped
-        // before touching innerHTML, same rule as every other table in
-        // this file.
-        tbody.innerHTML = rows.map((row) => {
-            const name = window.escapeHtml(nameMap.get(String(row.customer_id)) || '—');
-            const court = window.escapeHtml(row.courts || '—');
-            const when = window.escapeHtml(formatAdminDateTime(row.time_date, row.end_at));
-            const displayStatus = adminDisplayStatusFor(row) || 'pending';
-            const statusLabel = window.escapeHtml(displayStatus.charAt(0).toUpperCase() + displayStatus.slice(1));
-            return `
-                <tr>
-                    <td class="admin-cell-main">${name}</td>
-                    <td>${court}</td>
-                    <td>${when}</td>
-                    <td><span class="admin-status ${window.escapeHtml(displayStatus)}">${statusLabel}</span></td>
-                </tr>
-            `;
-        }).join('');
-    }
-
-    // ------------------------------------------------------------------
     // Overview — Booking status this month (Revision A1, decision A3).
-    // Replaces the old hardcoded "Staff on shift" card: real counts of
-    // pending/confirmed/completed/cancelled/unattended for the current
-    // calendar month, rendered as the SAME label + count + proportional-bar
-    // rows (.admin-progress-*) the old fake card used.
-    // ------------------------------------------------------------------
-    const ADMIN_STATUS_LABELS = { pending: 'Pending', confirmed: 'Confirmed', completed: 'Completed', cancelled: 'Cancelled', unattended: 'Unattended' };
+    // Replaces the old hardcoded "Staff on shift" card: real counts,
+    // rendered as the SAME label + count + proportional-bar rows
+    // (.admin-progress-*) the old fake card used.
+    //
+    // Revision A3, decision C3 — trimmed to Pending/Completed/Unattended
+    // only; Confirmed and Cancelled are dropped from this render order (and
+    // from `counts` below, so nothing is even tallied for them any more —
+    // "counts still fetched for nothing else" per the plan). The derived
+    // Unattended rule itself (adminDisplayStatusFor()) is unchanged; bars
+    // stay proportional to the max of these 3 shown counts.
+    const ADMIN_STATUS_LABELS = { pending: 'Pending', completed: 'Completed', unattended: 'Unattended' };
 
     async function refreshStatusBreakdown() {
         const listRoot = document.querySelector('[data-admin-status-breakdown]');
@@ -505,7 +488,7 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
-        const counts = { pending: 0, confirmed: 0, completed: 0, cancelled: 0, unattended: 0 };
+        const counts = { pending: 0, completed: 0, unattended: 0 };
         (data || []).forEach((row) => {
             const key = adminDisplayStatusFor(row);
             if (Object.prototype.hasOwnProperty.call(counts, key)) counts[key] += 1;
@@ -526,6 +509,483 @@ document.addEventListener('DOMContentLoaded', () => {
                 </div>
             `;
         }).join('');
+    }
+
+    // ------------------------------------------------------------------
+    // Overview — Website performance (Revision A3, implementation_plan.md,
+    // decision C4). Replaces the old Recent bookings card with 6 honest,
+    // client-measurable health checks. Every check either returns a REAL
+    // measured value or, if it genuinely can't run right now, an explicit
+    // "—" value with a neutral "Unavailable" pill and a tooltip reason
+    // (adminPerfUnavailableRow) — never a fabricated number. Each check
+    // function is written to never reject (its own try/catch always
+    // resolves to a row), so Promise.all below can't itself fail.
+    // ------------------------------------------------------------------
+
+    // Supabase's free tier includes 1 GB of Storage — this is a plain
+    // display constant, not read from any API (Supabase doesn't expose a
+    // "your plan's included storage" endpoint to the client), so it has to
+    // be updated here by hand if the project's plan changes.
+    const MEDIA_STORAGE_LIMIT_BYTES = 1024 ** 3;
+
+    // Safety cap on checkAdminPerfMediaStorage()'s recursive descent into
+    // Storage "folders" (list() entries with no `metadata`) — a media
+    // library this deeply nested is not expected, and this bounds how many
+    // list() round trips a single Run check can ever make.
+    const ADMIN_PERF_MAX_STORAGE_FOLDERS = 20;
+    const ADMIN_PERF_REFRESH_MS = 5 * 60 * 1000;
+
+    function adminPerfUnavailableRow(label, reason) {
+        return { label, value: '—', status: 'neutral', pillText: 'Unavailable', title: reason || 'This check could not run.' };
+    }
+
+    // Human-friendly byte size — "12.4 MB", "1 GB" (whole GB reads cleaner
+    // than "1.0 GB" for the common case of a near-empty/near-fresh bucket
+    // limit), "930 KB". Self-contained rather than reusing any customer/
+    // staff-page helper, matching this file's existing convention (see
+    // isSchemaMismatchError's own comment near the top of this file).
+    function formatAdminPerfBytes(bytes) {
+        const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+        let value = Math.max(0, Number(bytes) || 0);
+        let unitIndex = 0;
+        while (value >= 1024 && unitIndex < units.length - 1) {
+            value /= 1024;
+            unitIndex += 1;
+        }
+        const rounded = (unitIndex === 0 || value >= 100) ? Math.round(value) : Math.round(value * 10) / 10;
+        return `${rounded} ${units[unitIndex]}`;
+    }
+
+    // (1) API response — a timed, lightweight `head` count against
+    // `booking` (no rows returned, just the count + response headers).
+    async function checkAdminPerfApiResponse() {
+        const LABEL = 'API response';
+        if (!window.sb) return adminPerfUnavailableRow(LABEL, 'Not connected to the server yet.');
+        const startedAt = performance.now();
+        try {
+            const { error } = await window.sb.from('booking').select('*', { count: 'exact', head: true });
+            const elapsedMs = Math.round(performance.now() - startedAt);
+            if (error) {
+                return { label: LABEL, value: '—', status: 'problem', pillText: 'Failed', title: error.message || 'The request failed.' };
+            }
+            const status = elapsedMs < 400 ? 'good' : elapsedMs < 1500 ? 'warn' : 'problem';
+            const pillText = status === 'good' ? 'Good' : status === 'warn' ? 'Slow' : 'Problem';
+            return { label: LABEL, value: `${elapsedMs} ms`, status, pillText };
+        } catch (err) {
+            return { label: LABEL, value: '—', status: 'problem', pillText: 'Failed', title: (err && err.message) || 'The request failed.' };
+        }
+    }
+
+    // (2) Page load — Navigation Timing. loadEventEnd (and its domComplete
+    // fallback) both read 0/undefined until the browser's own 'load' event
+    // has actually finished dispatching, so this can legitimately be
+    // "not ready yet" for a little while after DOMContentLoaded — handled
+    // as an honest Unavailable row rather than a fabricated/negative
+    // duration (see refreshWebsitePerformance's own initial-run comment
+    // below for how the FIRST run avoids this case entirely).
+    function getAdminPerfPageLoadMs() {
+        const [nav] = performance.getEntriesByType('navigation');
+        if (!nav) return null;
+        const raw = nav.loadEventEnd > 0 ? (nav.loadEventEnd - nav.startTime) : (nav.domComplete > 0 ? (nav.domComplete - nav.startTime) : null);
+        return (typeof raw === 'number' && raw > 0) ? raw : null;
+    }
+
+    function checkAdminPerfPageLoad() {
+        const LABEL = 'Page load';
+        const ms = getAdminPerfPageLoadMs();
+        if (ms === null) return adminPerfUnavailableRow(LABEL, 'The page is still finishing loading — try Run check again in a moment.');
+        const status = ms < 2500 ? 'good' : ms < 5000 ? 'warn' : 'problem';
+        const pillText = status === 'good' ? 'Good' : status === 'warn' ? 'Slow' : 'Problem';
+        return { label: LABEL, value: `${(ms / 1000).toFixed(1)} s`, status, pillText };
+    }
+
+    // (3) Media storage used — recursive, best-effort walk of the `media`
+    // bucket. list() entries with a `metadata` object are files (summed by
+    // metadata.size); entries with no `metadata` are "folders" and are
+    // descended into, up to ADMIN_PERF_MAX_STORAGE_FOLDERS list() calls
+    // total. Reuses isMediaBucketMissingError() (defined above, shared with
+    // uploadToMedia()) so a not-yet-provisioned bucket reads as "Not set up"
+    // rather than an error.
+    async function checkAdminPerfMediaStorage() {
+        const LABEL = 'Media storage used';
+        if (!window.sb) return adminPerfUnavailableRow(LABEL, 'Not connected to the server yet.');
+
+        let totalBytes = 0;
+        let foldersVisited = 0;
+        let bucketMissing = false;
+        let hardError = null;
+
+        async function walk(prefix) {
+            if (hardError || bucketMissing || foldersVisited >= ADMIN_PERF_MAX_STORAGE_FOLDERS) return;
+            foldersVisited += 1;
+            const { data, error } = await window.sb.storage.from('media').list(prefix, { limit: 1000 });
+            if (error) {
+                if (isMediaBucketMissingError(error)) bucketMissing = true;
+                else hardError = error;
+                return;
+            }
+            for (const entry of (data || [])) {
+                if (hardError || bucketMissing) return;
+                if (entry.metadata && typeof entry.metadata.size === 'number') {
+                    totalBytes += entry.metadata.size;
+                } else if (!entry.metadata) {
+                    await walk(prefix ? `${prefix}/${entry.name}` : entry.name);
+                }
+            }
+        }
+
+        try {
+            await walk('');
+        } catch (err) {
+            hardError = err;
+        }
+
+        if (bucketMissing) {
+            return { label: LABEL, value: 'Not set up — run 015_media_bucket.sql', status: 'neutral', pillText: 'Not set up' };
+        }
+        if (hardError) {
+            return adminPerfUnavailableRow(LABEL, hardError.message || 'Could not read Storage.');
+        }
+
+        const usedFraction = totalBytes / MEDIA_STORAGE_LIMIT_BYTES;
+        const status = usedFraction >= 0.95 ? 'problem' : usedFraction >= 0.80 ? 'warn' : 'good';
+        const pillText = status === 'good' ? 'Good' : status === 'warn' ? 'Warn' : 'Problem';
+        return {
+            label: LABEL,
+            value: `${formatAdminPerfBytes(totalBytes)} of ${formatAdminPerfBytes(MEDIA_STORAGE_LIMIT_BYTES)}`,
+            status,
+            pillText,
+            barPct: Math.max(0, Math.min(100, usedFraction * 100)),
+        };
+    }
+
+    // (4) Database records — 3 head counts. Purely informational (always
+    // "Good" once at least one count loads) — this row exists to show real
+    // scale, not to flag a problem, so it deliberately never contributes a
+    // warn/problem status (see worstAdminPerfStatus's own comment).
+    async function checkAdminPerfDatabaseRecords() {
+        const LABEL = 'Database records';
+        if (!window.sb) return adminPerfUnavailableRow(LABEL, 'Not connected to the server yet.');
+        try {
+            const [bookingsRes, customersRes, feedbackRes] = await Promise.all([
+                window.sb.from('booking').select('*', { count: 'exact', head: true }),
+                window.sb.from('profiles').select('*', { count: 'exact', head: true }).eq('role', 'customer'),
+                window.sb.from('feedback').select('*', { count: 'exact', head: true }),
+            ]);
+            const bookings = bookingsRes.error ? null : (bookingsRes.count || 0);
+            const customers = customersRes.error ? null : (customersRes.count || 0);
+            const feedbackCount = feedbackRes.error ? null : (feedbackRes.count || 0);
+
+            if (bookings === null && customers === null && feedbackCount === null) {
+                return adminPerfUnavailableRow(LABEL, 'Could not reach the database.');
+            }
+
+            const value = [
+                `${bookings === null ? '—' : bookings} booking${bookings === 1 ? '' : 's'}`,
+                `${customers === null ? '—' : customers} customer${customers === 1 ? '' : 's'}`,
+                `${feedbackCount === null ? '—' : feedbackCount} feedback`,
+            ].join(' · ');
+            return { label: LABEL, value, status: 'good', pillText: 'Good' };
+        } catch (err) {
+            return adminPerfUnavailableRow(LABEL, (err && err.message) || 'Could not reach the database.');
+        }
+    }
+
+    // (5) Errors this session — inigosyncSessionErrorCount is a module-level
+    // counter incremented by the window 'error'/'unhandledrejection'
+    // listeners registered at the very top of this file (before this
+    // DOMContentLoaded block even runs), so it also counts anything thrown
+    // during this file's own startup.
+    function checkAdminPerfSessionErrors() {
+        const count = inigosyncSessionErrorCount;
+        const status = count === 0 ? 'good' : count < 5 ? 'warn' : 'problem';
+        const pillText = status === 'good' ? 'Good' : status === 'warn' ? 'Warn' : 'Problem';
+        return { label: 'Errors this session', value: String(count), status, pillText };
+    }
+
+    // (6) Connection — navigator.onLine is always available; `.connection`
+    // (Network Information API) is Chromium-only, hence the optional
+    // chaining and the "when available" fallback.
+    function checkAdminPerfConnection() {
+        const online = navigator.onLine;
+        const effectiveType = navigator.connection && navigator.connection.effectiveType;
+        const value = online ? (effectiveType ? `Online · ${effectiveType}` : 'Online') : 'Offline';
+        return { label: 'Connection', value, status: online ? 'good' : 'problem', pillText: online ? 'Good' : 'Problem' };
+    }
+
+    const ADMIN_PERF_OVERALL_LABELS = { good: 'Good', warn: 'Slow', problem: 'Problem' };
+
+    // Worst of the six — but a 'neutral' row (Media storage's "Not set up",
+    // or any check's own "Unavailable") never counts toward it: a bucket
+    // the owner hasn't provisioned yet, or a check that simply couldn't run
+    // this time, isn't a website PERFORMANCE problem, so neither should
+    // drag the overall badge down. If every row is neutral (practically
+    // unreachable — Connection/Errors this session/Page load are almost
+    // always computable), default to Good rather than alarming the owner
+    // over nothing measured.
+    function worstAdminPerfStatus(rows) {
+        const RANK = { good: 0, warn: 1, problem: 2 };
+        let worst = null;
+        rows.forEach((row) => {
+            if (!row || row.status === 'neutral' || !(row.status in RANK)) return;
+            const rank = RANK[row.status];
+            if (worst === null || rank > worst) worst = rank;
+        });
+        if (worst === null) return 'good';
+        return worst === 0 ? 'good' : worst === 1 ? 'warn' : 'problem';
+    }
+
+    function adminPerfPillHtml(row, extraClass) {
+        const status = row.status || 'neutral';
+        const text = row.pillText || 'Info';
+        const titleAttr = row.title ? ` title="${window.escapeHtml(row.title)}"` : '';
+        const cls = `admin-perf-pill${extraClass ? ` ${extraClass}` : ''} admin-perf-pill-${window.escapeHtml(status)}`;
+        return `<span class="${cls}"${titleAttr}>${window.escapeHtml(text)}</span>`;
+    }
+
+    // Legend swatch — same "which of the 4 statuses" branch the chart slice
+    // colors below use, just as a tiny CSS-colored dot (.admin-perf-dot-*,
+    // Style/owner_dashboard.css) instead of a canvas fill.
+    function adminPerfDotHtml(status) {
+        return `<span class="admin-perf-dot admin-perf-dot-${window.escapeHtml(status || 'neutral')}" aria-hidden="true"></span>`;
+    }
+
+    function adminPerfRowHtml(row) {
+        // Media storage's usage bar renders as a second, full-width line
+        // under the label/value/pill row (see .admin-perf-bar's own comment
+        // in Style/owner_dashboard.css) rather than squeezed into that row.
+        const barHtml = (typeof row.barPct === 'number')
+            ? `<div class="admin-progress-track admin-perf-bar"><div class="admin-progress-fill" style="width: ${row.barPct}%;"></div></div>`
+            : '';
+        return `
+            <div class="admin-perf-item">
+                <div class="admin-perf-item-row">
+                    <span class="admin-perf-item-label">${adminPerfDotHtml(row.status)}${window.escapeHtml(row.label)}</span>
+                    <span class="admin-perf-item-value">${window.escapeHtml(row.value)}</span>
+                    ${adminPerfPillHtml(row)}
+                </div>
+                ${barHtml}
+            </div>
+        `;
+    }
+
+    // ------------------------------------------------------------------
+    // Website performance — doughnut chart ("like a pie graph"). Chart.js
+    // is loaded from the CDN in Pages/owner_dashboard.html's <head>, ahead
+    // of this file, so window.Chart is already defined here unless that
+    // CDN request itself failed (checked once below, mirroring how
+    // event/chart.js guards the SAME global for the booking trend chart).
+    // One instance, created once and updated in place on every refresh —
+    // never destroyed/recreated — exactly like event/chart.js's
+    // bookingChart/updateCharts() do for that other chart on this page.
+    // ------------------------------------------------------------------
+    let adminPerfChart = null;
+    // The tooltip label callback below is defined once, at chart creation,
+    // but needs each refresh's live values/pillText — it reads them off
+    // this module-level array (kept in sync by renderAdminPerfChart())
+    // rather than closing over a single refresh's now-stale `rows` param.
+    let adminPerfLatestRows = [];
+
+    function getAdminPerfThemeColors() {
+        const style = getComputedStyle(document.documentElement);
+        return {
+            ink: style.getPropertyValue('--color-ink').trim(),
+            line: style.getPropertyValue('--color-line').trim(),
+            bgCard: style.getPropertyValue('--color-bg-card').trim(),
+        };
+    }
+
+    // The 4 slice/dot colors — good/problem/neutral reuse the same design
+    // tokens as .admin-perf-pill-good/-problem/-neutral; warn uses the
+    // dedicated --color-perf-warn amber (see that variable's own comment in
+    // Style/owner_dashboard.css for why it isn't --color-primary here).
+    function adminPerfSliceColor(status) {
+        const style = getComputedStyle(document.documentElement);
+        if (status === 'good') return style.getPropertyValue('--color-court-green').trim();
+        if (status === 'warn') return style.getPropertyValue('--color-perf-warn').trim();
+        if (status === 'problem') return style.getPropertyValue('--color-alert').trim();
+        return style.getPropertyValue('--color-ink-faint').trim(); // neutral / unavailable / anything else
+    }
+
+    // Re-applies current theme colors to the existing chart instance —
+    // called after every refresh AND on 'themechange', same split
+    // event/chart.js's updateCharts() does for the booking trend chart.
+    function paintAdminPerfChart() {
+        if (!adminPerfChart) return;
+        const theme = getAdminPerfThemeColors();
+        adminPerfChart.data.datasets[0].backgroundColor = adminPerfLatestRows.map((row) => adminPerfSliceColor(row.status));
+        adminPerfChart.data.datasets[0].borderColor = theme.bgCard;
+        adminPerfChart.options.plugins.tooltip.backgroundColor = theme.bgCard;
+        adminPerfChart.options.plugins.tooltip.borderColor = theme.line;
+        adminPerfChart.options.plugins.tooltip.titleColor = theme.ink;
+        adminPerfChart.options.plugins.tooltip.bodyColor = theme.ink;
+        adminPerfChart.update();
+    }
+
+    // Builds the doughnut the first time, then just updates its data/colors
+    // in place on every subsequent call (see this section's own comment
+    // above for why). window.Chart missing (CDN failed) or the canvas not
+    // being in the DOM both no-op here — Style/owner_dashboard.css's
+    // .admin-perf-no-chart (set once, below) hides the now-empty chart
+    // column so the legend list alone fills the card.
+    function renderAdminPerfChart(rows) {
+        adminPerfLatestRows = rows;
+        const canvas = document.querySelector('[data-admin-perf-chart]');
+        if (!canvas || typeof window.Chart === 'undefined') return;
+
+        if (!adminPerfChart) {
+            const theme = getAdminPerfThemeColors();
+            adminPerfChart = new Chart(canvas, {
+                type: 'doughnut',
+                data: {
+                    labels: rows.map((row) => row.label),
+                    datasets: [{
+                        // Six EQUAL slices — status (color), not magnitude,
+                        // is what this ring encodes; a real check value
+                        // (e.g. milliseconds vs. a booking count) has no
+                        // shared unit to size slices by anyway.
+                        data: rows.map(() => 1),
+                        backgroundColor: rows.map((row) => adminPerfSliceColor(row.status)),
+                        borderColor: theme.bgCard,
+                        borderWidth: 2,
+                    }],
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    cutout: '68%',
+                    animation: { duration: 400 },
+                    plugins: {
+                        legend: { display: false }, // the legend list beside it IS the legend
+                        tooltip: {
+                            backgroundColor: theme.bgCard,
+                            borderColor: theme.line,
+                            borderWidth: 1,
+                            titleColor: theme.ink,
+                            bodyColor: theme.ink,
+                            padding: 10,
+                            displayColors: false,
+                            callbacks: {
+                                title: () => '',
+                                label: (ctx) => {
+                                    const row = adminPerfLatestRows[ctx.dataIndex];
+                                    if (!row) return '';
+                                    return `${row.label}: ${row.value} · ${row.pillText || 'Info'}`;
+                                },
+                            },
+                        },
+                    },
+                },
+            });
+            return;
+        }
+
+        adminPerfChart.data.labels = rows.map((row) => row.label);
+        adminPerfChart.data.datasets[0].data = rows.map(() => 1);
+        paintAdminPerfChart();
+    }
+
+    // Center-of-the-ring overlay — the overall word (never 'neutral', see
+    // worstAdminPerfStatus()) plus the static "6 checks" already in the
+    // markup. Pure CSS class swap, so it stays correct across theme changes
+    // on its own (no JS re-render needed, unlike the canvas ring itself).
+    function updateAdminPerfChartCenter(overall) {
+        const statusEl = document.querySelector('[data-admin-perf-chart-status]');
+        if (!statusEl) return;
+        statusEl.textContent = ADMIN_PERF_OVERALL_LABELS[overall] || '—';
+        statusEl.className = `admin-perf-chart-status admin-perf-chart-status-${overall}`;
+    }
+
+    let adminPerfIsRunning = false;
+
+    async function refreshWebsitePerformance() {
+        const listRoot = document.querySelector('[data-admin-perf-list]');
+        if (!listRoot) return;
+        if (adminPerfIsRunning) return; // ignore an overlapping Run check click / interval tick
+        adminPerfIsRunning = true;
+
+        const overallEl = document.querySelector('[data-admin-perf-overall]');
+        const lastCheckedEl = document.querySelector('[data-admin-perf-last-checked]');
+        const runBtn = document.querySelector('[data-admin-perf-run]');
+        const runBtnOriginalLabel = runBtn ? runBtn.textContent : null;
+        if (runBtn) {
+            runBtn.disabled = true;
+            runBtn.textContent = 'Checking…';
+        }
+
+        try {
+            const rows = await Promise.all([
+                checkAdminPerfApiResponse(),
+                checkAdminPerfPageLoad(),
+                checkAdminPerfMediaStorage(),
+                checkAdminPerfDatabaseRecords(),
+                checkAdminPerfSessionErrors(),
+                checkAdminPerfConnection(),
+            ]);
+
+            listRoot.innerHTML = rows.map(adminPerfRowHtml).join('');
+            renderAdminPerfChart(rows);
+
+            const overall = worstAdminPerfStatus(rows);
+            if (overallEl) {
+                overallEl.textContent = ADMIN_PERF_OVERALL_LABELS[overall];
+                overallEl.className = `admin-perf-pill admin-perf-overall admin-perf-pill-${overall}`;
+            }
+            updateAdminPerfChartCenter(overall);
+            if (lastCheckedEl) {
+                const checkedAt = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+                lastCheckedEl.textContent = `Last checked ${checkedAt}`;
+            }
+        } catch (err) {
+            // Should be unreachable (every check* function catches its own
+            // errors), but a card stuck on "Running checks…" forever would
+            // be worse than an honest failure message.
+            console.error('[admin] failed to run the website performance checks', err);
+            listRoot.innerHTML = '<p style="color: var(--color-ink-faint);">Could not run the performance checks. Please try again.</p>';
+        } finally {
+            adminPerfIsRunning = false;
+            if (runBtn) {
+                runBtn.disabled = false;
+                runBtn.textContent = runBtnOriginalLabel || 'Run check';
+            }
+        }
+    }
+
+    const adminPerfRunBtn = document.querySelector('[data-admin-perf-run]');
+    if (adminPerfRunBtn) adminPerfRunBtn.addEventListener('click', refreshWebsitePerformance);
+
+    // Chart.js availability is fixed for the life of the page (either the
+    // <head> CDN <script> tag succeeded before this file ever ran, or it
+    // didn't) — checked once, matching event/chart.js's own one-time
+    // `typeof Chart === 'undefined'` guard for the booking trend chart.
+    const adminPerfBodyEl = document.querySelector('[data-admin-perf-body]');
+    if (adminPerfBodyEl && typeof window.Chart === 'undefined') {
+        console.warn('[admin] Chart.js failed to load from the CDN — Website performance will show the legend list only.');
+        adminPerfBodyEl.classList.add('admin-perf-no-chart');
+    }
+
+    // Re-color (not rebuild) the doughnut on theme changes — same approach
+    // event/chart.js's updateCharts() takes for the booking trend chart.
+    document.addEventListener('themechange', paintAdminPerfChart);
+
+    document.addEventListener('inigosync:profile-ready', refreshWebsitePerformance);
+    window.setInterval(refreshWebsitePerformance, ADMIN_PERF_REFRESH_MS);
+
+    // First run deliberately keyed to the window 'load' event (deferred one
+    // more tick via setTimeout) rather than called plainly here alongside
+    // this file's other "on load" refreshers: Page load (check #2) reads
+    // Navigation Timing fields that are only populated once 'load' finishes
+    // DISPATCHING — reading them from directly inside a 'load' listener
+    // itself can still observe 0 on some browsers, hence the setTimeout(…,
+    // 0) to hop past that same event loop turn. Falls back to running
+    // immediately if 'load' has, unusually, already fired by the time this
+    // line runs (e.g. a very slow parse of everything before this script
+    // tag) — DOMContentLoaded (which this whole block already runs inside
+    // of) always fires before 'load', so that's the only case this guards.
+    if (document.readyState === 'complete') {
+        refreshWebsitePerformance();
+    } else {
+        window.addEventListener('load', () => window.setTimeout(refreshWebsitePerformance, 0), { once: true });
     }
 
     refreshOverviewStats();
@@ -729,12 +1189,17 @@ document.addEventListener('DOMContentLoaded', () => {
         return row;
     }
 
+    // Revision A3, decision C2 — staff ONLY (.eq, not the old .in('role',
+    // ['staff', 'admin'])): the owner/admin account managing this table
+    // shouldn't also appear as a row inside it. Pages/owner_dashboard.html's
+    // own static fallback rows dropped their "Rosalinda Driz" (owner) row to
+    // match, so no owner row appears even before this fetch resolves.
     async function refreshStaffList() {
         if (!staffTable || !window.sb) return;
         const { data, error } = await window.sb
             .from('profiles')
             .select('*')
-            .in('role', ['staff', 'admin'])
+            .eq('role', 'staff')
             .order('created_at');
 
         if (error) {
@@ -1981,14 +2446,240 @@ document.addEventListener('DOMContentLoaded', () => {
     loadSlides();
 
     // ------------------------------------------------------------------
+    // Feedbacks & Reviews (Revision A3, implementation_plan.md, decision
+    // C5) — a Google-Play-style ratings summary (average + star row + 5→1
+    // distribution, each bar doubling as a star filter) over a sortable/
+    // filterable list of `feedback` rows. Unlike every other panel on this
+    // page, this data is NOT loaded eagerly at startup — a feedback table
+    // can run into the hundreds of rows and this tab is never the default
+    // view — it loads when the tab is actually opened (setActivePanel()
+    // above calls loadFeedback() for name === 'feedback'; hoisted function,
+    // safe to call from there regardless of source order — same reasoning
+    // this file already documents for closeAdminNotifMenu) and again on
+    // 'inigosync:profile-ready'.
+    // ------------------------------------------------------------------
+    let currentFeedback = [];
+    let feedbackNameMap = new Map();
+    let feedbackSort = 'recent';
+    let feedbackFilter = 'all';
+
+    // "★★★★☆" style rating string, reused as-is by the summary's average
+    // stars and every card's own rating row — see adminStarString's own
+    // comment further below (Notifications section) for the shape; declared
+    // there first but a hoisted function declaration, so safe to use here.
+
+    function formatFeedbackRelativeDate(iso) {
+        const date = new Date(iso);
+        if (Number.isNaN(date.getTime())) return '—';
+        const diffMs = Date.now() - date.getTime();
+        const diffMin = Math.round(diffMs / 60000);
+        if (diffMin < 1) return 'Just now';
+        if (diffMin < 60) return `${diffMin} minute${diffMin === 1 ? '' : 's'} ago`;
+        const diffHour = Math.round(diffMin / 60);
+        if (diffHour < 24) return `${diffHour} hour${diffHour === 1 ? '' : 's'} ago`;
+        const diffDay = Math.round(diffHour / 24);
+        if (diffDay < 30) return `${diffDay} day${diffDay === 1 ? '' : 's'} ago`;
+        const diffMonth = Math.round(diffDay / 30);
+        if (diffMonth < 12) return `${diffMonth} month${diffMonth === 1 ? '' : 's'} ago`;
+        const diffYear = Math.round(diffMonth / 12);
+        return `${diffYear} year${diffYear === 1 ? '' : 's'} ago`;
+    }
+
+    function formatFeedbackFullDate(iso) {
+        const date = new Date(iso);
+        if (Number.isNaN(date.getTime())) return '';
+        return date.toLocaleString('en-US', { month: 'long', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' });
+    }
+
+    function feedbackHasRating(row) {
+        return typeof row.rating === 'number' && row.rating >= 1 && row.rating <= 5;
+    }
+
+    function filterFeedbackRows(rows, filter) {
+        if (filter === 'all') return rows;
+        if (filter === 'none') return rows.filter((r) => !feedbackHasRating(r));
+        const star = Number(filter);
+        return rows.filter((r) => feedbackHasRating(r) && r.rating === star);
+    }
+
+    // Ratings without a rating always sort to the end, regardless of sort
+    // mode — there's no meaningful "highest/lowest" position for a value
+    // that doesn't exist, so pushing them out of the way (rather than
+    // treating a missing rating as a 0) keeps both sort modes intuitive.
+    function sortFeedbackRows(rows, sortMode) {
+        const copy = rows.slice();
+        if (sortMode === 'highest' || sortMode === 'lowest') {
+            copy.sort((a, b) => {
+                const aHas = feedbackHasRating(a);
+                const bHas = feedbackHasRating(b);
+                if (aHas && !bHas) return -1;
+                if (!aHas && bHas) return 1;
+                if (!aHas && !bHas) return new Date(b.created_at) - new Date(a.created_at);
+                return sortMode === 'highest' ? (b.rating - a.rating) : (a.rating - b.rating);
+            });
+            return copy;
+        }
+        copy.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+        return copy;
+    }
+
+    function computeFeedbackSummary(rows) {
+        const rated = rows.filter(feedbackHasRating);
+        const withoutRating = rows.length - rated.length;
+        const avg = rated.length ? rated.reduce((sum, r) => sum + r.rating, 0) / rated.length : 0;
+        const distribution = { 5: 0, 4: 0, 3: 0, 2: 0, 1: 0 };
+        rated.forEach((r) => { distribution[r.rating] += 1; });
+        return { avg, totalCount: rows.length, ratedCount: rated.length, withoutRating, distribution };
+    }
+
+    function wireFeedbackDistRows(scope) {
+        scope.querySelectorAll('[data-admin-feedback-dist]').forEach((btn) => {
+            btn.addEventListener('click', () => {
+                const star = btn.dataset.adminFeedbackDist;
+                // Click the already-active bar again = clear back to "All";
+                // the toolbar's own "All" chip is the equivalent affordance
+                // for the chips row, so chips themselves don't need this
+                // same toggle-off behaviour (see setFeedbackFilter's own
+                // comment).
+                setFeedbackFilter(feedbackFilter === star ? 'all' : star);
+            });
+        });
+    }
+
+    function renderFeedbackSummary(rows) {
+        const summary = computeFeedbackSummary(rows);
+
+        const avgEl = document.querySelector('[data-admin-feedback-avg]');
+        if (avgEl) avgEl.textContent = summary.ratedCount ? summary.avg.toFixed(1) : '—';
+
+        const avgStarsEl = document.querySelector('[data-admin-feedback-avg-stars]');
+        if (avgStarsEl) avgStarsEl.textContent = adminStarString(Math.round(summary.avg));
+
+        const countEl = document.querySelector('[data-admin-feedback-count]');
+        if (countEl) {
+            const reviewWord = summary.totalCount === 1 ? 'review' : 'reviews';
+            countEl.textContent = summary.totalCount === 0
+                ? 'No reviews yet'
+                : (summary.withoutRating > 0
+                    ? `${summary.totalCount} ${reviewWord} · ${summary.withoutRating} without a rating`
+                    : `based on ${summary.totalCount} ${reviewWord}`);
+        }
+
+        const distRoot = document.querySelector('[data-admin-feedback-distribution]');
+        if (distRoot) {
+            const maxCount = Math.max(1, ...Object.values(summary.distribution));
+            distRoot.innerHTML = [5, 4, 3, 2, 1].map((star) => {
+                const count = summary.distribution[star];
+                const pct = Math.round((count / maxCount) * 100);
+                const isActive = feedbackFilter === String(star);
+                return `
+                    <button type="button" class="admin-feedback-dist-row${isActive ? ' is-active' : ''}" data-admin-feedback-dist="${star}">
+                        <span class="admin-feedback-dist-label">${star}★</span>
+                        <div class="admin-progress-track admin-feedback-dist-track"><div class="admin-progress-fill" style="width: ${pct}%;"></div></div>
+                        <span class="admin-feedback-dist-count">${count}</span>
+                    </button>
+                `;
+            }).join('');
+            wireFeedbackDistRows(distRoot);
+        }
+    }
+
+    function renderFeedbackList(rows) {
+        const listRoot = document.querySelector('[data-admin-feedback-list]');
+        if (!listRoot) return;
+
+        if (!rows.length) {
+            listRoot.innerHTML = '<p class="admin-feedback-empty">No feedback yet.</p>';
+            return;
+        }
+
+        // name/message are customer-entered — escaped before touching
+        // innerHTML, same rule as every other list in this file.
+        listRoot.innerHTML = rows.map((row) => {
+            const name = window.escapeHtml(feedbackNameMap.get(String(row.profile_id)) || 'Customer');
+            const ratingHtml = feedbackHasRating(row)
+                ? `<span class="admin-feedback-card-rating">${adminStarString(row.rating)}</span>`
+                : '<span class="admin-feedback-card-rating admin-feedback-card-no-rating">No rating</span>';
+            const relative = window.escapeHtml(formatFeedbackRelativeDate(row.created_at));
+            const full = window.escapeHtml(formatFeedbackFullDate(row.created_at));
+            const message = window.escapeHtml(row.message || '');
+            return `
+                <article class="admin-feedback-card">
+                    <div class="admin-feedback-card-head">
+                        <span class="admin-feedback-card-name">${name}</span>
+                        <span class="admin-feedback-card-date" title="${full}">${relative}</span>
+                    </div>
+                    ${ratingHtml}
+                    <p class="admin-feedback-card-message">${message}</p>
+                </article>
+            `;
+        }).join('');
+    }
+
+    function renderFeedbackPanel() {
+        renderFeedbackSummary(currentFeedback);
+        const filtered = filterFeedbackRows(currentFeedback, feedbackFilter);
+        const sorted = sortFeedbackRows(filtered, feedbackSort);
+        renderFeedbackList(sorted);
+    }
+
+    function setFeedbackFilter(value) {
+        feedbackFilter = value;
+        document.querySelectorAll('[data-admin-feedback-filter]').forEach((chip) => {
+            chip.classList.toggle('is-active', chip.dataset.adminFeedbackFilter === value);
+        });
+        renderFeedbackPanel();
+    }
+
+    document.querySelectorAll('[data-admin-feedback-filter]').forEach((chip) => {
+        chip.addEventListener('click', () => setFeedbackFilter(chip.dataset.adminFeedbackFilter));
+    });
+
+    const feedbackSortSelect = document.querySelector('[data-admin-feedback-sort]');
+    if (feedbackSortSelect) {
+        feedbackSortSelect.addEventListener('change', () => {
+            feedbackSort = feedbackSortSelect.value;
+            renderFeedbackPanel();
+        });
+    }
+
+    async function loadFeedback() {
+        const listRoot = document.querySelector('[data-admin-feedback-list]');
+        if (!listRoot || !window.sb) return;
+        listRoot.innerHTML = '<p style="color: var(--color-ink-faint); padding: 8px 4px;">Loading…</p>';
+
+        const { data, error } = await window.sb
+            .from('feedback')
+            .select('id, profile_id, rating, message, created_at')
+            .order('created_at', { ascending: false })
+            .limit(500);
+
+        if (error) {
+            console.error('[admin] failed to load feedback', error);
+            listRoot.innerHTML = isSchemaMismatchError(error)
+                ? '<p style="color: var(--color-ink-faint); padding: 8px 4px;">This needs a database update that hasn\'t been applied yet (see database/schema/009_feedback.sql).</p>'
+                : '<p style="color: var(--color-ink-faint); padding: 8px 4px;">Could not load feedback. Please try again.</p>';
+            return;
+        }
+
+        currentFeedback = data || [];
+        feedbackNameMap = await fetchProfileNamesByIds(currentFeedback.map((r) => r.profile_id));
+        renderFeedbackPanel();
+    }
+
+    document.addEventListener('inigosync:profile-ready', loadFeedback);
+
+    // ------------------------------------------------------------------
     // Notifications (Revision A1, decision A7) — ported from the customer
     // dashboard's [data-dash-notif*] dropdown (includes/Dashboard.js) under
     // admin-* names. Items are the latest 10 PENDING bookings + latest 5
     // feedback rows, merged and sorted newest-first. Unread dot = the
     // newest item is newer than localStorage's last-seen marker; opening
     // the menu updates that marker and hides the dot. Clicking a booking
-    // item jumps to Overview (Recent bookings); feedback items are
-    // informational only (no Feedback panel exists yet to jump to).
+    // item jumps to Overview; clicking a feedback item jumps to Feedbacks &
+    // Reviews (Revision A3, decision C5 — that tab didn't exist yet when
+    // this dropdown was built, so feedback items used to be informational
+    // only).
     // ------------------------------------------------------------------
     const adminNotif = document.querySelector('[data-admin-notif]');
     const adminNotifTrigger = document.querySelector('[data-admin-notif-trigger]');
@@ -2051,6 +2742,12 @@ document.addEventListener('DOMContentLoaded', () => {
         if (item.type === 'booking') {
             return `<button type="button" class="admin-notif-item" data-admin-notif-booking="${window.escapeHtml(String(item.bookingId))}">${body}</button>`;
         }
+        // Revision A3, decision C5 — feedback items are now clickable too
+        // (they used to render as a plain, non-interactive <div> before the
+        // Feedbacks & Reviews tab existed) — see the click handler below.
+        if (item.type === 'feedback') {
+            return `<button type="button" class="admin-notif-item" data-admin-notif-feedback>${body}</button>`;
+        }
         return `<div class="admin-notif-item">${body}</div>`;
     }
 
@@ -2079,8 +2776,9 @@ document.addEventListener('DOMContentLoaded', () => {
             ]);
 
             if (bookingRes.error && isSchemaMismatchError(bookingRes.error)) {
-                // Mirrors refreshRecentBookings()'s own retry above —
-                // pre-012 database, end_at doesn't exist yet.
+                // Same retry shape refreshOverviewStats()'s queries use
+                // elsewhere in this file — pre-012 database, end_at doesn't
+                // exist yet.
                 bookingRes = await window.sb.from('booking')
                     .select('booking_id, customer_id, courts, time_date, created_at')
                     .eq('status', 'pending')
@@ -2151,10 +2849,18 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (adminNotifList) {
         adminNotifList.addEventListener('click', (e) => {
-            const item = e.target.closest('[data-admin-notif-booking]');
-            if (!item) return;
-            closeAdminNotifMenu();
-            setActivePanel('overview');
+            if (e.target.closest('[data-admin-notif-booking]')) {
+                closeAdminNotifMenu();
+                setActivePanel('overview');
+                return;
+            }
+            // Revision A3, decision C5 — a feedback notification now jumps
+            // to the Feedbacks & Reviews tab (it had nowhere to go before
+            // that tab existed).
+            if (e.target.closest('[data-admin-notif-feedback]')) {
+                closeAdminNotifMenu();
+                setActivePanel('feedback');
+            }
         });
     }
 

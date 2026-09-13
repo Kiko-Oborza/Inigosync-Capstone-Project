@@ -39,7 +39,7 @@
 -- postgres enough privilege for). A COMMENT here could fail with a
 -- permission error and abort the rest of this script — not worth the risk
 -- for pure documentation; this file's own header comment covers the same
--- information instead.
+-- information as the alternative.
 insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
 values ('media', 'media', true, 5242880, array['image/jpeg', 'image/png', 'image/webp'])
 on conflict (id) do update set

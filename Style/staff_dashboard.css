@@ -311,6 +311,118 @@ body.staff-sidebar-open .staff-toggle-bar:nth-child(3) {
     border: 1.5px solid var(--color-bg-elevated);
 }
 
+/* ==========================================================================
+   Notifications dropdown (Revision S1, decision S8) — ported from the owner
+   dashboard's .admin-notif and .admin-notif-item rules (Style/owner_dashboard.css)
+   under staff-* names. Same open/close idiom + visual shape as
+   .staff-profile-menu above (toggled via the same [data-open] attribute
+   pattern from includes/staff_dashboard.js).
+   ========================================================================== */
+.staff-notif { position: relative; }
+
+.staff-notif-menu {
+    position: absolute;
+    top: calc(100% + 10px);
+    right: 0;
+    width: 340px;
+    max-width: calc(100vw - 32px);
+    max-height: 420px;
+    overflow-y: auto;
+    background: var(--color-bg-card);
+    border: 1px solid var(--color-line);
+    border-radius: 12px;
+    padding: 8px;
+    box-shadow: 0 18px 40px rgba(0, 0, 0, 0.4);
+    opacity: 0;
+    transform: translateY(-6px);
+    pointer-events: none;
+    transition: opacity 0.18s ease, transform 0.18s ease;
+    z-index: 6;
+}
+
+.staff-notif[data-open] .staff-notif-menu {
+    opacity: 1;
+    transform: translateY(0);
+    pointer-events: auto;
+}
+
+.staff-notif-menu-head {
+    font-family: var(--font-display);
+    font-weight: 600;
+    font-size: var(--fs-md);
+    padding: 8px 10px 10px;
+    color: var(--color-ink);
+}
+
+/* .staff-notif-item is always a <button> here (every notification kind —
+   starting-soon, new booking, walk-in — jumps to Overview on click). */
+.staff-notif-item {
+    display: flex;
+    align-items: flex-start;
+    width: 100%;
+    gap: 10px;
+    padding: 10px;
+    border-radius: 8px;
+    background: none;
+    border: 0;
+    text-align: left;
+    font: inherit;
+    color: inherit;
+    cursor: pointer;
+    transition: background 0.15s ease;
+}
+
+.staff-notif-item:hover,
+.staff-notif-item:focus-visible {
+    background: rgba(244, 239, 230, 0.06);
+}
+
+.staff-notif-item:focus-visible {
+    outline: 2px solid var(--color-primary);
+    outline-offset: -2px;
+}
+
+.staff-notif-item + .staff-notif-item {
+    border-top: 1px solid var(--color-line);
+}
+
+.staff-notif-item-body {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+}
+
+.staff-notif-item-body strong {
+    font-size: var(--fs-md);
+    color: var(--color-ink);
+}
+
+.staff-notif-item-body span {
+    font-size: var(--fs-xs);
+    color: var(--color-ink-faint);
+}
+
+.staff-notif-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    margin-top: 5px;
+    flex-shrink: 0;
+    background: var(--color-ink-faint);
+}
+
+.staff-notif-dot.soon { background: var(--color-alert); }
+.staff-notif-dot.booking { background: var(--color-court-green); }
+.staff-notif-dot.walkin { background: var(--color-primary); }
+
+.staff-notif-empty {
+    color: var(--color-ink-faint);
+    font-size: var(--fs-md);
+    padding: 16px 10px;
+    text-align: center;
+}
+
 .staff-profile { position: relative; }
 
 .staff-profile-trigger {
@@ -327,7 +439,14 @@ body.staff-sidebar-open .staff-toggle-bar:nth-child(3) {
        --fw-semibold (600); Sora renders heavier at the same weight. */
     color: #14110d; font-family: var(--font-display); font-weight: var(--fw-semibold); font-size: var(--fs-base);
     flex-shrink: 0;
+    overflow: hidden;
 }
+
+/* Revision S1 (implementation_plan.md, decision S7) — real photo
+   (profiles.avatar_url) vs. the initials fallback; see
+   includes/staff_dashboard.js's renderStaffProfile(), same img-vs-initials
+   idiom as includes/owner_dashboard.js's renderAdminProfile(). */
+.staff-avatar-img { width: 100%; height: 100%; object-fit: cover; display: block; }
 
 .staff-profile-trigger .staff-caret {
     width: 12px; height: 12px; color: var(--color-ink-faint); transition: transform 0.2s;
@@ -471,6 +590,7 @@ body.staff-sidebar-open .staff-toggle-bar:nth-child(3) {
        moves to --font-display, not --font-numeric. */
     text-align: left; font-family: var(--font-display); font-size: var(--fs-xs); letter-spacing: 0.05em;
     text-transform: uppercase; color: var(--color-ink-faint); padding: 0 14px 12px; border-bottom: 1px solid var(--color-line);
+    white-space: nowrap;
 }
 
 .staff-table td {
@@ -482,6 +602,7 @@ body.staff-sidebar-open .staff-toggle-bar:nth-child(3) {
 
 .staff-table td.staff-cell-main { color: var(--color-ink); font-weight: 600; }
 
+.staff-table td .staff-cell-sub,
 .staff-table td.staff-cell-sub { font-size: var(--fs-xs); color: var(--color-ink-faint); display: block; margin-top: 2px; }
 
 /* Revision A2 (implementation_plan.md) — "#<booking_id>", so it takes
@@ -504,11 +625,21 @@ body.staff-sidebar-open .staff-toggle-bar:nth-child(3) {
 
 .staff-mini-btn.is-danger:hover { border-color: var(--color-alert); color: var(--color-alert); }
 
-/* Status badges */
+.staff-mini-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* Status badges — Revision S1 replaces the old pending/confirmed/cancelled/
+   no_show/paid trio (booking.status as-written) with the 4 CLIENT-DERIVED
+   states decision S1 defines (Booked / In play / Completed / Unattended —
+   see includes/staff_dashboard.js's staffDerivedStatus()). `completed` is
+   reused as-is (same neutral look already correct for it). `cancelled` is
+   kept for Transaction Records, which — unlike Overview — does not filter
+   cancelled rows out (it's a historical log, not an action queue). The old
+   pending/confirmed/no_show/paid/upcoming/done/booking_* audit-action
+   classes are unused now but left in place — harmless, same "not worth
+   pruning a still-harmless rule" convention as .staff-logo-dot above. */
 .staff-status {
     /* Revision A2 (implementation_plan.md) — label role (status badge), so
-       it moves to --font-display, not --font-numeric; Oswald 700 steps down
-       to --fw-semibold (600) since Sora renders heavier at the same weight. */
+       it moves to --font-display, not --font-numeric. */
     font-family: var(--font-display); font-size: var(--fs-xs); font-weight: var(--fw-semibold); letter-spacing: 0.04em;
     text-transform: uppercase; padding: 5px 11px; border-radius: 999px; white-space: nowrap; display: inline-block;
 }
@@ -521,18 +652,35 @@ body.staff-sidebar-open .staff-toggle-bar:nth-child(3) {
 .staff-status.paid { background: rgba(62, 122, 94, 0.2); color: var(--color-court-green); }
 .staff-status.walkin { background: rgba(255, 97, 21, 0.16); color: var(--color-primary); }
 
-/* Booking Overview — upcoming / in play / done (legacy demo-row classes,
-   kept only so nothing breaks if referenced elsewhere; real rows use
-   pending/confirmed/completed/cancelled above instead). */
+/* Revision S1 — Source pill for an online (customer-made) booking, paired
+   with .walkin above for the other source. Green reads as "came in through
+   the app", distinct from walk-in's primary orange. */
+.staff-status.online { background: rgba(62, 122, 94, 0.2); color: var(--color-court-green); }
+
+/* Revision S1, decision S1 — "Booked" (not yet started/checked in). Same
+   look the old .pending badge used, since it fills the same "reserved,
+   nothing to report yet" role. */
+.staff-status.booked { background: rgba(255, 97, 21, 0.16); color: var(--color-primary); }
+
+/* Revision S1 — "In play" (checked in, now < end_at) is now LIVE (it used to
+   be a legacy demo-row class only, see the block below); green reads as
+   "on court, going as planned". */
+.staff-status.inplay { background: rgba(62, 122, 94, 0.2); color: var(--color-court-green); }
+
+/* Revision S1, decision S1 — "Unattended" (not checked in, now > time_date +
+   30 min) — same alert red as .cancelled, but its own class since the two
+   are different facts (a genuinely missed booking vs. a real cancellation). */
+.staff-status.unattended { background: rgba(214, 72, 47, 0.16); color: var(--color-alert); }
+
+/* Booking Overview — upcoming / done (legacy demo-row classes, kept only so
+   nothing breaks if referenced elsewhere; .inplay above is now live). */
 .staff-status.upcoming { background: rgba(62, 122, 94, 0.2); color: var(--color-court-green); }
-.staff-status.inplay { background: rgba(255, 97, 21, 0.16); color: var(--color-primary); }
 .staff-status.done { background: rgba(244, 239, 230, 0.12); color: var(--color-ink-dim); }
 
-/* Transaction Records — one badge per audit_log.action this phase writes
-   (see includes/staff_dashboard.js's writeAuditLog callers). Reuses the
-   same semantic colors as the booking-status badges above: green for a
-   forward/positive action, red for a decline, orange for in-progress,
-   neutral for a completed one. */
+/* Transaction Records used to read `audit_log` and badge one of these 4
+   actions (Revision S1, decision S6 removes that read path entirely — see
+   includes/staff_dashboard.js's writeAuditLog(), kept only as a best-effort
+   write helper). Left in place, unused but harmless. */
 .staff-status.booking_confirmed, .staff-status.walkin_recorded { background: rgba(62, 122, 94, 0.2); color: var(--color-court-green); }
 .staff-status.booking_declined { background: rgba(214, 72, 47, 0.16); color: var(--color-alert); }
 .staff-status.booking_timed_in { background: rgba(255, 97, 21, 0.16); color: var(--color-primary); }
@@ -545,6 +693,17 @@ body.staff-sidebar-open .staff-toggle-bar:nth-child(3) {
 }
 
 .staff-notice svg { width: 17px; height: 17px; color: var(--color-primary); flex-shrink: 0; margin-top: 1px; }
+
+/* Reused wherever a .staff-form-group needs one line of secondary guidance
+   under its label/control (Revision S1) — the walk-in wizard's Step 3 "Open
+   today: …" line, the sport-chip row's "Loading courts…" placeholder, etc.
+   Mirrors Style/Dashboard.css's .dash-form-hint. */
+.staff-form-hint {
+    font-size: var(--fs-sm);
+    color: var(--color-ink-faint);
+    line-height: 1.5;
+    margin: 0;
+}
 
 /* ==========================================================================
    Walk-In panel
@@ -572,9 +731,10 @@ body.staff-sidebar-open .staff-toggle-bar:nth-child(3) {
 
 .staff-select:focus, .staff-input:focus { outline: none; border-color: var(--color-primary); }
 
+.staff-select:disabled, .staff-input:disabled { opacity: 0.6; cursor: not-allowed; }
+
 /* Account Settings' password fields (Style/Dashboard.css's
-   .dash-input-wrap/.dash-toggle-visibility pattern, ported here since
-   staff previously had no password UI at all to need it). */
+   .dash-input-wrap/.dash-toggle-visibility pattern). */
 .staff-input-wrap { position: relative; display: flex; align-items: center; }
 .staff-input-wrap input { padding-right: 44px; }
 .staff-toggle-visibility {
@@ -585,6 +745,12 @@ body.staff-sidebar-open .staff-toggle-bar:nth-child(3) {
 }
 .staff-toggle-visibility:hover { color: var(--color-ink); background: rgba(244, 239, 230, 0.08); }
 
+/* From/To time-range picker (Revision S1, decision S3) — same two-column
+   layout as Style/Dashboard.css's .dash-time-range, ported for the walk-in
+   wizard's Step 3. */
+.staff-time-range { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 4px; }
+.staff-time-range .staff-form-group { margin-bottom: 0; }
+
 .staff-payment-options { display: flex; gap: 10px; }
 
 .staff-payment-option {
@@ -594,10 +760,9 @@ body.staff-sidebar-open .staff-toggle-bar:nth-child(3) {
 
 .staff-payment-option.is-selected { border-color: var(--color-primary); }
 
-/* A payment method the admin has turned off in Payment Configuration
-   (app_settings.gcash_enabled/cash_enabled) — see
-   includes/staff_dashboard.js's applyWalkinPaymentSettings(). Same faded
-   "not just inert" treatment as Style/Dashboard.css's .dash-slot.is-unavailable. */
+/* A payment method the wizard has disabled (none today — both Cash/Online
+   are always offered — kept for parity with the same rule elsewhere in the
+   product, e.g. Style/Dashboard.css's .dash-payment-option.is-disabled). */
 .staff-payment-option.is-disabled { opacity: 0.5; cursor: not-allowed; }
 
 .staff-payment-option-head { display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: var(--fs-md); }
@@ -608,9 +773,9 @@ body.staff-sidebar-open .staff-toggle-bar:nth-child(3) {
 
 .staff-summary { position: sticky; top: 100px; display: flex; flex-direction: column; gap: 16px; }
 
-.staff-summary-row { display: flex; align-items: center; justify-content: space-between; font-size: var(--fs-md); color: var(--color-ink-dim); }
+.staff-summary-row { display: flex; align-items: center; justify-content: space-between; font-size: var(--fs-md); color: var(--color-ink-dim); gap: 12px; }
 
-.staff-summary-row strong { color: var(--color-ink); font-weight: 600; }
+.staff-summary-row strong { color: var(--color-ink); font-weight: 600; text-align: right; }
 
 .staff-summary-divider { height: 1px; background: var(--color-line); }
 
@@ -639,7 +804,27 @@ body.staff-sidebar-open .staff-toggle-bar:nth-child(3) {
 
 .staff-btn-ghost:hover { border-color: var(--color-primary); color: var(--color-ink); }
 
-.staff-form-actions { display: flex; justify-content: flex-end; gap: 12px; margin-top: 6px; }
+.staff-btn-ghost:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.staff-form-actions { display: flex; justify-content: flex-end; gap: 12px; margin-top: 6px; flex-wrap: wrap; }
+
+/* Revision S1 — .staff-btn-primary's own base rule above is `width: 100%`
+   (built for the old single-column walk-in form's full-width "Record
+   Walk-In Booking" CTA). Every NEW use of it sits inside one of these three
+   multi-button rows instead (wizard Back/Next/Save, Settings Cancel/Save,
+   the receipt's Download/Print/New-walk-in row) — width:100% there would
+   make it swallow the whole row instead of sitting beside its sibling(s).
+   Scoped back to an intrinsic, padded width in exactly those three
+   contexts, rather than changing the shared base rule (which several other
+   call sites, e.g. the wizard "Save Walk-In" button sitting alone in
+   .staff-wizard-summary, still rely on for a full-width hero CTA). */
+.staff-wizard-nav .staff-btn-primary,
+.staff-form-actions .staff-btn-primary,
+.staff-receipt-actions .staff-btn-primary {
+    width: auto;
+    padding-left: 28px;
+    padding-right: 28px;
+}
 
 .staff-recent-list { display: flex; flex-direction: column; gap: 10px; }
 
@@ -662,7 +847,266 @@ body.staff-sidebar-open .staff-toggle-bar:nth-child(3) {
 .staff-recent-info p { font-size: var(--fs-xs); color: var(--color-ink-faint); margin-top: 2px; }
 
 /* ==========================================================================
-   Court Schedule panel
+   Generic step wizard shell (Revision S1, decisions S3/S9) — port of the
+   owner dashboard's .admin-wizard-* (itself a port of the customer
+   dashboard's .dash-wizard-*), under staff-* names. Used by both the
+   walk-in wizard (5 steps) and the Change Password wizard (2 steps) —
+   one shared shell, matching this product's existing convention.
+   ========================================================================== */
+.staff-wizard-steps {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 4px;
+}
+
+.staff-wizard-step {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+.staff-wizard-step:not(:last-child)::after {
+    content: '';
+    flex: 1 1 auto;
+    height: 1px;
+    background: var(--color-line);
+    margin: 0 2px;
+}
+
+.staff-wizard-step-num {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--color-bg-elevated);
+    border: 1px solid var(--color-line);
+    color: var(--color-ink-faint);
+    /* Revision A2 (implementation_plan.md) — a step number (1-5), so it
+       takes --font-numeric (tabular-nums) instead of the removed
+       --font-mono. */
+    font-family: var(--font-numeric);
+    font-variant-numeric: tabular-nums;
+    font-weight: 700;
+    font-size: var(--fs-sm);
+    flex-shrink: 0;
+    transition: background 0.2s, border-color 0.2s, color 0.2s;
+}
+
+.staff-wizard-step-label {
+    font-family: var(--font-body);
+    font-weight: 600;
+    font-size: var(--fs-sm);
+    color: var(--color-ink-faint);
+    min-width: 0;
+    white-space: nowrap;
+}
+
+.staff-wizard-step.is-current .staff-wizard-step-num {
+    background: var(--color-primary);
+    border-color: var(--color-primary);
+    color: #14110d;
+}
+
+.staff-wizard-step.is-current .staff-wizard-step-label,
+.staff-wizard-step.is-done .staff-wizard-step-label {
+    color: var(--color-ink);
+}
+
+.staff-wizard-step.is-done .staff-wizard-step-num {
+    background: color-mix(in srgb, var(--color-primary) 16%, transparent);
+    border-color: var(--color-primary);
+    color: var(--color-primary);
+}
+
+.staff-wizard-panel {
+    display: none;
+    flex-direction: column;
+}
+
+.staff-wizard-panel.is-active {
+    display: flex;
+}
+
+.staff-wizard-panel-title {
+    font-family: var(--font-display);
+    font-weight: 600;
+    font-size: var(--fs-base);
+    margin-bottom: 18px;
+}
+
+.staff-wizard-nav {
+    display: flex;
+    justify-content: flex-end;
+    gap: 12px;
+    margin-top: 24px;
+    padding-top: 20px;
+    border-top: 1px solid var(--color-line);
+    flex-wrap: wrap;
+}
+
+/* Cancel/Back sit at the far left; Next/Save stay grouped on the right. */
+.staff-wizard-nav .staff-wizard-back,
+.staff-wizard-nav .staff-wizard-cancel {
+    margin-right: auto;
+}
+
+/* Walk-in wizard's Step 5 summary — same rows/divider/total classes the
+   .staff-summary sidebar card uses, just without that class's sticky
+   positioning (there's nothing to scroll past inside a single step). */
+.staff-wizard-summary {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    margin-top: 4px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .staff-wizard-step-num,
+    .staff-notif-menu,
+    .staff-profile-menu {
+        transition: none;
+    }
+}
+
+/* ==========================================================================
+   Walk-in receipt (Revision S1, decision S4) — port of the customer
+   dashboard's store-receipt/ticket-stub design (Style/Dashboard.css's
+   .dash-receipt-*) under staff-receipt-* names. Deliberately simple/
+   non-exotic CSS (flexbox, solid backgrounds, dashed borders, no gradients/
+   backdrop-filter/transforms/external images) so html2canvas captures it
+   identically to what's on screen — same priority as the customer receipt.
+   ========================================================================== */
+.staff-receipt-card {
+    border: 1px solid var(--color-line);
+    background: var(--color-bg-elevated);
+    border-radius: 14px;
+    padding: 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    max-width: 480px;
+}
+
+.staff-receipt-brand {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 8px;
+}
+
+.staff-receipt-brand-name {
+    font-family: var(--font-display);
+    font-weight: var(--fw-semibold);
+    font-size: var(--fs-base);
+    color: var(--color-primary);
+    letter-spacing: 0.02em;
+}
+
+.staff-receipt-brand-tag {
+    font-family: var(--font-display);
+    font-size: var(--fs-xs);
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: var(--color-ink-faint);
+}
+
+.staff-receipt-no {
+    font-family: var(--font-numeric);
+    font-variant-numeric: tabular-nums;
+    font-size: var(--fs-xs);
+    color: var(--color-ink-faint);
+}
+
+.staff-receipt-divider {
+    height: 0;
+    border: none;
+    border-top: 2px dashed var(--color-line);
+}
+
+.staff-receipt-top {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 8px 12px;
+}
+
+.staff-receipt-top h4 {
+    font-family: var(--font-display);
+    font-size: var(--fs-base);
+    font-weight: 600;
+}
+
+.staff-receipt-meta {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.staff-receipt-meta .staff-summary-row {
+    font-size: var(--fs-sm);
+}
+
+.staff-receipt-total {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+}
+
+.staff-receipt-total span:first-child {
+    font-family: var(--font-display);
+    font-weight: var(--fw-semibold);
+    font-size: var(--fs-md);
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+}
+
+.staff-receipt-total span:last-child {
+    font-family: var(--font-numeric);
+    font-variant-numeric: tabular-nums;
+    font-size: var(--fs-xl);
+    color: var(--color-primary);
+}
+
+.staff-receipt-thanks {
+    text-align: center;
+    font-size: var(--fs-xs);
+    font-style: italic;
+    color: var(--color-ink-faint);
+    margin: 0;
+}
+
+.staff-receipt-actions {
+    display: flex;
+    gap: 10px;
+    margin-top: 4px;
+    flex-wrap: wrap;
+}
+
+/* While downloadReceiptAsPng() rasterizes the card, its own action buttons
+   are hidden so they don't bake into their own screenshot — visibility
+   (not display) keeps the card's height stable during the capture. */
+.staff-receipt-card.is-capturing .staff-receipt-actions {
+    visibility: hidden;
+}
+
+/* Print (Revision S1, decision S4) — window.print() shows ONLY the receipt
+   card, full-bleed, buttons excluded. */
+@media print {
+    body * { visibility: hidden; }
+    .staff-receipt-card, .staff-receipt-card * { visibility: visible; }
+    .staff-receipt-card { position: absolute; left: 0; top: 0; width: 100%; max-width: none; }
+    .staff-receipt-actions { display: none; }
+}
+
+/* ==========================================================================
+   Court Schedule panel (Revision S1, decision S5) — per-unit hourly grid,
+   replacing the old fixed 2-hour/all-courts-as-columns CSS grid.
    ========================================================================== */
 .staff-sport-tabs { display: flex; gap: 8px; flex-wrap: wrap; }
 
@@ -674,57 +1118,90 @@ body.staff-sidebar-open .staff-toggle-bar:nth-child(3) {
 
 .staff-legend .dot.available { background: var(--color-court-green); }
 .staff-legend .dot.booked { background: var(--color-alert); }
-.staff-legend .dot.walkin { background: var(--color-primary); }
+.staff-legend .dot.walkin { background: var(--color-ink-faint); }
 
-.staff-schedule-grid {
-    display: grid;
-    /* --staff-schedule-cols is set inline by includes/staff_dashboard.js to
-       the real active court count (window.InigoCourtsData) — a custom
-       property instead of a JS-written grid-template-columns string so the
-       responsive breakpoints below can still override the leading time-
-       column width per viewport; falls back to 6 (the old static column
-       count) if JS hasn't run yet. */
-    grid-template-columns: 90px repeat(var(--staff-schedule-cols, 6), 1fr);
-    gap: 6px;
+/* A real <table> now (Revision S1) instead of a JS-authored CSS grid — one
+   row per court/unit, one column per business hour, so it can reuse
+   .staff-table's own look/.staff-table-wrap's horizontal scroll. The first
+   column (court/unit name) stays put while the hour columns scroll
+   underneath it on narrow screens. */
+.staff-schedule-table th,
+.staff-schedule-table td {
+    text-align: center;
+    white-space: nowrap;
 }
 
-/* Revision A2 (implementation_plan.md) — the column head shows the court's
-   NAME (renderSchedule() in includes/staff_dashboard.js), a label, so it
-   moves to --font-display, not --font-numeric. */
-.staff-schedule-head {
-    font-family: var(--font-display); font-size: var(--fs-xs); text-transform: uppercase; letter-spacing: 0.04em;
-    color: var(--color-ink-faint); text-align: center; padding: 8px 4px;
+.staff-schedule-table th:first-child,
+.staff-schedule-table td:first-child {
+    text-align: left;
+    position: sticky;
+    left: 0;
+    background: var(--color-bg-card);
+    z-index: 1;
+    white-space: nowrap;
 }
 
-/* Revision A2 (implementation_plan.md) — the row label is an hour
-   (formatHourLabel()), so it takes --font-numeric (tabular-nums). */
-.staff-schedule-time {
-    font-family: var(--font-numeric); font-variant-numeric: tabular-nums; font-size: var(--fs-xs); color: var(--color-ink-faint);
-    display: flex; align-items: center; padding: 0 6px;
+.staff-schedule-table td.staff-schedule-trailer {
+    text-align: right;
+    color: var(--color-ink-faint);
+    font-size: var(--fs-xs);
 }
 
-/* Revision A2 (implementation_plan.md) — the cell shows a customer name or
-   "Open"/"Booked"/"Walk-in" (scheduleCellContent()), plain text, so it
-   inherits the body font. */
 .staff-schedule-cell {
-    border-radius: 8px; min-height: 40px; display: flex; align-items: center; justify-content: center;
-    font-size: var(--fs-xs); color: var(--color-ink-faint);
-    background: var(--color-bg-elevated); border: 1px solid var(--color-line); cursor: pointer;
-    transition: transform 0.15s, border-color 0.15s;
-    text-align: center; padding: 4px;
+    border-radius: 8px;
+    min-width: 64px;
+    min-height: 34px;
+    font-size: var(--fs-xs);
+    padding: 8px 6px !important;
 }
 
-.staff-schedule-cell:hover { transform: translateY(-1px); border-color: var(--color-primary); }
+.staff-schedule-cell.is-open { background: rgba(62, 122, 94, 0.16); color: var(--color-court-green); }
 
-.staff-schedule-cell.is-available { background: rgba(62, 122, 94, 0.16); color: var(--color-court-green); }
+.staff-schedule-cell.is-booked { background: rgba(214, 72, 47, 0.16); color: #f3b6a8; cursor: help; }
 
-.staff-schedule-cell.is-booked { background: rgba(214, 72, 47, 0.16); color: #f3b6a8; }
-
-.staff-schedule-cell.is-walkin { background: rgba(255, 97, 21, 0.16); color: var(--color-primary); }
+.staff-schedule-cell.is-past { background: transparent; color: var(--color-ink-faint); opacity: 0.5; }
 
 /* ==========================================================================
-   Staff Profile panel
+   Profile panel (Revision S1, decision S7) — the dropdown's "View Profile"
+   destination. Replaces the old .staff-profile-card/.staff-profile-meta
+   design (Personal Information moved to Account Settings). Mirrors the
+   owner dashboard's .admin-profile-hero/.admin-profile-dl/.admin-role-pill.
    ========================================================================== */
+.staff-profile-hero { display: flex; align-items: center; gap: 22px; flex-wrap: wrap; }
+.staff-profile-hero-avatar { width: 96px; height: 96px; font-size: var(--fs-2xl); }
+.staff-profile-hero-info { display: flex; flex-direction: column; gap: 8px; }
+.staff-profile-hero-info h3 { font-family: var(--font-display); font-size: var(--fs-xl); font-weight: 600; }
+
+.staff-role-pill {
+    display: inline-block;
+    align-self: flex-start;
+    padding: 4px 12px;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--color-primary) 16%, transparent);
+    color: var(--color-primary);
+    font-family: var(--font-display);
+    font-size: var(--fs-xs);
+    font-weight: var(--fw-semibold);
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+}
+
+.staff-profile-dl { display: flex; flex-direction: column; gap: 14px; }
+.staff-profile-dl-row {
+    display: flex; justify-content: space-between; align-items: baseline; gap: 14px; flex-wrap: wrap;
+    padding-bottom: 14px; border-bottom: 1px solid var(--color-line);
+}
+.staff-profile-dl-row:last-child { border-bottom: none; padding-bottom: 0; }
+.staff-profile-dl-row dt {
+    margin: 0; font-family: var(--font-display); font-size: var(--fs-xs); letter-spacing: 0.06em;
+    text-transform: uppercase; color: var(--color-ink-faint);
+}
+.staff-profile-dl-row dd { margin: 0; font-size: var(--fs-md); color: var(--color-ink); font-weight: 600; text-align: right; }
+
+/* Legacy Staff Profile panel classes (pre-Revision-S1 design) — unused now
+   that the profile panel above uses .staff-profile-hero/.staff-profile-dl
+   instead, kept in place as harmless dead CSS (same convention as
+   .staff-logo-dot). */
 .staff-profile-card { display: flex; align-items: center; gap: 22px; flex-wrap: wrap; }
 
 .staff-profile-card .staff-avatar { width: 76px; height: 76px; font-size: var(--fs-2xl); }
@@ -738,8 +1215,6 @@ body.staff-sidebar-open .staff-toggle-bar:nth-child(3) {
 .staff-profile-meta-item { display: flex; flex-direction: column; gap: 4px; }
 
 .staff-profile-meta-item span:first-child {
-    /* Revision A2 (implementation_plan.md) — a field label, so it moves to
-       --font-display, not --font-numeric. */
     font-family: var(--font-display); font-size: var(--fs-xs); text-transform: uppercase; letter-spacing: 0.05em;
     color: var(--color-ink-faint);
 }
@@ -781,6 +1256,7 @@ body.staff-sidebar-open .staff-toggle-bar:nth-child(3) {
 :root[data-theme="light"] .staff-avatar,
 :root[data-theme="light"] .staff-chip.is-active,
 :root[data-theme="light"] .staff-mini-btn.is-primary,
+:root[data-theme="light"] .staff-wizard-step.is-current .staff-wizard-step-num,
 :root[data-theme="light"] .staff-btn-primary {
     color: #FFFCF4;
 }
@@ -790,7 +1266,8 @@ body.staff-sidebar-open .staff-toggle-bar:nth-child(3) {
 }
 
 :root[data-theme="light"] .staff-nav-link:hover,
-:root[data-theme="light"] .staff-profile-menu button:hover {
+:root[data-theme="light"] .staff-profile-menu button:hover,
+:root[data-theme="light"] .staff-notif-item:hover {
     background: rgba(31, 27, 22, 0.05);
 }
 
@@ -806,7 +1283,6 @@ body.staff-sidebar-open .staff-toggle-bar:nth-child(3) {
     .staff-stat-grid { grid-template-columns: repeat(2, 1fr); }
     .staff-grid-2 { grid-template-columns: 1fr; }
     .staff-summary { position: static; }
-    .staff-schedule-grid { grid-template-columns: 70px repeat(var(--staff-schedule-cols, 6), 1fr); }
 }
 
 @media (max-width: 860px) {
@@ -828,6 +1304,16 @@ body.staff-sidebar-open .staff-toggle-bar:nth-child(3) {
     .staff-form-row { grid-template-columns: 1fr; }
 }
 
+/* Topbar wrap — below this, the title block and the actions row (clock/
+   theme/notif/profile) no longer fit on one line; each becomes its own
+   full-width row instead of forcing a horizontal scrollbar (mirrors
+   Style/owner_dashboard.css's identical 768px topbar-wrap rule). */
+@media (max-width: 768px) {
+    .staff-topbar { flex-wrap: wrap; row-gap: 12px; }
+    .staff-topbar-left { width: 100%; }
+    .staff-topbar-actions { width: 100%; justify-content: flex-end; flex-wrap: wrap; row-gap: 8px; }
+}
+
 @media (max-width: 640px) {
     .staff-topbar { padding: 16px 18px; }
     .staff-content { padding: 22px 18px 50px; }
@@ -836,9 +1322,46 @@ body.staff-sidebar-open .staff-toggle-bar:nth-child(3) {
     .staff-profile-card { flex-direction: column; align-items: flex-start; }
     .staff-profile-meta { grid-template-columns: 1fr; }
     .staff-clock { display: none; }
-    .staff-schedule-grid { grid-template-columns: 60px repeat(var(--staff-schedule-cols, 6), 1fr); font-size: var(--fs-xs); }
+    .staff-time-range { grid-template-columns: 1fr; }
+    .staff-wizard-step-label { display: none; }
 }
 
 @media (max-width: 480px) {
     .staff-stat-grid { grid-template-columns: 1fr; }
+}
+
+/* Revision S1 follow-up — fit all 12 hour columns on a desktop-width
+   content area (~900px at 1280) instead of forcing a horizontal scroll:
+   tighter cell padding than the generic .staff-table (14px), a smaller
+   min-width per hour cell, and hour headers allowed to wrap onto two
+   lines ("11 AM–" / "12 PM"). Narrow screens still scroll inside
+   .staff-table-wrap with the sticky first column. */
+.staff-schedule-table th,
+.staff-schedule-table td {
+    padding: 8px 4px;
+}
+.staff-schedule-table th {
+    font-size: var(--fs-xs);
+    white-space: normal;
+    line-height: 1.2;
+    min-width: 48px;
+}
+.staff-schedule-table th:first-child,
+.staff-schedule-table td:first-child {
+    padding-left: 10px;
+    padding-right: 10px;
+}
+.staff-schedule-cell {
+    min-width: 48px;
+    padding: 7px 4px !important;
+}
+
+/* Revision S1 follow-up — Date and Time columns in Transaction Records and
+   the Overview bookings table read as one line each ("Sep 13",
+   "3:00 PM – 4:00 PM") instead of wrapping into four; the table already
+   scrolls horizontally inside .staff-table-wrap when space runs out. */
+[data-staff-panel="transactions"] .staff-table td:nth-child(1),
+[data-staff-panel="transactions"] .staff-table td:nth-child(4),
+[data-staff-panel="overview"] .staff-table td:nth-child(3) {
+    white-space: nowrap;
 }

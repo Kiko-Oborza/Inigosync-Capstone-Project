@@ -75,12 +75,6 @@
             <div class="staff-nav-divider"></div>
 
             <li>
-                <button type="button" class="staff-nav-link" data-staff-nav="profile">
-                    <svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="8" r="4" stroke="currentColor" stroke-width="1.8"/><path d="M4 20c1.5-4 5-6 8-6s6.5 2 8 6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
-                    Staff Profile
-                </button>
-            </li>
-            <li>
                 <button type="button" class="staff-nav-link" data-staff-nav="settings">
                     <svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="3.2" stroke="currentColor" stroke-width="1.8"/><path d="M19.4 13.5a7.6 7.6 0 0 0 0-3l2-1.4-2-3.4-2.3.8a7.6 7.6 0 0 0-2.6-1.5L14 2.5h-4l-.5 2.5a7.6 7.6 0 0 0-2.6 1.5l-2.3-.8-2 3.4 2 1.4a7.6 7.6 0 0 0 0 3l-2 1.4 2 3.4 2.3-.8a7.6 7.6 0 0 0 2.6 1.5l.5 2.5h4l.5-2.5a7.6 7.6 0 0 0 2.6-1.5l2.3.8 2-3.4z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>
                     Account Settings
@@ -88,13 +82,17 @@
             </li>
         </ul>
 
-        <div class="staff-sidebar-foot">
-            <div class="staff-nav-divider"></div>
-            <button type="button" class="staff-nav-link staff-logout" data-staff-logout>
-                <svg viewBox="0 0 24 24" fill="none"><path d="M9 21H5a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><path d="M16 17l5-5-5-5M21 12H9" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
-                Log Out
-            </button>
-        </div>
+        <!-- Revision S1 (implementation_plan.md, decision S7) — the sidebar's
+             own "Staff Profile" tab and "Log Out" button (previously pinned
+             here in a .staff-sidebar-foot) are both removed. Profile is now
+             reachable ONLY from the topbar dropdown's "View Profile" below
+             (a data-staff-panel="profile" section that lives outside
+             .staff-nav, so setActivePanel() never highlights anything in
+             the sidebar for it — see includes/staff_dashboard.js), and Log
+             Out is likewise only in that same dropdown. Its handler is
+             bound via document.querySelectorAll('[data-staff-logout]')
+             (includes/authGuard.js), so removing this sidebar instance
+             changes nothing about how the dropdown's Log Out works. -->
     </aside>
 
     <!-- ================= MAIN ================= -->
@@ -132,10 +130,28 @@
                     </svg>
                 </button>
 
-                <button type="button" class="staff-icon-btn" aria-label="Notifications">
-                    <svg viewBox="0 0 24 24" fill="none"><path d="M18 8.5c0-3.5-2.7-6-6-6s-6 2.5-6 6c0 6-2.5 7.5-2.5 7.5h17S18 14.5 18 8.5z" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><path d="M9.7 19a2.3 2.3 0 0 0 4.6 0" stroke="currentColor" stroke-width="1.7"/></svg>
-                    <span class="staff-badge-dot"></span>
-                </button>
+                <!-- Notifications (Revision S1, decision S8) — ported from the
+                     owner dashboard's [data-admin-notif*] dropdown
+                     (Pages/owner_dashboard.html, includes/owner_dashboard.js)
+                     under data-staff-notif* names. Replaces the old dead bell
+                     (no dropdown, badge dot permanently visible). Populated by
+                     includes/staff_dashboard.js's refreshStaffNotifications()
+                     from real bookings starting soon, bookings created today,
+                     and today's walk-ins — the dot starts `hidden` and is only
+                     revealed once there's a real unread item. -->
+                <div class="staff-notif" data-staff-notif>
+                    <button type="button" class="staff-icon-btn" data-staff-notif-trigger aria-label="Notifications" aria-haspopup="true" aria-expanded="false">
+                        <svg viewBox="0 0 24 24" fill="none"><path d="M18 8.5c0-3.5-2.7-6-6-6s-6 2.5-6 6c0 6-2.5 7.5-2.5 7.5h17S18 14.5 18 8.5z" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><path d="M9.7 19a2.3 2.3 0 0 0 4.6 0" stroke="currentColor" stroke-width="1.7"/></svg>
+                        <span class="staff-badge-dot" data-staff-notif-dot hidden></span>
+                    </button>
+
+                    <div class="staff-notif-menu" data-staff-notif-menu role="menu" aria-label="Notifications">
+                        <div class="staff-notif-menu-head">Notifications</div>
+                        <div class="staff-notif-list" data-staff-notif-list>
+                            <p class="staff-notif-empty">Loading…</p>
+                        </div>
+                    </div>
+                </div>
 
                 <div class="staff-profile" data-staff-profile>
                     <button type="button" class="staff-profile-trigger" data-staff-profile-trigger>
@@ -169,7 +185,15 @@
         <main class="staff-content">
 
             <!-- ============================================================
-                 BOOKING OVERVIEW PANEL
+                 BOOKING OVERVIEW PANEL — Revision S1, decision S1. Rewritten
+                 renderer: today's + upcoming bookings (pending/confirmed/
+                 completed) merged with today's walk-ins into one list, a
+                 single Time-In action, and a client-derived status (Booked /
+                 In play / Completed / Unattended) — see
+                 includes/staff_dashboard.js's refreshBookingOverview().
+                 Confirm/Decline/Time-Out are gone entirely (S2: an online
+                 booking is "Booked" the moment it exists — no pending
+                 approval step for staff).
                  ============================================================ -->
             <section class="staff-panel is-active" data-staff-panel="overview">
 
@@ -190,23 +214,23 @@
                     </div>
                     <div class="staff-stat-card">
                         <div class="staff-stat-icon">
-                            <svg viewBox="0 0 24 24" fill="none"><circle cx="9" cy="8" r="3" stroke="currentColor" stroke-width="1.8"/><path d="M3 19c1-3 3.5-4.6 6-4.6s5 1.6 6 4.6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path d="M16 5v5M13.5 7.5h5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
-                        </div>
-                        <span class="staff-stat-value" data-staff-stat="walkins-today">0</span>
-                        <span class="staff-stat-label">Walk-ins today</span>
-                    </div>
-                    <div class="staff-stat-card">
-                        <div class="staff-stat-icon">
                             <svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.8"/><path d="M12 7v5l3.5 2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
                         </div>
                         <span class="staff-stat-value" data-staff-stat="still-to-come">0</span>
                         <span class="staff-stat-label">Still to come today</span>
                     </div>
+                    <div class="staff-stat-card">
+                        <div class="staff-stat-icon">
+                            <svg viewBox="0 0 24 24" fill="none"><circle cx="9" cy="8" r="3" stroke="currentColor" stroke-width="1.8"/><path d="M3 19c1-3 3.5-4.6 6-4.6s5 1.6 6 4.6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path d="M16 5v5M13.5 7.5h5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+                        </div>
+                        <span class="staff-stat-value" data-staff-stat="walkins-today">0</span>
+                        <span class="staff-stat-label">Walk-ins today</span>
+                    </div>
                 </div>
 
                 <div class="staff-card">
                     <div class="staff-card-head">
-                        <h3>Today's Bookings</h3>
+                        <h3>Bookings</h3>
                         <div class="staff-toolbar">
                             <div class="staff-search-wrap">
                                 <svg viewBox="0 0 24 24" fill="none"><circle cx="11" cy="11" r="7" stroke="currentColor" stroke-width="1.8"/><path d="M21 21l-4.3-4.3" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
@@ -214,10 +238,10 @@
                             </div>
                             <div class="staff-filter-row" data-staff-filter-group="overview">
                                 <button type="button" class="staff-chip is-active" data-staff-chip data-staff-filter="all">All</button>
-                                <button type="button" class="staff-chip" data-staff-chip data-staff-filter="pending">Pending</button>
-                                <button type="button" class="staff-chip" data-staff-chip data-staff-filter="confirmed">Confirmed</button>
+                                <button type="button" class="staff-chip" data-staff-chip data-staff-filter="booked">Booked</button>
+                                <button type="button" class="staff-chip" data-staff-chip data-staff-filter="inplay">In play</button>
                                 <button type="button" class="staff-chip" data-staff-chip data-staff-filter="completed">Completed</button>
-                                <button type="button" class="staff-chip" data-staff-chip data-staff-filter="cancelled">Cancelled</button>
+                                <button type="button" class="staff-chip" data-staff-chip data-staff-filter="unattended">Unattended</button>
                             </div>
                         </div>
                     </div>
@@ -229,13 +253,14 @@
                                     <th>Customer</th>
                                     <th>Court</th>
                                     <th>Time</th>
-                                    <th>Reference</th>
+                                    <th>Source</th>
+                                    <th>Payment</th>
                                     <th>Status</th>
-                                    <th>Actions</th>
+                                    <th>Action</th>
                                 </tr>
                             </thead>
                             <tbody>
-                                <tr><td colspan="6" style="text-align:center; color: var(--color-ink-faint);">Loading bookings…</td></tr>
+                                <tr><td colspan="7" style="text-align:center; color: var(--color-ink-faint);">Loading bookings…</td></tr>
                             </tbody>
                         </table>
                     </div>
@@ -243,192 +268,201 @@
             </section>
 
             <!-- ============================================================
-                 WALK-IN MANAGEMENT PANEL
+                 WALK-IN MANAGEMENT PANEL — Revision S1, decision S3/S4. The
+                 old single-page form (duration 1/2/3h + start time +
+                 GCash/Cash) is replaced by a 5-step wizard, same shape as
+                 the customer dashboard's own Book-a-Court wizard
+                 (Pages/user_dashboard.html's .dash-wizard-* — ported here as
+                 .staff-wizard-*): ① Customer -> ② Sport & court -> ③ Time
+                 (today only) -> ④ Payment -> ⑤ Review & save. On success the
+                 wizard is replaced by a receipt card (S4) with Download PNG
+                 / Print / New walk-in.
                  ============================================================ -->
             <section class="staff-panel" data-staff-panel="walkin">
                 <div class="staff-panel-head">
                     <div>
                         <h2>Walk-In Management</h2>
-                        <p>Record walk-in customers, assign an open slot, and process on-the-spot payment.</p>
+                        <p>Record a walk-in customer, assign an open court/unit for today, and print or download their receipt.</p>
                     </div>
                 </div>
 
-                <div class="staff-grid-2">
-                    <div class="staff-card">
-                        <div class="staff-card-head"><h3>New Walk-In Booking</h3></div>
+                <div data-staff-walkin-wizard-wrap>
+                    <div class="staff-wizard-steps" data-staff-walkin-steps role="list" aria-label="Walk-in steps">
+                        <div class="staff-wizard-step is-current" data-staff-walkin-step-indicator="1" role="listitem">
+                            <span class="staff-wizard-step-num">1</span>
+                            <span class="staff-wizard-step-label">Customer</span>
+                        </div>
+                        <div class="staff-wizard-step" data-staff-walkin-step-indicator="2" role="listitem">
+                            <span class="staff-wizard-step-num">2</span>
+                            <span class="staff-wizard-step-label">Sport &amp; court</span>
+                        </div>
+                        <div class="staff-wizard-step" data-staff-walkin-step-indicator="3" role="listitem">
+                            <span class="staff-wizard-step-num">3</span>
+                            <span class="staff-wizard-step-label">Time</span>
+                        </div>
+                        <div class="staff-wizard-step" data-staff-walkin-step-indicator="4" role="listitem">
+                            <span class="staff-wizard-step-num">4</span>
+                            <span class="staff-wizard-step-label">Payment</span>
+                        </div>
+                        <div class="staff-wizard-step" data-staff-walkin-step-indicator="5" role="listitem">
+                            <span class="staff-wizard-step-num">5</span>
+                            <span class="staff-wizard-step-label">Review</span>
+                        </div>
+                    </div>
 
-                        <div class="staff-form-row">
-                            <div class="staff-form-group">
-                                <span class="staff-form-label">Customer name</span>
-                                <input type="text" class="staff-input" placeholder="Juan Dela Cruz" data-staff-walkin-name>
-                            </div>
-                            <div class="staff-form-group">
-                                <span class="staff-form-label">Mobile number</span>
-                                <input type="tel" class="staff-input" placeholder="09XX XXX XXXX" data-staff-walkin-mobile>
+                    <div class="staff-card staff-wizard-card">
+                        <!-- STEP 1 — Customer -->
+                        <div class="staff-wizard-panel is-active" data-staff-walkin-step="1">
+                            <h3 class="staff-wizard-panel-title">Customer details</h3>
+                            <div class="staff-form-row">
+                                <div class="staff-form-group">
+                                    <span class="staff-form-label">Customer name</span>
+                                    <input type="text" class="staff-input" placeholder="Juan Dela Cruz" data-staff-walkin-name>
+                                </div>
+                                <div class="staff-form-group">
+                                    <span class="staff-form-label">Mobile number (optional)</span>
+                                    <input type="tel" class="staff-input" placeholder="09XX XXX XXXX" data-staff-walkin-mobile>
+                                </div>
                             </div>
                         </div>
 
-                        <div class="staff-form-row">
+                        <!-- STEP 2 — Sport & court/unit -->
+                        <div class="staff-wizard-panel" data-staff-walkin-step="2">
+                            <h3 class="staff-wizard-panel-title">Sport &amp; court</h3>
                             <div class="staff-form-group">
-                                <span class="staff-form-label">Court / Sport</span>
-                                <select class="staff-select" data-staff-walkin-court>
-                                    <option value="" data-rate="">Loading courts…</option>
-                                </select>
+                                <span class="staff-form-label">Sport</span>
+                                <div class="staff-filter-row" data-staff-walkin-sport-chips>
+                                    <span class="staff-form-hint">Loading courts…</span>
+                                </div>
                             </div>
-                            <div class="staff-form-group">
-                                <span class="staff-form-label">Duration</span>
-                                <select class="staff-select" data-staff-walkin-duration>
-                                    <option value="1">1 hour / game</option>
-                                    <option value="2">2 hours / games</option>
-                                    <option value="3">3 hours / games</option>
-                                </select>
+                            <!-- Hidden by JS when the selected court resolves to a
+                                 single unit — nothing to choose between (mirrors
+                                 includes/Dashboard.js's own
+                                 [data-dash-book-unit-wrap]). -->
+                            <div class="staff-form-group" data-staff-walkin-unit-wrap hidden>
+                                <span class="staff-form-label" data-staff-walkin-unit-label>Choose a court</span>
+                                <select class="staff-select" data-staff-walkin-unit-select></select>
                             </div>
                         </div>
 
-                        <div class="staff-form-group">
-                            <span class="staff-form-label">Start time</span>
-                            <input type="time" class="staff-input" value="14:00" data-staff-walkin-time>
+                        <!-- STEP 3 — Time (today only) -->
+                        <div class="staff-wizard-panel" data-staff-walkin-step="3">
+                            <h3 class="staff-wizard-panel-title">Time — today only</h3>
+                            <p class="staff-form-hint">Walk-ins are recorded for today; choose a start and end time from what's still free.</p>
+                            <div class="staff-time-range">
+                                <div class="staff-form-group">
+                                    <span class="staff-form-label">From</span>
+                                    <select class="staff-select" data-staff-walkin-from></select>
+                                </div>
+                                <div class="staff-form-group">
+                                    <span class="staff-form-label">To</span>
+                                    <select class="staff-select" data-staff-walkin-to></select>
+                                </div>
+                            </div>
+                            <p class="staff-form-hint" data-staff-walkin-open-windows>Select a sport first.</p>
                         </div>
 
-                        <div class="staff-form-group">
-                            <span class="staff-form-label">Payment method</span>
+                        <!-- STEP 4 — Payment -->
+                        <div class="staff-wizard-panel" data-staff-walkin-step="4">
+                            <h3 class="staff-wizard-panel-title">Payment method</h3>
                             <div class="staff-payment-options">
                                 <label class="staff-payment-option is-selected" data-staff-payment-option>
                                     <span class="staff-payment-option-head">
-                                        <input type="radio" name="staff-payment" checked data-staff-payment="cash">
+                                        <input type="radio" name="staff-walkin-payment" checked data-staff-payment="cash">
                                         Cash
                                     </span>
                                     <p>Collected on-site by staff.</p>
                                 </label>
                                 <label class="staff-payment-option" data-staff-payment-option>
                                     <span class="staff-payment-option-head">
-                                        <input type="radio" name="staff-payment" data-staff-payment="gcash">
-                                        GCash
+                                        <input type="radio" name="staff-walkin-payment" data-staff-payment="online">
+                                        Online payment
                                     </span>
-                                    <p>Scan QR or manual reference entry.</p>
+                                    <p>Card / e-wallet checkout (coming soon).</p>
                                 </label>
                             </div>
                         </div>
 
-                        <div class="staff-notice">
-                            <svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.7"/><path d="M12 8v5M12 16h.01" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/></svg>
-                            <span>Double-check the court and time before confirming — this records the walk-in immediately. Receipts are not generated by the system yet; issue one manually if the customer needs it.</span>
+                        <!-- STEP 5 — Review & save -->
+                        <div class="staff-wizard-panel" data-staff-walkin-step="5">
+                            <h3 class="staff-wizard-panel-title">Review &amp; save</h3>
+                            <div class="staff-wizard-summary">
+                                <div class="staff-summary-row"><span>Customer</span><strong data-staff-walkin-summary-name>—</strong></div>
+                                <div class="staff-summary-row"><span>Mobile</span><strong data-staff-walkin-summary-mobile>—</strong></div>
+                                <div class="staff-summary-row"><span>Court</span><strong data-staff-walkin-summary-court>—</strong></div>
+                                <div class="staff-summary-row"><span>Time</span><strong data-staff-walkin-summary-time>—</strong></div>
+
+                                <div class="staff-summary-divider"></div>
+
+                                <div class="staff-summary-row"><span data-staff-walkin-summary-rate-label>Rate</span><strong data-staff-walkin-summary-rate>—</strong></div>
+                                <div class="staff-summary-row"><span>Payment method</span><strong data-staff-walkin-summary-payment>Cash</strong></div>
+
+                                <div class="staff-summary-divider"></div>
+
+                                <div class="staff-summary-total">
+                                    <span>Total</span>
+                                    <span data-staff-walkin-summary-total>—</span>
+                                </div>
+
+                                <button type="button" class="staff-btn-primary" data-staff-walkin-save>Save Walk-In</button>
+                            </div>
+                        </div>
+
+                        <div class="staff-wizard-nav">
+                            <button type="button" class="staff-btn-ghost staff-wizard-back" data-staff-walkin-back hidden>Back</button>
+                            <button type="button" class="staff-btn-primary staff-wizard-next" data-staff-walkin-next disabled>Next</button>
                         </div>
                     </div>
+                </div>
 
-                    <div class="staff-card staff-summary">
-                        <h3 style="font-family: var(--font-display); font-weight:600; font-size:1.05rem;">Walk-In Summary</h3>
-
-                        <div class="staff-summary-row"><span>Customer</span><strong data-staff-walkin-summary-name>—</strong></div>
-                        <div class="staff-summary-row"><span>Court</span><strong data-staff-walkin-summary-court>Basketball</strong></div>
-                        <div class="staff-summary-row"><span>Start time</span><strong data-staff-walkin-summary-time>2:00 PM</strong></div>
-                        <div class="staff-summary-row"><span>Duration</span><strong data-staff-walkin-summary-duration>1 hour / game</strong></div>
-
-                        <div class="staff-summary-divider"></div>
-
-                        <div class="staff-summary-row"><span>Payment method</span><strong data-staff-walkin-summary-payment>Cash</strong></div>
-
-                        <div class="staff-summary-divider"></div>
-
-                        <div class="staff-summary-total">
-                            <span>Amount due</span>
-                            <span data-staff-walkin-summary-total>₱300.00</span>
-                        </div>
-
-                        <button type="button" class="staff-btn-primary" data-staff-walkin-submit>Record Walk-In Booking</button>
-
-                        <div class="staff-recent-list" data-staff-recent-walkins style="margin-top: 8px;">
-                            <p class="staff-form-label" style="margin-bottom: -2px;">Recent walk-ins</p>
-                        </div>
-                    </div>
+                <!-- Receipt (S4) — hidden until a walk-in is saved; rendered by
+                     includes/staff_dashboard.js's renderStaffReceiptCard()
+                     into [data-staff-walkin-receipt]. -->
+                <div data-staff-walkin-receipt-wrap hidden>
+                    <div data-staff-walkin-receipt></div>
                 </div>
             </section>
 
             <!-- ============================================================
-                 COURT SCHEDULE PANEL
+                 COURT SCHEDULE PANEL — Revision S1, decision S5. Per-unit
+                 hourly availability grid for a chosen date (default today),
+                 replacing the old fixed 2-hour/6-column, all-courts-as-
+                 columns grid. Rendered entirely by
+                 includes/staff_dashboard.js's refreshCourtSchedule() from
+                 window.InigoCourtsData (real courts/units) and that date's
+                 real `booking` + `walk_in_booking` rows.
                  ============================================================ -->
             <section class="staff-panel" data-staff-panel="schedule">
                 <div class="staff-panel-head">
                     <div>
                         <h2>Court Schedule</h2>
-                        <p>Calendar view of every court so you can spot open slots at a glance.</p>
+                        <p>Hour-by-hour availability per court/unit so you can spot open slots at a glance.</p>
                     </div>
                     <div class="staff-legend">
-                        <span><span class="dot available"></span>Available</span>
-                        <span><span class="dot booked"></span>Booked / Reserved</span>
-                        <span><span class="dot walkin"></span>Walk-in</span>
+                        <span><span class="dot available"></span>Open</span>
+                        <span><span class="dot booked"></span>Booked</span>
+                        <span><span class="dot walkin"></span>Past</span>
                     </div>
                 </div>
 
                 <div class="staff-card">
                     <div class="staff-card-head">
-                        <h3 data-staff-schedule-date>Today</h3>
+                        <div class="staff-form-group" style="margin-bottom: 0; min-width: 190px;">
+                            <span class="staff-form-label">Date</span>
+                            <input type="date" class="staff-input" data-staff-schedule-date>
+                        </div>
                         <div class="staff-sport-tabs" data-staff-sport-tabs>
                             <button type="button" class="staff-chip is-active" data-staff-chip data-staff-sport="all">All Courts</button>
                         </div>
                     </div>
 
-                    <!-- Rendered entirely by includes/staff_dashboard.js from
-                         window.InigoCourtsData (real courts, as columns) and
-                         today's real `booking` + `walk_in_booking` rows (as
-                         cells) — see refreshCourtSchedule(). Static markup
-                         here was a fixed demo grid with no connection to
-                         real data. -->
-                    <div class="staff-schedule-grid" data-staff-schedule-grid>
-                        <p style="grid-column: 1 / -1; color: var(--color-ink-faint); padding: 8px 4px;">Loading schedule…</p>
-                    </div>
-                </div>
-            </section>
-
-            <!-- ============================================================
-                 TRANSACTION RECORDS PANEL
-                 ============================================================ -->
-            <section class="staff-panel" data-staff-panel="transactions">
-                <div class="staff-panel-head">
-                    <div>
-                        <h2>Transaction Records</h2>
-                        <p>Searchable audit trail of every booking action staff have taken.</p>
-                    </div>
-                </div>
-
-                <div class="staff-card">
-                    <div class="staff-card-head">
-                        <h3>All Activity</h3>
-                        <div class="staff-toolbar">
-                            <div class="staff-search-wrap">
-                                <svg viewBox="0 0 24 24" fill="none"><circle cx="11" cy="11" r="7" stroke="currentColor" stroke-width="1.8"/><path d="M21 21l-4.3-4.3" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
-                                <input type="text" class="staff-search" placeholder="Search customer, court, or action…" data-staff-search="transactions">
-                            </div>
-                            <div class="staff-filter-row" data-staff-filter-group="transactions">
-                                <button type="button" class="staff-chip is-active" data-staff-chip data-staff-filter="all">All</button>
-                                <button type="button" class="staff-chip" data-staff-chip data-staff-filter="booking_confirmed">Confirmed</button>
-                                <button type="button" class="staff-chip" data-staff-chip data-staff-filter="booking_declined">Declined</button>
-                                <button type="button" class="staff-chip" data-staff-chip data-staff-filter="booking_timed_in">Timed In</button>
-                                <button type="button" class="staff-chip" data-staff-chip data-staff-filter="booking_timed_out">Timed Out</button>
-                                <button type="button" class="staff-chip" data-staff-chip data-staff-filter="walkin_recorded">Walk-in</button>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Rendered entirely by includes/staff_dashboard.js from
-                         the `audit_log` table (database/schema/004_staff_module.sql)
-                         — a row is written on every Confirm / Decline / Time-In /
-                         Time-Out / walk-in action. No amount/payment-method
-                         columns exist here on purpose: no payment record is
-                         ever created in this phase (Phase 5), so showing one
-                         would be fabricated data. -->
                     <div class="staff-table-wrap">
-                        <table class="staff-table" data-staff-table="transactions">
+                        <table class="staff-table staff-schedule-table" data-staff-schedule-grid>
                             <thead>
-                                <tr>
-                                    <th>Timestamp</th>
-                                    <th>Customer / Court</th>
-                                    <th>Action</th>
-                                    <th>Recorded By</th>
-                                </tr>
+                                <tr><th>Court / Unit</th></tr>
                             </thead>
                             <tbody>
-                                <tr><td colspan="4" style="text-align:center; color: var(--color-ink-faint);">Loading transaction records…</td></tr>
+                                <tr><td style="text-align:center; color: var(--color-ink-faint);">Loading schedule…</td></tr>
                             </tbody>
                         </table>
                     </div>
@@ -436,52 +470,135 @@
             </section>
 
             <!-- ============================================================
-                 STAFF PROFILE PANEL
+                 TRANSACTION RECORDS PANEL — Revision S1, decision S6. A
+                 time-in log (bookings + walk-ins, union, newest first) for a
+                 chosen date range, replacing the old `audit_log`-backed
+                 confirm/decline trail (that table is no longer read here —
+                 see includes/staff_dashboard.js's writeAuditLog(), kept only
+                 as a best-effort write helper).
                  ============================================================ -->
-            <section class="staff-panel" data-staff-panel="profile">
+            <section class="staff-panel" data-staff-panel="transactions">
                 <div class="staff-panel-head">
                     <div>
-                        <h2>Staff Profile</h2>
-                        <p>Your basic account information as recorded by Iñigos Sports Center.</p>
+                        <h2>Transaction Records</h2>
+                        <p>Every booking and walk-in for the selected date range, with time-in/out.</p>
                     </div>
                 </div>
 
                 <div class="staff-card">
-                    <div class="staff-profile-card">
-                        <div class="staff-avatar">RD</div>
-                        <div class="staff-profile-card-info">
-                            <h3>Rosalinda Driz</h3>
-                            <p>Staff · Iñigos Sports Center since 2011</p>
+                    <div class="staff-card-head">
+                        <div class="staff-form-row" style="gap: 12px;">
+                            <div class="staff-form-group" style="margin-bottom: 0;">
+                                <span class="staff-form-label">From</span>
+                                <input type="date" class="staff-input" data-staff-tx-from>
+                            </div>
+                            <div class="staff-form-group" style="margin-bottom: 0;">
+                                <span class="staff-form-label">To</span>
+                                <input type="date" class="staff-input" data-staff-tx-to>
+                            </div>
+                        </div>
+                        <div class="staff-toolbar">
+                            <div class="staff-search-wrap">
+                                <svg viewBox="0 0 24 24" fill="none"><circle cx="11" cy="11" r="7" stroke="currentColor" stroke-width="1.8"/><path d="M21 21l-4.3-4.3" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+                                <input type="text" class="staff-search" placeholder="Search customer or court…" data-staff-search="transactions">
+                            </div>
+                            <div class="staff-filter-row" data-staff-filter-group="transactions">
+                                <button type="button" class="staff-chip is-active" data-staff-chip data-staff-filter="all">All</button>
+                                <button type="button" class="staff-chip" data-staff-chip data-staff-filter="online">Online</button>
+                                <button type="button" class="staff-chip" data-staff-chip data-staff-filter="walkin">Walk-in</button>
+                            </div>
                         </div>
                     </div>
 
-                    <div class="staff-profile-meta">
-                        <div class="staff-profile-meta-item">
-                            <span>Email address</span>
-                            <span>tsrosem8@gmail.com</span>
-                        </div>
-                        <div class="staff-profile-meta-item">
-                            <span>Contact number</span>
-                            <span>0917 000 0000</span>
-                        </div>
-                        <div class="staff-profile-meta-item">
-                            <span>Bookings confirmed today</span>
-                            <span data-staff-stat="confirmed-today">0</span>
-                        </div>
-                        <div class="staff-profile-meta-item">
-                            <span>Walk-ins recorded today</span>
-                            <span data-staff-stat="walkins-today">0</span>
-                        </div>
+                    <div class="staff-table-wrap">
+                        <table class="staff-table" data-staff-table="transactions">
+                            <thead>
+                                <tr>
+                                    <th>Date</th>
+                                    <th>Customer</th>
+                                    <th>Court / unit</th>
+                                    <th>Time</th>
+                                    <th>Source</th>
+                                    <th>Payment</th>
+                                    <th>Timed in</th>
+                                    <th>Timed out</th>
+                                    <th>Status</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr><td colspan="9" style="text-align:center; color: var(--color-ink-faint);">Loading transaction records…</td></tr>
+                            </tbody>
+                        </table>
                     </div>
-                    <!-- "Assigned courts" and "Shift" were removed here — no
-                         table in this system tracks staff court assignments
-                         or shift schedules, so those tiles were always
-                         fabricated display values (docs/QA_AUDIT_REPORT.md
-                         P3, "frozen profile and staff stat tiles"). Add them
-                         back once real data exists to back them. -->
+                </div>
+            </section>
 
-                    <div class="staff-form-actions" style="margin-top: 28px;">
-                        <button type="button" class="staff-btn-ghost" data-staff-logout>Log Out</button>
+            <!-- ============================================================
+                 PROFILE PANEL — Revision S1, decision S7. Opened only from
+                 the topbar dropdown's "View Profile" (no sidebar entry —
+                 setActivePanel('profile') in includes/staff_dashboard.js
+                 never highlights anything in .staff-nav, same pattern as the
+                 owner dashboard's own data-admin-panel="profile"). Every
+                 value here is painted by renderStaffProfile()/
+                 loadStaffProfileMemberSince() from the real signed-in
+                 profile. Name/contact editing moved to Account Settings'
+                 Personal Information card below.
+                 ============================================================ -->
+            <section class="staff-panel" data-staff-panel="profile">
+                <div class="staff-panel-head">
+                    <div>
+                        <h2>My Profile</h2>
+                        <p>Your account, at a glance.</p>
+                    </div>
+                </div>
+
+                <div class="staff-card staff-profile-hero">
+                    <div class="staff-avatar staff-profile-hero-avatar">RD</div>
+                    <div class="staff-profile-hero-info">
+                        <h3 data-staff-profile-name>Staff Member</h3>
+                        <span class="staff-role-pill">Staff</span>
+                    </div>
+                </div>
+
+                <div class="staff-card">
+                    <div class="staff-card-head"><h3>Account details</h3></div>
+                    <dl class="staff-profile-dl">
+                        <div class="staff-profile-dl-row">
+                            <dt>Position</dt>
+                            <dd data-staff-profile-position>—</dd>
+                        </div>
+                        <div class="staff-profile-dl-row">
+                            <dt>Email</dt>
+                            <dd data-staff-profile-email>—</dd>
+                        </div>
+                        <div class="staff-profile-dl-row">
+                            <dt>Mobile</dt>
+                            <dd data-staff-profile-mobile>—</dd>
+                        </div>
+                        <div class="staff-profile-dl-row">
+                            <dt>Member since</dt>
+                            <dd data-staff-profile-member-since>—</dd>
+                        </div>
+                    </dl>
+                </div>
+
+                <div class="staff-form-actions" style="justify-content: flex-start;">
+                    <button type="button" class="staff-btn-primary" data-staff-nav="settings">Edit in Account Settings</button>
+                </div>
+            </section>
+
+            <!-- ============================================================
+                 ACCOUNT SETTINGS PANEL — Revision S1, decision S7/S9.
+                 Personal Information (name/mobile) moved in from the old
+                 Staff Profile tab; Change Password becomes a 2-step wizard
+                 identical in shape to the owner/customer dashboards'
+                 (data-staff-pw-*), replacing the old single 3-field form.
+                 ============================================================ -->
+            <section class="staff-panel" data-staff-panel="settings">
+                <div class="staff-panel-head">
+                    <div>
+                        <h2>Account Settings</h2>
+                        <p>Update your personal details and manage your staff account password.</p>
                     </div>
                 </div>
 
@@ -490,54 +607,61 @@
                     <div class="staff-form-row">
                         <div class="staff-form-group">
                             <span class="staff-form-label">Full name</span>
-                            <input type="text" class="staff-input" data-staff-profile-name-input>
+                            <input type="text" class="staff-input" data-staff-settings-name>
                         </div>
                         <div class="staff-form-group">
                             <span class="staff-form-label">Contact number</span>
-                            <input type="tel" class="staff-input" data-staff-profile-contact-input>
+                            <input type="tel" class="staff-input" placeholder="09XX XXX XXXX" data-staff-settings-mobile>
                         </div>
                     </div>
                     <div class="staff-form-actions">
-                        <button type="button" class="staff-btn-primary" data-staff-profile-save>Save Changes</button>
-                    </div>
-                </div>
-            </section>
-
-            <!-- ============================================================
-                 ACCOUNT SETTINGS PANEL
-                 ============================================================ -->
-            <!-- Staff previously had no password-change UI at all (zero
-                 matches for a settings/password panel — implementation_plan.md).
-                 Personal Information (name/contact) already lives in the
-                 Staff Profile panel above, so this panel is just the missing
-                 piece: Change Password, modeled directly on the same
-                 re-authenticate-then-updateUser pattern already correct in
-                 includes/Dashboard.js and includes/owner_dashboard.js — see
-                 includes/staff_dashboard.js. -->
-            <section class="staff-panel" data-staff-panel="settings">
-                <div class="staff-panel-head">
-                    <div>
-                        <h2>Account Settings</h2>
-                        <p>Manage your staff account password.</p>
+                        <button type="button" class="staff-btn-ghost" data-staff-settings-cancel="profile">Cancel</button>
+                        <button type="button" class="staff-btn-primary" data-staff-settings-save="profile">Save Changes</button>
                     </div>
                 </div>
 
-                <div class="staff-card">
+                <!-- Change Password — 2-step guided wizard, ported from
+                     includes/owner_dashboard.js's data-admin-pw-* under
+                     data-staff-pw-* names. Cancel resets the wizard back to
+                     step 1 and clears every field. -->
+                <div class="staff-card staff-wizard-card">
                     <div class="staff-card-head"><h3>Change Password</h3></div>
-                    <div class="staff-form-group">
-                        <span class="staff-form-label">Current password</span>
-                        <div class="staff-input-wrap">
-                            <input type="password" class="staff-input" placeholder="••••••••" data-staff-settings-current-password>
-                            <button type="button" class="staff-toggle-visibility" data-staff-toggle-password aria-label="Show password">
-                                <svg viewBox="0 0 24 24" width="18" height="18"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7z" fill="none" stroke="currentColor" stroke-width="1.6"/><circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="1.6"/></svg>
-                            </button>
+
+                    <div class="staff-wizard-steps" data-staff-pw-steps role="list" aria-label="Change password steps">
+                        <div class="staff-wizard-step is-current" data-staff-pw-step-indicator="1" role="listitem">
+                            <span class="staff-wizard-step-num">1</span>
+                            <span class="staff-wizard-step-label">Verify</span>
+                        </div>
+                        <div class="staff-wizard-step" data-staff-pw-step-indicator="2" role="listitem">
+                            <span class="staff-wizard-step-num">2</span>
+                            <span class="staff-wizard-step-label">New password</span>
                         </div>
                     </div>
-                    <div class="staff-form-row">
+
+                    <!-- STEP 1 — current password only. Placeholder reads as
+                         an instruction, not a fake password. Inputs stay
+                         plain .staff-input inside .staff-input-wrap, which
+                         only reserves right padding for the eye toggle — same
+                         height/border/radius/background/focus ring as every
+                         other .staff-input on this page. -->
+                    <div class="staff-wizard-panel is-active" data-staff-pw-step="1">
+                        <div class="staff-form-group">
+                            <span class="staff-form-label">Current password</span>
+                            <div class="staff-input-wrap">
+                                <input type="password" class="staff-input" placeholder="Enter current password" data-staff-pw-current>
+                                <button type="button" class="staff-toggle-visibility" data-staff-toggle-password aria-label="Show password">
+                                    <svg viewBox="0 0 24 24" width="18" height="18"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7z" fill="none" stroke="currentColor" stroke-width="1.6"/><circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="1.6"/></svg>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- STEP 2 — new password + confirm. -->
+                    <div class="staff-wizard-panel" data-staff-pw-step="2">
                         <div class="staff-form-group">
                             <span class="staff-form-label">New password</span>
                             <div class="staff-input-wrap">
-                                <input type="password" class="staff-input" placeholder="Create a new password" data-staff-settings-new-password>
+                                <input type="password" class="staff-input" placeholder="Enter new password (min. 8 characters)" data-staff-pw-new>
                                 <button type="button" class="staff-toggle-visibility" data-staff-toggle-password aria-label="Show password">
                                     <svg viewBox="0 0 24 24" width="18" height="18"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7z" fill="none" stroke="currentColor" stroke-width="1.6"/><circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="1.6"/></svg>
                                 </button>
@@ -546,16 +670,19 @@
                         <div class="staff-form-group">
                             <span class="staff-form-label">Confirm new password</span>
                             <div class="staff-input-wrap">
-                                <input type="password" class="staff-input" placeholder="Re-enter new password" data-staff-settings-confirm-password>
+                                <input type="password" class="staff-input" placeholder="Re-enter new password" data-staff-pw-confirm>
                                 <button type="button" class="staff-toggle-visibility" data-staff-toggle-password aria-label="Show password">
                                     <svg viewBox="0 0 24 24" width="18" height="18"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7z" fill="none" stroke="currentColor" stroke-width="1.6"/><circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="1.6"/></svg>
                                 </button>
                             </div>
                         </div>
                     </div>
-                    <div class="staff-form-actions">
-                        <button type="button" class="staff-btn-ghost" data-staff-settings-cancel="password">Cancel</button>
-                        <button type="button" class="staff-btn-primary" data-staff-settings-save="password">Update Password</button>
+
+                    <div class="staff-wizard-nav">
+                        <button type="button" class="staff-btn-ghost staff-wizard-cancel" data-staff-settings-cancel="password">Cancel</button>
+                        <button type="button" class="staff-btn-ghost staff-wizard-back" data-staff-pw-back hidden>Go Back</button>
+                        <button type="button" class="staff-btn-primary staff-wizard-next" data-staff-pw-next disabled>Next</button>
+                        <button type="button" class="staff-btn-primary" data-staff-settings-save="password" hidden>Save Password</button>
                     </div>
                 </div>
             </section>
@@ -570,27 +697,26 @@
 <!-- Shared HTML-escaping + PH mobile validation helpers — must load before
      staff_dashboard.js, which uses window.escapeHtml on every
      customer/booking value it renders, and window.validatePhMobile on the
-     walk-in mobile field. -->
+     walk-in wizard's mobile field. -->
 <script src="../includes/escape.js"></script>
 <script src="../includes/phoneValidation.js"></script>
-<!-- Court/sport data layer (Phase 2 — one source of truth for courts, see
-     implementation_plan.md D2). courts-data.js is the same static fallback
-     array the landing page/customer dashboard use; courtsData.js wraps it
-     with the real `court`/`sport` Supabase fetch. Both must load before
-     staff_dashboard.js, which renders the Walk-In court dropdown and the
-     Court Schedule grid from window.InigoCourtsData instead of the
-     hardcoded lists this phase removes. -->
+<!-- Court/sport data layer — one source of truth for courts. courts-data.js
+     is the same static fallback array the landing page/customer dashboard
+     use; courtsData.js wraps it with the real `court`/`sport` Supabase
+     fetch, plus resolveCourtUnits()/monogramFor()/slugify() (Revision S1
+     needs resolveCourtUnits for the walk-in wizard's Step 2 and the Court
+     Schedule's per-unit rows). Both must load before staff_dashboard.js. -->
 <script src="../includes/courts-data.js"></script>
 <script src="../includes/courtsData.js"></script>
-<!-- Payment/app settings data layer (E2, implementation_plan.md) — same
-     fetch-with-fallback shape as courtsData.js above. Must load before
-     staff_dashboard.js, which reads the walk-in payment options from it. -->
-<script src="../includes/appSettings.js"></script>
-<!-- Shared operating-hours constants (Part 3, multi-hour booking —
-     implementation_plan.md). Must load before staff_dashboard.js, whose
-     Court Schedule SCHEDULE_SLOTS/formatHourLabel read
-     window.InigoBusinessHours at parse time. -->
+<!-- Shared operating-hours constants (8 AM-8 PM) — must load before
+     staff_dashboard.js, whose Court Schedule columns and the walk-in
+     wizard's From/To pickers read window.InigoBusinessHours at parse time. -->
 <script src="../includes/businessHours.js"></script>
+<!-- Revision S1, decision S4 — html2canvas rasterizes the walk-in receipt
+     card for "Download PNG", same CDN build already used on the customer
+     dashboard (Pages/user_dashboard.html). Must load before
+     staff_dashboard.js. -->
+<script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
 <script src="../includes/staff_dashboard.js"></script>
 </body>
 </html>

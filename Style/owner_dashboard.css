@@ -21,6 +21,16 @@
     --color-alert: #d6482f;
     --color-line: rgba(244, 239, 230, 0.12);
 
+    /* Website performance doughnut chart's "warn" slice/legend-dot only —
+       deliberately its own token rather than --color-primary: the ring
+       encodes status by hue alone (no labels on the slices themselves), so
+       warn needs to read distinctly from the "Run check" button/links that
+       already use --color-primary nearby. One value for both themes (not
+       redefined in the light block below), same as --admin-card-radius/
+       --admin-card-pad just under it; text usages (the pill, the center
+       overlay word) keep using --color-primary as before. */
+    --color-perf-warn: #e0a100;
+
     /* Revision A2 (implementation_plan.md, decision B5) — one card system:
        every card-like surface (stat cards, the chart/recent-bookings/
        status-breakdown/staff/settings/profile .admin-card, plus the
@@ -605,12 +615,15 @@ button.admin-notif-item:focus-visible {
 .admin-pill-btn.is-active { background: var(--color-primary); color: #14110d; }
 .admin-pill-btn:not(.is-active):hover { color: var(--color-ink); }
 
-/* Recent bookings / Booking status this month (Revision A1, decision A3) —
-   Recent bookings reuses .admin-table (below); Booking status this month
-   reuses these SAME horizontal progress-bar rules the old "Busiest courts
-   this week" fake card used (label + count + proportional bar), just fed
-   by includes/owner_dashboard.js's refreshStatusBreakdown() instead of a
-   hardcoded width. */
+/* Booking status this month (Revision A1, decision A3; trimmed to 3 rows by
+   Revision A3, decision C3) — horizontal progress-bar rows (label + count +
+   proportional bar) the old "Busiest courts this week" fake card
+   originated, now fed by includes/owner_dashboard.js's
+   refreshStatusBreakdown() instead of a hardcoded width. Also reused as-is
+   (same .admin-progress-track/.admin-progress-fill classes, just with an
+   .admin-feedback-dist-track sizing modifier) by the Feedbacks & Reviews
+   star-distribution rows below (decision C5), instead of duplicating the
+   track/fill look a second time. */
 .admin-progress-list { display: flex; flex-direction: column; gap: 14px; }
 .admin-progress-item { display: flex; flex-direction: column; gap: 6px; }
 .admin-progress-row {
@@ -622,6 +635,121 @@ button.admin-notif-item:focus-visible {
 .admin-progress-count { font-family: var(--font-numeric); font-variant-numeric: tabular-nums; font-weight: 400; color: var(--color-ink-faint); white-space: nowrap; }
 .admin-progress-track { height: 8px; border-radius: 999px; background: var(--color-bg-elevated); overflow: hidden; }
 .admin-progress-fill { height: 100%; border-radius: 999px; background: var(--color-primary); }
+
+/* ==========================================================================
+   Website performance (Revision A3, implementation_plan.md, decision C4) —
+   replaces the old Recent bookings card in the same .admin-grid-2 slot.
+   Six label/value/status-pill rows rendered by
+   includes/owner_dashboard.js's refreshWebsitePerformance(); the Media
+   storage row additionally gets a small usage bar, reusing
+   .admin-progress-track/.admin-progress-fill from just above rather than a
+   second set of bar classes.
+   ========================================================================== */
+.admin-perf-head-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: flex-end; }
+
+.admin-perf-list { display: flex; flex-direction: column; }
+
+/* One line per check: dot+label, value and status pill share a row
+   (.admin-perf-item-row) that never wraps the pill below the value — label
+   and pill are flex: 0 0 auto (fixed size), so only the value (flex: 1 1
+   auto + min-width: 0, below) shrinks and wraps its own text when it's
+   long. .admin-perf-item itself stays flex-column so the Media storage
+   row's usage bar (.admin-perf-bar, below) can sit as a second, full-width
+   line under the row instead of being squeezed into it. */
+.admin-perf-item {
+    display: flex; flex-direction: column; gap: 6px;
+    padding: 10px 0; border-bottom: 1px solid var(--color-line);
+}
+.admin-perf-item:last-child { border-bottom: none; padding-bottom: 0; }
+.admin-perf-item:first-child { padding-top: 0; }
+
+.admin-perf-item-row { display: flex; align-items: center; gap: 10px; }
+.admin-perf-item-label {
+    display: inline-flex; align-items: center; gap: 6px; flex: 0 0 auto;
+    font-size: var(--fs-sm); color: var(--color-ink-faint);
+}
+/* A value is sometimes a timing/count ("128 ms", "142 bookings · 37
+   customers · 9 feedback") and sometimes a sentence ("Not set up — run
+   015_media_bucket.sql") — --font-numeric's tabular-nums only helps the
+   former, but doesn't hurt the latter, so one rule covers both rather than
+   branching per row. flex + min-width: 0 + overflow-wrap let a long value
+   shrink and wrap within its own box instead of pushing the status pill
+   onto a second line or overflowing this card at 360px. */
+.admin-perf-item-value {
+    font-family: var(--font-numeric); font-variant-numeric: tabular-nums; font-size: var(--fs-md);
+    font-weight: 600; color: var(--color-ink);
+    flex: 1 1 auto; min-width: 0; text-align: right; overflow-wrap: anywhere;
+}
+/* Second, full-width line under the row (.admin-perf-item's column
+   direction stretches it edge to edge) instead of the old side-by-side
+   layout's inline, capped-width bar. */
+.admin-perf-bar { width: 100%; }
+
+.admin-perf-pill {
+    font-family: var(--font-display); font-size: var(--fs-xs); font-weight: var(--fw-semibold); letter-spacing: 0.04em;
+    text-transform: uppercase; padding: 5px 11px; border-radius: 999px; white-space: nowrap; flex: 0 0 auto;
+}
+/* Bigger variant for the card-head's overall badge — same 4 status colors,
+   just roomier since it stands alone next to Run check rather than beside
+   a label+value column. */
+.admin-perf-overall { padding: 7px 15px; font-size: var(--fs-sm); }
+
+.admin-perf-pill-good { background: color-mix(in srgb, var(--color-court-green) 20%, transparent); color: var(--color-court-green); }
+.admin-perf-pill-warn { background: color-mix(in srgb, var(--color-primary) 18%, transparent); color: var(--color-primary); }
+.admin-perf-pill-problem { background: color-mix(in srgb, var(--color-alert) 18%, transparent); color: var(--color-alert); }
+/* Neutral — "Not set up" (Storage bucket not provisioned) and "Unavailable"
+   (a check honestly couldn't run) — deliberately NOT red/yellow: neither is
+   a performance problem, so this shouldn't visually alarm the owner or drag
+   the overall badge down (see worstAdminPerfStatus()'s own comment). */
+.admin-perf-pill-neutral { background: color-mix(in srgb, var(--color-ink-faint) 20%, transparent); color: var(--color-ink-faint); }
+
+/* "Like a pie graph" layout — a Chart.js doughnut on top, centered, plus
+   the same 6 rows as a full-width legend below it (unchanged
+   .admin-perf-list/-item rules above besides the added .admin-perf-dot).
+   Built in includes/owner_dashboard.js's renderAdminPerfChart(). Stacked
+   at every width — a side-by-side chart|legend grid (this section's
+   original layout) put the legend in a ~200px column too narrow for one
+   line per check, wrapping every row's status pill below its value. */
+.admin-perf-body { display: flex; flex-direction: column; gap: 18px; }
+/* Set once at startup (typeof window.Chart === 'undefined') if the Chart.js
+   CDN failed to load — hides the now-empty chart so the legend list alone
+   fills the card. */
+.admin-perf-body.admin-perf-no-chart .admin-perf-chart-wrap { display: none; }
+
+/* Fixed height, capped width, centered — Chart.js's responsive: true /
+   maintainAspectRatio: false fills this box; the width cap + auto margins
+   keep the doughnut from stretching across the card now that the legend
+   sits below it instead of beside it. */
+.admin-perf-chart-wrap { position: relative; height: 200px; max-width: 220px; margin: 0 auto; }
+.admin-perf-chart-center {
+    position: absolute; inset: 0; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; gap: 2px; text-align: center;
+    /* Let hover/click pass through to the canvas underneath for tooltips —
+       this div's box covers the whole chart, not just the drawn text. */
+    pointer-events: none;
+}
+.admin-perf-chart-status {
+    font-family: var(--font-display); font-size: var(--fs-md); font-weight: var(--fw-semibold);
+    letter-spacing: 0.02em; text-transform: uppercase; color: var(--color-ink-faint);
+}
+/* Same 3 colors as .admin-perf-pill-good/-warn/-problem just above (the
+   overall badge in the card head uses those pill classes already) so the
+   center word always matches that badge — the ring's own warn slice uses
+   --color-perf-warn instead, see .admin-perf-dot-warn below. */
+.admin-perf-chart-status-good { color: var(--color-court-green); }
+.admin-perf-chart-status-warn { color: var(--color-primary); }
+.admin-perf-chart-status-problem { color: var(--color-alert); }
+.admin-perf-chart-sub { font-size: var(--fs-xs); color: var(--color-ink-faint); }
+
+/* Legend dot — mirrors the notification dropdown's .admin-notif-dot
+   pattern (colored circle + modifier class per status). .admin-perf-item-
+   label itself (display: inline-flex, flex: 0 0 auto) is defined above,
+   next to .admin-perf-item-row. */
+.admin-perf-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+.admin-perf-dot-good { background: var(--color-court-green); }
+.admin-perf-dot-warn { background: var(--color-perf-warn); }
+.admin-perf-dot-problem { background: var(--color-alert); }
+.admin-perf-dot-neutral { background: var(--color-ink-faint); }
 
 /* Toolbar / filters / search */
 .admin-toolbar { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
@@ -711,11 +839,14 @@ button.admin-notif-item:focus-visible {
 .admin-mini-btn:hover { border-color: var(--color-primary); color: var(--color-ink); }
 .admin-mini-btn.is-danger:hover { border-color: var(--color-alert); color: var(--color-alert); }
 
-/* Status badges. .active/.inactive/.pending back Staff/Court statuses;
-   .confirmed/.completed/.cancelled/.unattended (new, Revision A1 decision
-   A3) back Recent bookings' derived booking status — same palette the
-   customer dashboard's .dash-status modifiers use (Style/Dashboard.css),
-   ported here since booking statuses now render on this page too. */
+/* Status badges — .active/.inactive back Court statuses; .active/.inactive/
+   .pending back Staff statuses (Staff's own "Invited" state).
+   Revision A3, decision C4 — .confirmed/.completed/.cancelled/.unattended
+   (added in Revision A1 decision A3 for Recent bookings' derived booking
+   status) are removed: Recent bookings itself is gone (replaced by Website
+   performance), and Booking status this month never rendered these as
+   badges — it always used the separate .admin-progress-* label/bar rows
+   (below), so nothing on this page emits those 4 classes any more. */
 .admin-status {
     /* Revision A2 (implementation_plan.md) — label role (status badge), so
        it moves to --font-display, not --font-numeric; Oswald 700 steps down
@@ -726,10 +857,6 @@ button.admin-notif-item:focus-visible {
 .admin-status.active { background: color-mix(in srgb, var(--color-court-green) 20%, transparent); color: var(--color-court-green); }
 .admin-status.inactive { background: color-mix(in srgb, var(--color-alert) 16%, transparent); color: var(--color-alert); }
 .admin-status.pending { background: color-mix(in srgb, var(--color-primary) 16%, transparent); color: var(--color-primary); }
-.admin-status.confirmed { background: color-mix(in srgb, var(--color-court-green) 20%, transparent); color: var(--color-court-green); }
-.admin-status.completed { background: color-mix(in srgb, var(--color-ink-faint) 22%, transparent); color: var(--color-ink-dim); }
-.admin-status.cancelled { background: color-mix(in srgb, var(--color-alert) 16%, transparent); color: var(--color-alert); }
-.admin-status.unattended { background: color-mix(in srgb, var(--color-alert) 24%, transparent); color: var(--color-alert); }
 
 .admin-notice {
     display: flex; gap: 10px; padding: 13px 14px; border-radius: 10px;
@@ -763,6 +890,15 @@ button.admin-notif-item:focus-visible {
     cursor: not-allowed;
 }
 
+/* Revision A3, decision C1 — the 3 Change Password fields sit inside this
+   wrap so the eye toggle can overlay them, but the wrap itself sets no
+   border/background/radius of its own: the <input> inside keeps its plain
+   .admin-input classes (same width/height/border/radius/background/focus
+   ring as Full name and every other field on this page), and this rule
+   only reserves 44px of RIGHT padding on that same input so its own text
+   never runs under the absolutely-positioned button — everything else
+   about the box (padding-top/bottom/left, border, radius) is untouched.
+   Verified side-by-side with Full name at 1280/360, both themes. */
 .admin-input-wrap { position: relative; display: flex; align-items: center; }
 .admin-input-wrap input { padding-right: 44px; }
 .admin-toggle-visibility {
@@ -1287,6 +1423,145 @@ button.admin-notif-item:focus-visible {
 .admin-visually-hidden {
     position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
     overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
+}
+
+/* ==========================================================================
+   Feedbacks & Reviews (Revision A3, implementation_plan.md, decision C5) —
+   a Google-Play-style ratings summary (average + star row + 5→1
+   distribution) over a sortable/filterable list of `feedback` cards.
+   Rendered by includes/owner_dashboard.js's renderFeedbackSummary()/
+   renderFeedbackList(); the toolbar's filter chips reuse .admin-chip/
+   .admin-filter-row as-is (same look as the Court Listings filter chips).
+   ========================================================================== */
+.admin-feedback-summary {
+    display: grid;
+    grid-template-columns: minmax(170px, 240px) 1fr;
+    gap: 28px;
+    align-items: center;
+}
+
+.admin-feedback-summary-avg {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    text-align: center;
+    padding-right: 28px;
+    border-right: 1px solid var(--color-line);
+}
+
+.admin-feedback-avg-number {
+    font-family: var(--font-display);
+    font-size: var(--fs-3xl);
+    font-weight: var(--fw-semibold);
+    line-height: var(--lh-tight);
+}
+
+.admin-feedback-avg-stars {
+    color: var(--color-primary);
+    font-size: var(--fs-lg);
+    letter-spacing: 2px;
+}
+
+.admin-feedback-avg-count { font-size: var(--fs-sm); color: var(--color-ink-faint); }
+
+.admin-feedback-distribution { display: flex; flex-direction: column; gap: 8px; }
+
+/* Each row is a <button> (click = filter to that star; click the active one
+   again = clear) — reset to a plain block button first, same idiom as
+   .admin-switch just needing full-width flex content instead of a track. */
+.admin-feedback-dist-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    background: none;
+    border: none;
+    padding: 6px 8px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-family: var(--font-body);
+    transition: background 0.15s ease;
+}
+.admin-feedback-dist-row:hover,
+.admin-feedback-dist-row.is-active {
+    background: color-mix(in srgb, var(--color-primary) 10%, transparent);
+}
+
+.admin-feedback-dist-label {
+    width: 26px;
+    flex-shrink: 0;
+    text-align: left;
+    font-size: var(--fs-sm);
+    font-weight: 600;
+    color: var(--color-ink-dim);
+}
+.admin-feedback-dist-track { flex: 1 1 auto; }
+.admin-feedback-dist-count {
+    width: 30px;
+    flex-shrink: 0;
+    text-align: right;
+    font-family: var(--font-numeric);
+    font-variant-numeric: tabular-nums;
+    font-size: var(--fs-sm);
+    color: var(--color-ink-faint);
+}
+
+/* Toolbar select (Most recent / Highest / Lowest rating) — capped like
+   .admin-search-wrap above so it doesn't stretch to the card's full
+   remaining width as a flex item of .admin-card-head. */
+.admin-feedback-toolbar-select { max-width: 220px; width: auto; flex: 0 1 auto; }
+
+.admin-feedback-filter-row { margin: 4px 0 18px; }
+
+.admin-feedback-list { display: flex; flex-direction: column; gap: 14px; }
+
+.admin-feedback-card {
+    border: 1px solid var(--color-line);
+    border-radius: 12px;
+    padding: 16px 18px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    background: var(--color-bg-elevated);
+}
+
+.admin-feedback-card-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+.admin-feedback-card-name { font-family: var(--font-display); font-weight: 600; font-size: var(--fs-md); color: var(--color-ink); }
+.admin-feedback-card-date { font-size: var(--fs-xs); color: var(--color-ink-faint); white-space: nowrap; }
+
+.admin-feedback-card-rating { color: var(--color-primary); font-size: var(--fs-md); letter-spacing: 1px; }
+.admin-feedback-card-no-rating { color: var(--color-ink-faint); font-size: var(--fs-sm); letter-spacing: normal; font-style: italic; }
+
+/* pre-line (not pre-wrap) — collapses runs of spaces like normal prose but
+   still honors the line breaks the customer actually typed; overflow-wrap
+   stops one long unbroken word/URL from forcing horizontal scroll at
+   360px. */
+.admin-feedback-card-message {
+    font-size: var(--fs-md);
+    color: var(--color-ink-dim);
+    line-height: var(--lh-normal);
+    white-space: pre-line;
+    overflow-wrap: anywhere;
+}
+
+.admin-feedback-empty { color: var(--color-ink-faint); padding: 8px 4px; }
+
+@media (max-width: 768px) {
+    .admin-feedback-summary { grid-template-columns: 1fr; }
+    .admin-feedback-summary-avg {
+        padding-right: 0;
+        border-right: none;
+        padding-bottom: 18px;
+        border-bottom: 1px solid var(--color-line);
+    }
 }
 
 /* ==========================================================================

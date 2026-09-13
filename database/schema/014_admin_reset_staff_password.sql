@@ -11,7 +11,7 @@
 -- EMAILS a reset link — it never actually changes anything by itself, and
 -- depends on the Reset Password email template + SMTP being configured
 -- (docs/OWNER_ACTION_LIST.md items E3/E2). The user asked for a simpler,
--- always-available action instead: reset the target account's password to a
+-- always-available action as the alternative: reset the target account's password to a
 -- known default (`12345678`) immediately, so staff can log back in right
 -- away and are expected to change it themselves afterwards.
 --
@@ -151,7 +151,7 @@ grant execute on function public.admin_reset_staff_password(uuid) to authenticat
 --
 -- AFTER: an active admin clicking Reset Password on a staff/admin row sets
 -- that account's password to "12345678" immediately (no email round trip);
--- a non-admin or disabled caller gets a clear Postgres exception instead of
+-- a non-admin or disabled caller gets a clear Postgres exception rather than
 -- silently doing nothing; resetting your own row, or a customer's, is
 -- rejected the same way.
 -- ============================================================================

@@ -1,3 +1,59 @@
+# Staff Portal — Revision S1 (time-in only, no confirm/decline, walk-in wizard, court schedule grid, transactions = time-ins, notifications, dropdown profile, password wizard)
+
+## Context
+`Pages/staff_dashboard.html` + `includes/staff_dashboard.js` + `Style/staff_dashboard.css` (panels overview | walkin | schedule | transactions | profile | settings). Today: Overview rows have Confirm / Decline / Time-In / Time-Out; Walk-In form has duration (1/2/3 h) + start time + GCash/Cash; Court Schedule is a 2-hour-column grid per sport; Transactions read `audit_log` (confirm/decline trail); Staff Profile is a sidebar tab; Settings password is one form; the bell is dead; Log Out sits in the sidebar. PayMongo is NOT integrated (docs/OWNER_ACTION_LIST.md C) — payments confirm bookings later; staff never confirm.
+
+## Decisions (user answers 2026-09-13)
+| # | Decision |
+|---|----------|
+| S1 | **Booking Overview = today's & upcoming bookings, newest first, with a single action: Time-In** (writes `booking.checked_in_at = now()`; audit_log best-effort). No Confirm/Decline/Time-Out anywhere. Status is derived, never written: `Booked` (not yet started), `In play` (checked in and now < end_at), `Completed` (checked in and now ≥ end_at — **auto time-out**), `Unattended` (not checked in and now > time_date + 30 min), `Cancelled` rows hidden. Filters: All / Booked / In play / Completed / Unattended; search; stat tiles: Bookings today, In play now, Still to come, Walk-ins today. Row shows customer, court + unit, time range, source (Online / Walk-in), payment. Walk-ins appear in the same list (source = Walk-in) with Time-In too (`walk_in_booking.checked_in_at`, add column via migration 016 if missing). |
+| S2 | Payment: no pending state shown — an online booking is **Booked** as soon as it exists (option a). `status` column untouched. |
+| S3 | **Walk-In wizard** (today only): ① Customer — name required, mobile optional (validatePhMobile if given) → ② Sport (chips) → Court/unit (select, from `InigoCourtsData.resolveCourtUnits`) → ③ Time — From/To selects listing only free hours today for that court+unit (same rule as the customer's Step 2: bookings `pending/confirmed` + walk-ins, hourly 8 AM–8 PM from `InigoBusinessHours`, past hours excluded) → ④ Payment — **Cash / Online payment** (radio; "Online payment" = PayMongo later; store `payment_method` text) → ⑤ Summary → **Save walk-in**. Insert into `walk_in_booking` {courts, sports, court_unit, customer_name, customer_mobile, time_date, end_at, duration_minutes, payment_method} with schema-mismatch retry dropping unknown columns; migration `016_walkin_columns.sql` adds `court_unit, end_at, payment_method, checked_in_at` (idempotent) + keeps RLS as is. Duration/start-time fields removed. |
+| S4 | After save: **Walk-in receipt** card (same look as the customer's receipt: brand, receipt no, court/unit, date, time, hours × rate, total, payment method) with **Download PNG** (html2canvas, add the CDN script like user_dashboard.html) and **Print** (`window.print()` + `@media print` rule that hides everything but the receipt). "New walk-in" resets the wizard. |
+| S5 | **Court Schedule** = availability grid for a chosen date (default today, min today): sport tabs → one row per **unit** (Court 1…9 / Lane 1…20 / Table 1…2), 12 hourly columns 8–9 AM … 7–8 PM, cell = Open / Booked (tooltip: who + source), past hours on today greyed; per-row "N open hours" count; legend. Data: bookings (pending/confirmed, `court_unit`) + walk-ins for that day, same occupancy helpers as customer/owner. Replaces the old 2-hour grid. |
+| S6 | **Transaction Records** = time-in log: all bookings + walk-ins (union, newest first) with Date · Customer · Court/unit · Time · Source · Payment · Timed in · Timed out (auto = end time when checked in and finished) · Status (derived as S1). Date range filter (default today), source filter, search. No confirm/decline. `audit_log` no longer read (leave the table and best-effort write helper). |
+| S7 | Sidebar: remove **Log Out** and **Staff Profile**. Header dropdown: **View Profile** (new `data-staff-panel="profile"` kept but reachable only from the dropdown, like the owner page: avatar, name, role "Staff", position, email, mobile, member since, "Edit in Account Settings") · Account Settings · Log Out. Existing profile-edit inputs (name/contact) move into Account Settings' Personal Information card. |
+| S8 | **Notifications** (bell): bookings starting within the next 60 min ("Juan · Badminton Court 2 · 3:00 PM"), new bookings created today, today's walk-ins; unread dot via `localStorage['inigosync-staff-notif-seen']`; click → Overview; refresh 60 s. |
+| S9 | Settings: **2-step password wizard** identical to owner/customer (`data-staff-pw-*`, current → new + confirm, min 8, show/hide, re-auth via session email, `updateUser`). Placeholders "Enter current password" etc. Personal Information card (name, mobile) with Save. |
+| S10 | Sidebar logo already done (A1). Keep `staff-*` prefixes, `data-staff-*` hooks, typography tokens, both themes, no overflow at 360. |
+
+## Security
+- Time-In writes only `checked_in_at` (and walk-in equivalent) — check `booking` has an UPDATE policy for staff (004's comment says it may not; if the update fails with 42501, toast "Ask the owner to run 004/016" — migration 016 must include `create policy if not exists`-style drop/create for `booking_staff_checkin` UPDATE limited to staff/admin via `inigosync_is_staff_or_admin()` with `with check` same). Escape all names; no service keys.
+
+## Success criteria
+1. Overview: no Confirm/Decline/Time-Out; Time-In works; statuses derive as S1; walk-ins listed.
+2. Walk-in wizard 5 steps, today only, From/To limited to free hours, saves, shows receipt with Download + Print.
+3. Court Schedule per-unit hourly grid with date picker and open-hour counts.
+4. Transactions show bookings + walk-ins with time-in/out; no confirm/decline.
+5. Sidebar has no Log Out / Staff Profile; dropdown has View Profile; profile panel works.
+6. Bell shows real items with unread dot.
+7. Password wizard works; personal info saves.
+8. Both themes, 360/768/1280 no overflow, no console errors (stubbed session).
+
+
+---
+
+# Owner Dashboard — Revision A3 (password placeholders, staff-only list, status trim, Website performance card, Feedbacks & Reviews tab)
+
+## Decisions
+| # | Decision |
+|---|----------|
+| C1 | Change Password: placeholders "Enter current password" / "Enter new password (min. 8 characters)" / "Re-enter new password"; the password inputs (inside `.admin-input-wrap` with the eye toggle) must look identical to every other `.admin-input` (same height, border, radius, padding, focus ring) — the toggle sits inside the padding, not altering the box. |
+| C2 | Staff Management lists **only `role = 'staff'`** (the owner/admin account is excluded from the table, the "Active staff accounts" stat, and the profile-panel count). |
+| C3 | Booking status this month shows **Pending / Completed / Unattended** only (Confirmed and Cancelled removed from the list; counts still fetched for nothing else — drop them). |
+| C4 | "Recent bookings" card → **Website performance** card. Honest, client-measurable checks only: (1) **API response** — timed lightweight `head` count on `booking` (ms; Good < 400, Slow < 1500, Problem otherwise/failed); (2) **Page load** — Navigation Timing `loadEventEnd - startTime` (Good < 2.5 s, Slow < 5 s); (3) **Media storage used** — sum of object sizes from `sb.storage.from('media').list()` over `slides/` and `courts/*` (recursive, best-effort) shown as "X MB of 1 GB" (free-tier constant `MEDIA_STORAGE_LIMIT_BYTES`, documented) with Good/Warn ≥ 80 %; (4) **Database records** — head counts: bookings, customer accounts, feedback; (5) **Errors this session** — `window.onerror`/`unhandledrejection` counter; (6) **Connection** — `navigator.onLine` + `navigator.connection.effectiveType` when available. Overall badge = worst status. "Last checked HH:MM" + **Run check** button; auto-runs on load and every 5 min. If storage listing fails (bucket missing) show "Not set up" not an error. |
+| C5 | New sidebar tab **Feedbacks & Reviews** (`data-admin-panel="feedback"`, after Media Manager): Google-Play-style summary — big average (1 decimal) + star row + "N reviews", 5→1 star distribution bars with counts (click a bar = filter to that star, click again clears); toolbar: sort **Most recent / Highest rating / Lowest rating**, star filter chips (All, 5…1, "No rating"); list of cards: customer name (profiles lookup, escaped), stars (or "No rating"), date, message. Empty state. Reads `feedback` (RLS 009 already allows staff/admin SELECT). Also the bell's feedback items link to this tab. |
+
+## Success criteria
+1. Password fields match other inputs visually; placeholders as specified.
+2. Owner not in staff table; stat counts staff only.
+3. Status list = 3 rows.
+4. Website performance card shows the 6 checks with real numbers and a Run check button; no fabricated values; bucket-missing handled.
+5. Feedback tab: summary, distribution, sort + filter work; XSS-safe.
+
+
+---
+
 # Owner Dashboard — Revision A2 (nav/profile/staff modal/no payment card/responsive/court photos with crop/per-hour only)
 
 ## Context
