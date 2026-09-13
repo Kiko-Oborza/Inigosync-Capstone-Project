@@ -733,6 +733,13 @@ body.staff-sidebar-open .staff-toggle-bar:nth-child(3) {
 
 .staff-select:disabled, .staff-input:disabled { opacity: 0.6; cursor: not-allowed; }
 
+/* Revision S3 — Account Settings' Address box (a <textarea class="staff-input
+   staff-textarea">, same two-class modifier idiom as Style/Dashboard.css's
+   .dash-input.dash-textarea). Everything else (background/border/radius/
+   padding/font/focus ring) comes free from .staff-input above; this only
+   adds what a <textarea> needs that an <input> doesn't. */
+.staff-textarea { resize: vertical; min-height: 64px; line-height: 1.5; }
+
 /* Account Settings' password fields (Style/Dashboard.css's
    .dash-input-wrap/.dash-toggle-visibility pattern). */
 .staff-input-wrap { position: relative; display: flex; align-items: center; }

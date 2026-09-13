@@ -1,3 +1,10 @@
+# Staff Portal — Revision S3 (staff personal details)
+
+Adds `profiles.address, birthdate, gender, emergency_contact_name, emergency_contact_number` (migration 018). Staff edit them in Account Settings and see them (with computed age) in View Profile; the owner's Staff Management shows "Age · Gender" under each name, has View / Edit modals with every field, and Add New Staff collects them (saved right after the invite-staff edge function creates the profile row, via `profiles.update().eq('email', …)`). Also S2 (Time-In payment popup, migration 017) and the staff profile photo card are logged here.
+
+
+---
+
 # Staff Portal — Revision S2 (Time-In payment popup)
 
 ## Decisions (user, 2026-09-13)

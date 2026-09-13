@@ -580,11 +580,35 @@
                             <dt>Mobile</dt>
                             <dd data-staff-profile-mobile>—</dd>
                         </div>
+                        <!-- Revision S3 — Address/Age/Gender/Emergency contact
+                             all come from loadStaffProfileDetails()
+                             (includes/staff_dashboard.js), a request of its
+                             own (same reasoning as Member since just below):
+                             authGuard.js's shared login-gate select never
+                             asks for these. Age is DERIVED from birthdate,
+                             never a stored value. -->
+                        <div class="staff-profile-dl-row">
+                            <dt>Address</dt>
+                            <dd data-staff-profile-address>—</dd>
+                        </div>
+                        <div class="staff-profile-dl-row">
+                            <dt>Age</dt>
+                            <dd data-staff-profile-age>—</dd>
+                        </div>
+                        <div class="staff-profile-dl-row">
+                            <dt>Gender</dt>
+                            <dd data-staff-profile-gender>—</dd>
+                        </div>
+                        <div class="staff-profile-dl-row">
+                            <dt>Emergency contact</dt>
+                            <dd data-staff-profile-emergency>—</dd>
+                        </div>
                         <div class="staff-profile-dl-row">
                             <dt>Member since</dt>
                             <dd data-staff-profile-member-since>—</dd>
                         </div>
                     </dl>
+                    <p class="staff-form-hint" data-staff-profile-details-hint hidden>Address, age, gender, and emergency contact aren't available yet — ask the owner to run database update 018.</p>
                 </div>
 
                 <div class="staff-form-actions" style="justify-content: flex-start;">
@@ -643,6 +667,46 @@
                             <input type="tel" class="staff-input" placeholder="09XX XXX XXXX" data-staff-settings-mobile>
                         </div>
                     </div>
+                    <!-- Revision S3 — address/birthdate/gender/emergency
+                         contact (database/schema/018_staff_details.sql).
+                         Loaded by loadStaffProfileDetails() on
+                         inigosync:profile-ready (a request of its own — see
+                         that function's comment in
+                         includes/staff_dashboard.js); saved together with
+                         full_name/contact_num above by the same Save
+                         Changes button, with a schema-mismatch retry that
+                         drops just these five if 018 hasn't been applied
+                         yet. -->
+                    <div class="staff-form-group">
+                        <span class="staff-form-label">Address</span>
+                        <textarea class="staff-input staff-textarea" rows="2" placeholder="House/Unit, Street, Barangay, City" data-staff-settings-address></textarea>
+                    </div>
+                    <div class="staff-form-row">
+                        <div class="staff-form-group">
+                            <span class="staff-form-label">Birthdate</span>
+                            <input type="date" class="staff-input" data-staff-settings-birthdate>
+                        </div>
+                        <div class="staff-form-group">
+                            <span class="staff-form-label">Gender</span>
+                            <select class="staff-select" data-staff-settings-gender>
+                                <option value="">Select…</option>
+                                <option>Male</option>
+                                <option>Female</option>
+                                <option>Prefer not to say</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="staff-form-row">
+                        <div class="staff-form-group">
+                            <span class="staff-form-label">Emergency contact name</span>
+                            <input type="text" class="staff-input" placeholder="Maria Cruz" data-staff-settings-emergency-name>
+                        </div>
+                        <div class="staff-form-group">
+                            <span class="staff-form-label">Emergency contact number</span>
+                            <input type="tel" class="staff-input" placeholder="09XX XXX XXXX" data-staff-settings-emergency-number>
+                        </div>
+                    </div>
+                    <p class="staff-form-hint" data-staff-settings-details-hint hidden>Address, birthdate, gender, and emergency contact aren't available yet — ask the owner to run database update 018.</p>
                     <div class="staff-form-actions">
                         <button type="button" class="staff-btn-ghost" data-staff-settings-cancel="profile">Cancel</button>
                         <button type="button" class="staff-btn-primary" data-staff-settings-save="profile">Save Changes</button>

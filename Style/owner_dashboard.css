@@ -829,6 +829,15 @@ button.admin-notif-item:focus-visible {
 .admin-table tr:last-child td { border-bottom: none; }
 .admin-table td.admin-cell-main { color: var(--color-ink); font-weight: 600; }
 .admin-table td.admin-cell-sub { font-size: var(--fs-xs); color: var(--color-ink-faint); display: block; margin-top: 2px; }
+
+/* Revision S3 — the staff table's "24 yrs · Male" line under a name
+   (renderStaffRow(), includes/owner_dashboard.js). A nested <span>, not
+   td.admin-cell-sub above: that rule targets a <td> itself, and this sits
+   inside .admin-cell-main alongside data-admin-staff-name-cell instead —
+   normal weight (.admin-cell-main bolds the whole cell) and muted, wraps
+   instead of forcing the table wider at 360px. */
+.admin-staff-meta { display: block; margin-top: 2px; font-size: var(--fs-xs); font-weight: 400; color: var(--color-ink-faint); }
+
 .admin-table-actions { display: flex; gap: 8px; flex-wrap: wrap; }
 
 .admin-mini-btn {
@@ -889,6 +898,14 @@ button.admin-notif-item:focus-visible {
     background: var(--color-bg);
     cursor: not-allowed;
 }
+
+/* Revision S3 — the Add New Staff and Edit/View staff modals' Address box
+   (a <textarea class="admin-input admin-textarea">, same two-class
+   modifier idiom as Style/Dashboard.css's .dash-input.dash-textarea).
+   Everything else (background/border/radius/padding/font/focus/disabled)
+   comes free from .admin-input above; this only adds what a <textarea>
+   needs that an <input> doesn't. */
+.admin-textarea { resize: vertical; min-height: 64px; line-height: 1.5; }
 
 /* Revision A3, decision C1 — the 3 Change Password fields sit inside this
    wrap so the eye toggle can overlay them, but the wrap itself sets no

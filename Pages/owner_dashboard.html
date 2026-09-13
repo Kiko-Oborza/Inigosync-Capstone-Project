@@ -424,6 +424,7 @@
                                     <td><span class="admin-status active">Active</span></td>
                                     <td>
                                         <div class="admin-table-actions">
+                                            <button type="button" class="admin-mini-btn" data-admin-view-staff>View</button>
                                             <button type="button" class="admin-mini-btn" data-admin-reset-password>Reset Password</button>
                                             <button type="button" class="admin-mini-btn" data-admin-edit-staff>Edit</button>
                                             <button type="button" class="admin-mini-btn is-danger" data-admin-delete-staff>Deactivate</button>
@@ -437,6 +438,7 @@
                                     <td><span class="admin-status active">Active</span></td>
                                     <td>
                                         <div class="admin-table-actions">
+                                            <button type="button" class="admin-mini-btn" data-admin-view-staff>View</button>
                                             <button type="button" class="admin-mini-btn" data-admin-reset-password>Reset Password</button>
                                             <button type="button" class="admin-mini-btn" data-admin-edit-staff>Edit</button>
                                             <button type="button" class="admin-mini-btn is-danger" data-admin-delete-staff>Deactivate</button>
@@ -450,6 +452,7 @@
                                     <td><span class="admin-status inactive">Deactivated</span></td>
                                     <td>
                                         <div class="admin-table-actions">
+                                            <button type="button" class="admin-mini-btn" data-admin-view-staff>View</button>
                                             <button type="button" class="admin-mini-btn" data-admin-reset-password>Reset Password</button>
                                             <button type="button" class="admin-mini-btn" data-admin-edit-staff>Edit</button>
                                             <button type="button" class="admin-mini-btn" data-admin-activate-staff>Activate</button>
@@ -875,9 +878,121 @@
             </select>
         </div>
 
+        <!-- Revision S3 (database/schema/018_staff_details.sql) — all five
+             optional. invite-staff (the edge function above) only ever
+             writes email/full_name/position/role; these are saved in a
+             SEPARATE update() right after a successful invite (see
+             includes/owner_dashboard.js's staffSubmitBtn handler) — never
+             blocking, and never undoing, the invite itself. -->
+        <div class="admin-form-group">
+            <span class="admin-form-label">Address</span>
+            <textarea class="admin-input admin-textarea" rows="2" placeholder="House/Unit, Street, Barangay, City" data-admin-staff-address></textarea>
+        </div>
+        <div class="admin-form-row">
+            <div class="admin-form-group">
+                <span class="admin-form-label">Birthdate</span>
+                <input type="date" class="admin-input" data-admin-staff-birthdate>
+            </div>
+            <div class="admin-form-group">
+                <span class="admin-form-label">Gender</span>
+                <select class="admin-select" data-admin-staff-gender>
+                    <option value="">Select…</option>
+                    <option>Male</option>
+                    <option>Female</option>
+                    <option>Prefer not to say</option>
+                </select>
+            </div>
+        </div>
+        <div class="admin-form-row">
+            <div class="admin-form-group">
+                <span class="admin-form-label">Emergency contact name</span>
+                <input type="text" class="admin-input" placeholder="Maria Cruz" data-admin-staff-emergency-name>
+            </div>
+            <div class="admin-form-group">
+                <span class="admin-form-label">Emergency contact number</span>
+                <input type="tel" class="admin-input" placeholder="09XX XXX XXXX" data-admin-staff-emergency-number>
+            </div>
+        </div>
+
         <div class="admin-form-actions">
             <button type="button" class="admin-btn-ghost" data-admin-staff-modal-close>Cancel</button>
             <button type="button" class="admin-btn-save" data-admin-staff-submit>Send Invite</button>
+        </div>
+    </div>
+</div>
+
+<!-- ================================================================
+     EDIT/VIEW STAFF MODAL — Revision S3. Replaces the old toggle-cells-
+     into-inputs inline Edit (Staff Management's data-admin-edit-staff used
+     to swap the Name/Position cells for <input>s in place — see the git
+     history of includes/owner_dashboard.js's wireStaffRowActions() for
+     that). One dialog serves BOTH actions: data-admin-view-staff and
+     data-admin-edit-staff both call openStaffEditModal() (includes/
+     owner_dashboard.js), passing 'view' or 'edit' — 'view' disables every
+     field, hides Save, and relabels Cancel to Close, purely in JS, so
+     there is exactly one form to keep in sync rather than two. Same
+     .admin-modal-overlay/.admin-modal shell + open/close idiom (Esc/
+     backdrop mousedown+click/×, focus-first-field) as the Add New Staff
+     modal above. -->
+<div class="admin-modal-overlay" data-admin-staff-edit-modal hidden>
+    <div class="admin-modal" role="dialog" aria-modal="true" aria-labelledby="adminStaffEditModalTitle" tabindex="-1" data-admin-staff-edit-dialog>
+        <button type="button" class="admin-modal-close" data-admin-staff-edit-modal-close aria-label="Close">
+            <svg viewBox="0 0 24 24" fill="none"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+        </button>
+
+        <h3 id="adminStaffEditModalTitle" data-admin-staff-edit-modal-title>Edit Staff</h3>
+        <!-- Filled by fillStaffEditForm() — Age (DERIVED from birthdate,
+             never stored) alongside Member since and Status, none of which
+             have their own input field in this form. -->
+        <p class="admin-form-hint" data-admin-staff-edit-meta>—</p>
+
+        <div class="admin-form-row">
+            <div class="admin-form-group">
+                <span class="admin-form-label">Full name</span>
+                <input type="text" class="admin-input" data-admin-staff-edit-name>
+            </div>
+            <div class="admin-form-group">
+                <span class="admin-form-label">Position</span>
+                <input type="text" class="admin-input" data-admin-staff-edit-position>
+            </div>
+        </div>
+        <div class="admin-form-group">
+            <span class="admin-form-label">Mobile number</span>
+            <input type="tel" class="admin-input" placeholder="09XX XXX XXXX" data-admin-staff-edit-mobile>
+        </div>
+        <div class="admin-form-group">
+            <span class="admin-form-label">Address</span>
+            <textarea class="admin-input admin-textarea" rows="2" placeholder="House/Unit, Street, Barangay, City" data-admin-staff-edit-address></textarea>
+        </div>
+        <div class="admin-form-row">
+            <div class="admin-form-group">
+                <span class="admin-form-label">Birthdate</span>
+                <input type="date" class="admin-input" data-admin-staff-edit-birthdate>
+            </div>
+            <div class="admin-form-group">
+                <span class="admin-form-label">Gender</span>
+                <select class="admin-select" data-admin-staff-edit-gender>
+                    <option value="">Select…</option>
+                    <option>Male</option>
+                    <option>Female</option>
+                    <option>Prefer not to say</option>
+                </select>
+            </div>
+        </div>
+        <div class="admin-form-row">
+            <div class="admin-form-group">
+                <span class="admin-form-label">Emergency contact name</span>
+                <input type="text" class="admin-input" placeholder="Maria Cruz" data-admin-staff-edit-emergency-name>
+            </div>
+            <div class="admin-form-group">
+                <span class="admin-form-label">Emergency contact number</span>
+                <input type="tel" class="admin-input" placeholder="09XX XXX XXXX" data-admin-staff-edit-emergency-number>
+            </div>
+        </div>
+
+        <div class="admin-form-actions">
+            <button type="button" class="admin-btn-ghost" data-admin-staff-edit-modal-close>Cancel</button>
+            <button type="button" class="admin-btn-save" data-admin-staff-edit-submit>Save Changes</button>
         </div>
     </div>
 </div>
@@ -990,6 +1105,12 @@
 <!-- Shared HTML-escaping helper — must load before owner_dashboard.js,
      which uses window.escapeHtml on every staff/court name it renders. -->
 <script src="../includes/escape.js"></script>
+
+<!-- Revision S3 — Philippine mobile-number validation, needed by the Add
+     New Staff and Edit staff modals' Emergency contact number field (same
+     window.validatePhMobile Pages/staff_dashboard.html already loads). Must
+     load before owner_dashboard.js. -->
+<script src="../includes/phoneValidation.js"></script>
 
 <!-- Court/sport data layer (Phase 2 — one source of truth for courts, see
      implementation_plan.md D2). courts-data.js is the same static fallback

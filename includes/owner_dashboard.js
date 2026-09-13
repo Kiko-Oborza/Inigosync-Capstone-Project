@@ -1016,7 +1016,33 @@ document.addEventListener('DOMContentLoaded', () => {
         if (emailInput) emailInput.value = '';
         const roleSelect = staffForm.querySelector('[data-admin-staff-role]');
         if (roleSelect) roleSelect.selectedIndex = 0;
+
+        // Revision S3 (database/schema/018_staff_details.sql) — all five optional.
+        const addressInput = staffForm.querySelector('[data-admin-staff-address]');
+        const birthdateInput = staffForm.querySelector('[data-admin-staff-birthdate]');
+        const genderSelect = staffForm.querySelector('[data-admin-staff-gender]');
+        const emergencyNameInput = staffForm.querySelector('[data-admin-staff-emergency-name]');
+        const emergencyNumberInput = staffForm.querySelector('[data-admin-staff-emergency-number]');
+        if (addressInput) addressInput.value = '';
+        if (birthdateInput) birthdateInput.value = '';
+        if (genderSelect) genderSelect.selectedIndex = 0;
+        if (emergencyNameInput) emergencyNameInput.value = '';
+        if (emergencyNumberInput) emergencyNumberInput.value = '';
     }
+
+    // Revision S3 — Birthdate can never be set in the future. Set once here
+    // (rather than baked into the HTML's static max="…", which would
+    // silently go stale) for both the Add New Staff modal's field and the
+    // Edit/View staff modal's field further below.
+    function todayDateInputValue() {
+        const now = new Date();
+        const y = now.getFullYear();
+        const m = String(now.getMonth() + 1).padStart(2, '0');
+        const d = String(now.getDate()).padStart(2, '0');
+        return `${y}-${m}-${d}`;
+    }
+    const staffAddBirthdateInput = document.querySelector('[data-admin-staff-birthdate]');
+    if (staffAddBirthdateInput) staffAddBirthdateInput.max = todayDateInputValue();
 
     const STAFF_MODAL_CLOSE_DELAY_MS = 250;
     let staffModalHideTimer = null;
@@ -1095,6 +1121,11 @@ document.addEventListener('DOMContentLoaded', () => {
             const nameInput = document.querySelector('[data-admin-staff-name]');
             const emailInput = document.querySelector('[data-admin-staff-email]');
             const roleSelect = document.querySelector('[data-admin-staff-role]');
+            const addressInput = document.querySelector('[data-admin-staff-address]');
+            const birthdateInput = document.querySelector('[data-admin-staff-birthdate]');
+            const genderSelect = document.querySelector('[data-admin-staff-gender]');
+            const emergencyNameInput = document.querySelector('[data-admin-staff-emergency-name]');
+            const emergencyNumberInput = document.querySelector('[data-admin-staff-emergency-number]');
 
             const name = nameInput ? nameInput.value.trim() : '';
             const email = emailInput ? emailInput.value.trim() : '';
@@ -1104,6 +1135,27 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (!name && nameInput) nameInput.focus();
                 else if (emailInput) emailInput.focus();
                 return;
+            }
+
+            // Revision S3 — the emergency contact number is optional, but
+            // validated the same way as everywhere else in this app
+            // whenever a value IS entered; checked BEFORE the invite goes
+            // out so a typo here never leaves the owner staring at an
+            // already-sent invite with no way back to fix just this field.
+            const emergencyNumberRaw = emergencyNumberInput ? emergencyNumberInput.value.trim() : '';
+            let emergency_contact_number = '';
+            if (emergencyNumberRaw) {
+                if (!window.validatePhMobile) {
+                    window.alert('Unable to validate the emergency contact number right now. Please try again shortly.');
+                    return;
+                }
+                const check = window.validatePhMobile(emergencyNumberRaw);
+                if (!check.valid) {
+                    window.InigoToast?.show(`Emergency contact number: ${check.message}`, true);
+                    emergencyNumberInput?.focus();
+                    return;
+                }
+                emergency_contact_number = check.normalized;
             }
 
             if (!window.sb || !window.SUPABASE_URL) {
@@ -1132,6 +1184,34 @@ document.addEventListener('DOMContentLoaded', () => {
                     throw new Error(result.error || 'Could not send the invite.');
                 }
 
+                // Revision S3 (database/schema/018_staff_details.sql) —
+                // invite-staff (the edge function above; source not in this
+                // repo) only ever writes email/full_name/position/role. Its
+                // response carries no id back, so these five extra fields
+                // are saved in a SEPARATE update() matched by email right
+                // after — never blocking, and never undoing, the invite
+                // that already succeeded. Skipped entirely when the owner
+                // left every one of them blank (nothing to write).
+                const extraDetails = {
+                    address: addressInput ? addressInput.value.trim() : '',
+                    birthdate: (birthdateInput && birthdateInput.value) ? birthdateInput.value : null,
+                    gender: genderSelect ? genderSelect.value : '',
+                    emergency_contact_name: emergencyNameInput ? emergencyNameInput.value.trim() : '',
+                    emergency_contact_number,
+                };
+                const hasExtraDetails = Object.values(extraDetails).some((v) => v);
+                if (hasExtraDetails) {
+                    const { data: updatedRows, error: detailsError } = await window.sb
+                        .from('profiles')
+                        .update(extraDetails)
+                        .eq('email', email)
+                        .select('id');
+
+                    if (detailsError || !updatedRows || !updatedRows.length) {
+                        window.InigoToast?.show("Invite sent — details couldn't be saved yet, edit the staff record to add them.", true);
+                    }
+                }
+
                 refreshStaffList();
                 resetStaffForm();
                 closeStaffModal();
@@ -1142,6 +1222,242 @@ document.addEventListener('DOMContentLoaded', () => {
                 staffSubmitBtn.textContent = 'Send Invite';
             }
         });
+    }
+
+    // ------------------------------------------------------------------
+    // Staff Management — Edit/View staff modal (Revision S3). Replaces the
+    // old inline Edit, which toggled the Name/Position cells into <input>s
+    // in place — there was no room in a table cell for five more fields
+    // (database/schema/018_staff_details.sql). One dialog now serves BOTH
+    // actions: data-admin-view-staff and data-admin-edit-staff (wired in
+    // wireStaffRowActions() below) both call openStaffEditModal(profile,
+    // mode) — 'view' disables every field, hides Save, and relabels Cancel
+    // to Close, purely in JS, so there is exactly one form to keep in sync
+    // rather than two near-identical dialogs. Same
+    // .admin-modal-overlay/.admin-modal shell + open/close idiom (Esc/
+    // backdrop mousedown+click/×, focus-first-field) as the Add New Staff
+    // modal above.
+    // ------------------------------------------------------------------
+    const staffEditModal = document.querySelector('[data-admin-staff-edit-modal]');
+    const staffEditDialog = document.querySelector('[data-admin-staff-edit-dialog]');
+    const staffEditBirthdateInput = document.querySelector('[data-admin-staff-edit-birthdate]');
+    if (staffEditBirthdateInput) staffEditBirthdateInput.max = todayDateInputValue();
+
+    const STAFF_EDIT_MODAL_CLOSE_DELAY_MS = 250;
+    let staffEditModalHideTimer = null;
+    let staffEditModalIsOpen = false;
+    let staffEditModalLastFocused = null;
+    let staffEditModalProfileId = null;
+
+    function fillStaffEditForm(profile) {
+        if (!staffEditDialog) return;
+        const set = (sel, val) => {
+            const el = staffEditDialog.querySelector(sel);
+            if (el) el.value = val;
+        };
+        set('[data-admin-staff-edit-name]', profile.full_name || '');
+        set('[data-admin-staff-edit-position]', profile.position || '');
+        set('[data-admin-staff-edit-mobile]', profile.contact_num || '');
+        set('[data-admin-staff-edit-address]', profile.address || '');
+        set('[data-admin-staff-edit-birthdate]', profile.birthdate || '');
+        set('[data-admin-staff-edit-gender]', profile.gender || '');
+        set('[data-admin-staff-edit-emergency-name]', profile.emergency_contact_name || '');
+        set('[data-admin-staff-edit-emergency-number]', profile.emergency_contact_number || '');
+
+        const metaEl = staffEditDialog.querySelector('[data-admin-staff-edit-meta]');
+        if (metaEl) metaEl.textContent = formatAdminStaffEditMeta(profile);
+    }
+
+    function setStaffEditFieldsDisabled(disabled) {
+        if (!staffEditDialog) return;
+        staffEditDialog.querySelectorAll('input, select, textarea').forEach((el) => { el.disabled = disabled; });
+    }
+
+    function openStaffEditModal(profile, mode) {
+        if (!staffEditModal || !staffEditDialog) return;
+        staffEditModalLastFocused = document.activeElement;
+        staffEditModalProfileId = profile.id;
+        fillStaffEditForm(profile);
+        setStaffEditFieldsDisabled(mode === 'view');
+
+        const titleEl = staffEditDialog.querySelector('[data-admin-staff-edit-modal-title]');
+        if (titleEl) titleEl.textContent = mode === 'view' ? 'Staff Details' : 'Edit Staff';
+        const saveBtn = staffEditDialog.querySelector('[data-admin-staff-edit-submit]');
+        if (saveBtn) saveBtn.hidden = mode === 'view';
+        const cancelBtn = staffEditDialog.querySelector('.admin-btn-ghost[data-admin-staff-edit-modal-close]');
+        if (cancelBtn) cancelBtn.textContent = mode === 'view' ? 'Close' : 'Cancel';
+
+        if (staffEditModalHideTimer) {
+            window.clearTimeout(staffEditModalHideTimer);
+            staffEditModalHideTimer = null;
+        }
+        staffEditModal.hidden = false;
+        // Force a synchronous layout flush so the browser commits the
+        // hidden->visible state before [data-open] flips opacity to 1 —
+        // same trick the Add New Staff modal above uses.
+        void staffEditModal.offsetWidth;
+        staffEditModal.setAttribute('data-open', '');
+        staffEditModalIsOpen = true;
+
+        const firstField = mode === 'view' ? cancelBtn : staffEditDialog.querySelector('input, select, textarea');
+        if (firstField) firstField.focus();
+    }
+
+    function closeStaffEditModal() {
+        if (!staffEditModalIsOpen || !staffEditModal) return;
+        staffEditModalIsOpen = false;
+
+        staffEditModal.removeAttribute('data-open');
+        if (staffEditModalHideTimer) window.clearTimeout(staffEditModalHideTimer);
+        staffEditModalHideTimer = window.setTimeout(() => {
+            staffEditModal.hidden = true;
+            staffEditModalHideTimer = null;
+        }, STAFF_EDIT_MODAL_CLOSE_DELAY_MS);
+
+        if (staffEditModalLastFocused && typeof staffEditModalLastFocused.focus === 'function' && document.contains(staffEditModalLastFocused)) {
+            staffEditModalLastFocused.focus();
+        }
+        staffEditModalLastFocused = null;
+        staffEditModalProfileId = null;
+    }
+
+    document.querySelectorAll('[data-admin-staff-edit-modal-close]').forEach((btn) => {
+        btn.addEventListener('click', closeStaffEditModal);
+    });
+
+    // S1 (Revision A1 fix, ported) — see the identical comment on the Add
+    // New Staff modal's own backdrop listeners above for why this needs
+    // both mousedown and click on the overlay rather than a plain 'click'.
+    let staffEditModalMouseDownOnBackdrop = false;
+    if (staffEditModal) {
+        staffEditModal.addEventListener('mousedown', (e) => {
+            staffEditModalMouseDownOnBackdrop = e.target === staffEditModal;
+        });
+        staffEditModal.addEventListener('click', (e) => {
+            if (e.target === staffEditModal && staffEditModalMouseDownOnBackdrop) closeStaffEditModal();
+            staffEditModalMouseDownOnBackdrop = false;
+        });
+    }
+
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && staffEditModalIsOpen) closeStaffEditModal();
+    });
+
+    const staffEditSubmitBtn = document.querySelector('[data-admin-staff-edit-submit]');
+    if (staffEditSubmitBtn) {
+        staffEditSubmitBtn.addEventListener('click', async () => {
+            if (!window.sb || !staffEditModalProfileId || !staffEditDialog) return;
+            const get = (sel) => staffEditDialog.querySelector(sel)?.value.trim() || '';
+
+            const full_name = get('[data-admin-staff-edit-name]');
+            if (!full_name) {
+                window.InigoToast?.show("Enter the staff member's full name.", true);
+                return;
+            }
+            const position = get('[data-admin-staff-edit-position]');
+
+            const mobileRaw = get('[data-admin-staff-edit-mobile]');
+            let contact_num = '';
+            if (mobileRaw) {
+                const check = window.validatePhMobile ? window.validatePhMobile(mobileRaw) : { valid: false, message: 'Mobile validation is unavailable right now.' };
+                if (!check.valid) {
+                    window.InigoToast?.show(check.message, true);
+                    return;
+                }
+                contact_num = check.normalized;
+            }
+
+            const emergencyNumberRaw = get('[data-admin-staff-edit-emergency-number]');
+            let emergency_contact_number = '';
+            if (emergencyNumberRaw) {
+                const check = window.validatePhMobile ? window.validatePhMobile(emergencyNumberRaw) : { valid: false, message: 'Mobile validation is unavailable right now.' };
+                if (!check.valid) {
+                    window.InigoToast?.show(`Emergency contact number: ${check.message}`, true);
+                    return;
+                }
+                emergency_contact_number = check.normalized;
+            }
+
+            const fullPatch = {
+                full_name,
+                position,
+                contact_num,
+                address: get('[data-admin-staff-edit-address]'),
+                birthdate: staffEditDialog.querySelector('[data-admin-staff-edit-birthdate]')?.value || null,
+                gender: staffEditDialog.querySelector('[data-admin-staff-edit-gender]')?.value || '',
+                emergency_contact_name: get('[data-admin-staff-edit-emergency-name]'),
+                emergency_contact_number,
+            };
+
+            staffEditSubmitBtn.disabled = true;
+            let { error } = await window.sb.from('profiles').update(fullPatch).eq('id', staffEditModalProfileId);
+
+            // Revision S3 — database/schema/018_staff_details.sql not
+            // applied yet: retry with just the three columns the old
+            // inline Edit already relied on, same schema-mismatch-retry
+            // idiom as every other write in this file
+            // (isSchemaMismatchError's own comment above).
+            let usedReducedPayload = false;
+            if (error && isSchemaMismatchError(error)) {
+                ({ error } = await window.sb.from('profiles').update({ full_name, position, contact_num }).eq('id', staffEditModalProfileId));
+                usedReducedPayload = true;
+            }
+
+            staffEditSubmitBtn.disabled = false;
+
+            if (error) {
+                window.InigoToast?.show(error.message || 'Could not save changes.', true);
+                return;
+            }
+
+            closeStaffEditModal();
+            refreshStaffList();
+            window.InigoToast?.show(usedReducedPayload
+                ? 'Staff updated — address/birthdate/gender/emergency contact need a database update (see database/schema/018_staff_details.sql).'
+                : 'Staff updated.');
+        });
+    }
+
+    // Revision S3 — age is always DERIVED from birthdate, never stored,
+    // duplicated from includes/staff_dashboard.js's own computeStaffAge()
+    // rather than shared — see isSchemaMismatchError's own comment above
+    // for why every helper in this file is self-contained.
+    function computeAdminStaffAge(birthdateStr) {
+        if (!birthdateStr) return null;
+        const dob = new Date(`${birthdateStr}T00:00:00`);
+        if (Number.isNaN(dob.getTime())) return null;
+        const now = new Date();
+        let age = now.getFullYear() - dob.getFullYear();
+        const monthDiff = now.getMonth() - dob.getMonth();
+        if (monthDiff < 0 || (monthDiff === 0 && now.getDate() < dob.getDate())) age -= 1;
+        return age;
+    }
+
+    // "24 yrs · Male" under a staff row's name (renderStaffRow() below) —
+    // either half missing simply drops out, never a dangling separator.
+    function formatAdminStaffRowMeta(profile) {
+        const age = computeAdminStaffAge(profile.birthdate);
+        const parts = [];
+        if (age !== null) parts.push(`${age} yrs`);
+        if (profile.gender) parts.push(profile.gender);
+        return parts.join(' · ');
+    }
+
+    // The Edit/View staff modal's hint line (fillStaffEditForm() above) —
+    // Age (when known) + Member since + Status, none of which have their
+    // own input in that form.
+    function formatAdminStaffEditMeta(profile) {
+        const age = computeAdminStaffAge(profile.birthdate);
+        const memberSince = profile.created_at
+            ? new Date(profile.created_at).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
+            : '—';
+        const statusLabels = { active: 'Active', disabled: 'Deactivated', pending: 'Invited' };
+        const statusLabel = statusLabels[profile.status] || 'Active';
+        const parts = [];
+        if (age !== null) parts.push(`${age} yrs old`);
+        parts.push(`Member since ${memberSince}`);
+        parts.push(statusLabel);
+        return parts.join(' · ');
     }
 
     // Maps profiles.status to the admin-status badge classes already styled
@@ -1159,6 +1475,14 @@ document.addEventListener('DOMContentLoaded', () => {
     function renderStaffRow(profile) {
         const row = document.createElement('tr');
         row.dataset.id = profile.id;
+        // Revision S3 — the whole profile (address/birthdate/gender/
+        // emergency contact included, whenever database/schema/
+        // 018_staff_details.sql has been applied) rides along on the row
+        // element itself so View/Edit (wireStaffRowActions() below) can
+        // open the modal with every field already known, with no second
+        // fetch — refreshStaffList() already has this same object in hand
+        // from its own select('*').
+        row.__staffProfile = profile;
         // full_name/email/position are set by whoever filled in the staff
         // invite/edit form (and, before Phase 2, an admin — but this same
         // rendering path is what a promoted/self-edited account would also
@@ -1171,13 +1495,25 @@ document.addEventListener('DOMContentLoaded', () => {
         // Revision A1, decision A4 — a disabled account additionally gets
         // an Activate button (mirrors the court cards' Activate/Deactivate
         // pair); an active/invited account keeps just Deactivate, unchanged.
+        //
+        // Revision S3 — data-admin-staff-name-cell moved onto an inner
+        // <span> (was the whole <td>) so a second <span class="admin-staff-meta">
+        // ("24 yrs · Male", Style/owner_dashboard.css) can sit under the name
+        // without corrupting the name-only .textContent every confirm()
+        // message below (Reset Password/Deactivate/Activate) reads from
+        // that same hook.
+        const metaLine = formatAdminStaffRowMeta(profile);
         row.innerHTML = `
-            <td class="admin-cell-main" data-admin-staff-name-cell>${window.escapeHtml(profile.full_name) || '—'}</td>
+            <td class="admin-cell-main">
+                <span data-admin-staff-name-cell>${window.escapeHtml(profile.full_name) || '—'}</span>
+                ${metaLine ? `<span class="admin-staff-meta">${window.escapeHtml(metaLine)}</span>` : ''}
+            </td>
             <td data-admin-staff-email-cell>${window.escapeHtml(profile.email) || '—'}</td>
             <td data-admin-staff-position-cell>${window.escapeHtml(profile.position) || '—'}</td>
             <td data-admin-staff-status-cell>${staffStatusBadge(profile.status)}</td>
             <td>
                 <div class="admin-table-actions">
+                    <button type="button" class="admin-mini-btn" data-admin-view-staff>View</button>
                     <button type="button" class="admin-mini-btn" data-admin-reset-password>Reset Password</button>
                     <button type="button" class="admin-mini-btn" data-admin-edit-staff>Edit</button>
                     ${profile.status === 'disabled'
@@ -1187,6 +1523,29 @@ document.addEventListener('DOMContentLoaded', () => {
             </td>
         `;
         return row;
+    }
+
+    // Revision S3 — a stand-in profile object for View/Edit when a row has
+    // no row.__staffProfile of its own (the static demo/fallback rows in
+    // Pages/owner_dashboard.html, which predate that property — same S6
+    // gap the old inline Edit already guarded against). Reads by CELL
+    // POSITION (0 Name / 1 Email / 2 Position / 3 Status), not the
+    // data-admin-staff-*-cell hooks, since the static rows never had those
+    // either; address/birthdate/gender/emergency contact are left blank
+    // rather than invented.
+    function fallbackProfileFromRow(row) {
+        const cells = row.cells || [];
+        const nameCell = cells[0] || null;
+        const nameText = nameCell
+            ? (nameCell.querySelector('[data-admin-staff-name-cell]')?.textContent || nameCell.textContent || '')
+            : '';
+        return {
+            id: row.dataset.id,
+            full_name: nameText.trim(),
+            email: (cells[1]?.textContent || '').trim(),
+            position: (cells[2]?.textContent || '').trim(),
+            status: row.querySelector('.admin-status.inactive') ? 'disabled' : 'active',
+        };
     }
 
     // Revision A3, decision C2 — staff ONLY (.eq, not the old .in('role',
@@ -1250,55 +1609,27 @@ document.addEventListener('DOMContentLoaded', () => {
             });
         });
 
-        // Edit toggles the Name/Role cells into inputs; clicking again
-        // (now "Save") commits the change — no separate edit modal exists.
-        scope.querySelectorAll('[data-admin-edit-staff]').forEach((btn) => {
-            btn.addEventListener('click', async () => {
+        // Revision S3 — View/Edit both open the same modal
+        // (openStaffEditModal() above), read-only or editable. row.__staffProfile
+        // (set by renderStaffRow() above) is the real profile object,
+        // address/birthdate/gender/emergency contact included; the static
+        // demo/fallback rows in Pages/owner_dashboard.html predate that
+        // property (same S6 gap the old inline Edit already had to guard
+        // against), so fallbackProfileFromRow() below rebuilds a minimal
+        // stand-in from whatever the row's cells actually show.
+        scope.querySelectorAll('[data-admin-view-staff]').forEach((btn) => {
+            btn.addEventListener('click', () => {
                 const row = btn.closest('tr');
                 if (!row) return;
-                const nameCell = row.querySelector('[data-admin-staff-name-cell]');
-                const positionCell = row.querySelector('[data-admin-staff-position-cell]');
-                // S6 (Revision A1 fix) — the static demo/fallback rows in
-                // Pages/owner_dashboard.html predate these two data-*
-                // hooks (only renderStaffRow() above adds them); now that
-                // this whole table gets wired at startup, bail out instead
-                // of crashing on nameCell/positionCell.textContent below.
-                if (!nameCell || !positionCell) return;
+                openStaffEditModal(row.__staffProfile || fallbackProfileFromRow(row), 'view');
+            });
+        });
 
-                if (btn.dataset.editing !== 'true') {
-                    const currentName = nameCell.textContent.trim();
-                    const currentPosition = positionCell.textContent.trim() === '—' ? '' : positionCell.textContent.trim();
-                    // Build the <input> with no value attribute, then set
-                    // .value as a DOM property instead of concatenating the
-                    // name/position into the markup string — a `"` in
-                    // currentName would otherwise close the attribute early
-                    // and let the rest of the name inject new markup.
-                    nameCell.innerHTML = '<input type="text" class="admin-input">';
-                    positionCell.innerHTML = '<input type="text" class="admin-input">';
-                    nameCell.querySelector('input').value = currentName;
-                    positionCell.querySelector('input').value = currentPosition;
-                    btn.textContent = 'Save';
-                    btn.dataset.editing = 'true';
-                    return;
-                }
-
-                const full_name = nameCell.querySelector('input').value.trim();
-                const position = positionCell.querySelector('input').value.trim();
-
-                btn.disabled = true;
-                const { error } = await window.sb.from('profiles').update({ full_name, position }).eq('id', row.dataset.id);
-                btn.disabled = false;
-
-                if (error) {
-                    window.InigoToast?.show(error.message || 'Could not save changes.', true);
-                    return;
-                }
-
-                nameCell.textContent = full_name;
-                positionCell.textContent = position || '—';
-                btn.textContent = 'Edit';
-                btn.dataset.editing = 'false';
-                window.InigoToast?.show('Staff updated.');
+        scope.querySelectorAll('[data-admin-edit-staff]').forEach((btn) => {
+            btn.addEventListener('click', () => {
+                const row = btn.closest('tr');
+                if (!row) return;
+                openStaffEditModal(row.__staffProfile || fallbackProfileFromRow(row), 'edit');
             });
         });
 

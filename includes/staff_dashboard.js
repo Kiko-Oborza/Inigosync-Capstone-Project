@@ -2313,6 +2313,23 @@ document.addEventListener('DOMContentLoaded', () => {
         const mobileInput = document.querySelector('[data-staff-settings-mobile]');
         if (nameInput) nameInput.value = profile.full_name || '';
         if (mobileInput) mobileInput.value = profile.contact_num || '';
+
+        // Revision S3 (database/schema/018_staff_details.sql) — these five
+        // live outside authGuard.js's fixed login-gate select, so `profile`
+        // only carries them once loadStaffProfileDetails() below has run at
+        // least once and copied them onto window.inigosyncProfile; until
+        // then they simply read as blank, same as every other field here
+        // before its first real value arrives.
+        const addressInput = document.querySelector('[data-staff-settings-address]');
+        const birthdateInput = document.querySelector('[data-staff-settings-birthdate]');
+        const genderInput = document.querySelector('[data-staff-settings-gender]');
+        const emergencyNameInput = document.querySelector('[data-staff-settings-emergency-name]');
+        const emergencyNumberInput = document.querySelector('[data-staff-settings-emergency-number]');
+        if (addressInput) addressInput.value = profile.address || '';
+        if (birthdateInput) birthdateInput.value = profile.birthdate || '';
+        if (genderInput) genderInput.value = profile.gender || '';
+        if (emergencyNameInput) emergencyNameInput.value = profile.emergency_contact_name || '';
+        if (emergencyNumberInput) emergencyNumberInput.value = profile.emergency_contact_number || '';
     }
 
     document.addEventListener('inigosync:profile-ready', (e) => renderStaffProfile(e.detail));
@@ -2328,15 +2345,96 @@ document.addEventListener('DOMContentLoaded', () => {
         return d.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
     }
 
-    async function loadStaffProfileMemberSince() {
-        const el = document.querySelector('[data-staff-profile-member-since]');
-        if (!el || !window.sb || !window.inigosyncProfile) return;
-        const { data, error } = await window.sb.from('profiles').select('created_at').eq('id', window.inigosyncProfile.id).single();
-        el.textContent = (!error && data) ? formatStaffMemberSince(data.created_at) : '—';
+    // Revision S3 (database/schema/018_staff_details.sql) — age is always
+    // DERIVED from birthdate, never stored, so it can never drift out of
+    // date the way a saved figure would the moment a birthday passes.
+    // Parsed as local midnight (T00:00:00), not bare "YYYY-MM-DD" (which
+    // Date() reads as UTC midnight) — otherwise a browser west of UTC would
+    // print the day BEFORE the real birthdate.
+    function computeStaffAge(birthdateStr) {
+        if (!birthdateStr) return null;
+        const dob = new Date(`${birthdateStr}T00:00:00`);
+        if (Number.isNaN(dob.getTime())) return null;
+        const now = new Date();
+        let age = now.getFullYear() - dob.getFullYear();
+        const monthDiff = now.getMonth() - dob.getMonth();
+        if (monthDiff < 0 || (monthDiff === 0 && now.getDate() < dob.getDate())) age -= 1;
+        return age;
     }
 
-    document.addEventListener('inigosync:profile-ready', loadStaffProfileMemberSince);
-    if (window.inigosyncProfile) loadStaffProfileMemberSince();
+    // "24 yrs · Jan 5, 2002" — View Profile's Age row shows both the
+    // derived figure and the source date together, so it's never a bare
+    // number with no way to double-check it.
+    function formatStaffAge(birthdateStr) {
+        const age = computeStaffAge(birthdateStr);
+        if (age === null) return '—';
+        const dob = new Date(`${birthdateStr}T00:00:00`);
+        const dateLabel = dob.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+        return `${age} yrs · ${dateLabel}`;
+    }
+
+    // "Maria Cruz · 0917…" — falls back to whichever half is actually
+    // filled in (an emergency contact can have a name with no number yet,
+    // or vice versa) rather than showing a dangling separator.
+    function formatStaffEmergencyContact(name, number) {
+        const n = String(name || '').trim();
+        const num = String(number || '').trim();
+        if (n && num) return `${n} · ${num}`;
+        return n || num || '—';
+    }
+
+    // Revision S3 — folds the old loadStaffProfileMemberSince() into one
+    // request for every field the Profile panel's dl needs that
+    // authGuard.js's shared login-gate select doesn't carry (created_at
+    // included, same reasoning that function already documented). A
+    // schema-mismatch response (018 not applied yet) degrades to "—" on
+    // every one of these rows plus a small hint, never a broken panel;
+    // Account Settings' matching inputs are primed by re-running
+    // renderStaffProfile() against the now-enriched window.inigosyncProfile
+    // rather than duplicating the "find each input, set its value" lines a
+    // second time here.
+    async function loadStaffProfileDetails() {
+        if (!window.sb || !window.inigosyncProfile) return;
+
+        const memberSinceEl = document.querySelector('[data-staff-profile-member-since]');
+        const addressEl = document.querySelector('[data-staff-profile-address]');
+        const ageEl = document.querySelector('[data-staff-profile-age]');
+        const genderEl = document.querySelector('[data-staff-profile-gender]');
+        const emergencyEl = document.querySelector('[data-staff-profile-emergency]');
+        const detailsHints = document.querySelectorAll('[data-staff-profile-details-hint], [data-staff-settings-details-hint]');
+
+        const { data, error } = await window.sb
+            .from('profiles')
+            .select('address, birthdate, gender, emergency_contact_name, emergency_contact_number, created_at')
+            .eq('id', window.inigosyncProfile.id)
+            .single();
+
+        if (error) {
+            if (!isSchemaMismatchError(error)) console.error('[staff] failed to load profile details', error);
+            if (memberSinceEl) memberSinceEl.textContent = '—';
+            [addressEl, ageEl, genderEl, emergencyEl].forEach((el) => { if (el) el.textContent = '—'; });
+            detailsHints.forEach((el) => { el.hidden = false; });
+            return;
+        }
+
+        detailsHints.forEach((el) => { el.hidden = true; });
+
+        if (memberSinceEl) memberSinceEl.textContent = formatStaffMemberSince(data.created_at);
+        if (addressEl) addressEl.textContent = data.address || '—';
+        if (ageEl) ageEl.textContent = formatStaffAge(data.birthdate);
+        if (genderEl) genderEl.textContent = data.gender || '—';
+        if (emergencyEl) emergencyEl.textContent = formatStaffEmergencyContact(data.emergency_contact_name, data.emergency_contact_number);
+
+        window.inigosyncProfile.address = data.address || '';
+        window.inigosyncProfile.birthdate = data.birthdate || null;
+        window.inigosyncProfile.gender = data.gender || '';
+        window.inigosyncProfile.emergency_contact_name = data.emergency_contact_name || '';
+        window.inigosyncProfile.emergency_contact_number = data.emergency_contact_number || '';
+        renderStaffProfile(window.inigosyncProfile);
+    }
+
+    document.addEventListener('inigosync:profile-ready', loadStaffProfileDetails);
+    if (window.inigosyncProfile) loadStaffProfileDetails();
 
     // ------------------------------------------------------------------
     // Account Settings — Personal Information (Revision S1, decision S7 —
@@ -2344,12 +2442,26 @@ document.addEventListener('DOMContentLoaded', () => {
     // wizard (decision S9), ported from includes/owner_dashboard.js's
     // data-admin-pw-* under data-staff-pw-* names.
     // ------------------------------------------------------------------
+    // Revision S3 — Birthdate can never be set in the future; today's date
+    // is computed once here (todayDateInputValue() is a hoisted function
+    // declaration further up this file, in the Walk-In section, safe to
+    // call from here regardless of source order — same reasoning this
+    // file already gives for closeStaffNotifMenu()) rather than baked into
+    // the HTML's static max="…", which would silently go stale.
+    const staffSettingsBirthdateInput = document.querySelector('[data-staff-settings-birthdate]');
+    if (staffSettingsBirthdateInput) staffSettingsBirthdateInput.max = todayDateInputValue();
+
     const staffSettingsSaveProfileBtn = document.querySelector('[data-staff-settings-save="profile"]');
     if (staffSettingsSaveProfileBtn) {
         staffSettingsSaveProfileBtn.addEventListener('click', async () => {
             if (!window.sb || !window.inigosyncProfile) return;
             const nameInput = document.querySelector('[data-staff-settings-name]');
             const mobileInput = document.querySelector('[data-staff-settings-mobile]');
+            const addressInput = document.querySelector('[data-staff-settings-address]');
+            const birthdateInput = document.querySelector('[data-staff-settings-birthdate]');
+            const genderInput = document.querySelector('[data-staff-settings-gender]');
+            const emergencyNameInput = document.querySelector('[data-staff-settings-emergency-name]');
+            const emergencyNumberInput = document.querySelector('[data-staff-settings-emergency-number]');
             const full_name = nameInput ? nameInput.value.trim() : '';
             const mobileRaw = mobileInput ? mobileInput.value.trim() : '';
 
@@ -2373,8 +2485,49 @@ document.addEventListener('DOMContentLoaded', () => {
                 contact_num = check.normalized;
             }
 
+            // Revision S3 — the emergency contact's number is optional
+            // (unlike the account's own mobile above, an emergency contact
+            // might not be on file yet at all) but gets the exact same
+            // PH-mobile validation whenever a value IS entered.
+            const emergencyNumberRaw = emergencyNumberInput ? emergencyNumberInput.value.trim() : '';
+            let emergency_contact_number = '';
+            if (emergencyNumberRaw) {
+                const emCheck = window.validatePhMobile(emergencyNumberRaw);
+                if (!emCheck.valid) {
+                    window.InigoToast?.show(`Emergency contact number: ${emCheck.message}`, true);
+                    emergencyNumberInput?.focus();
+                    return;
+                }
+                emergency_contact_number = emCheck.normalized;
+            }
+
+            const fullPatch = {
+                full_name,
+                contact_num,
+                address: addressInput ? addressInput.value.trim() : '',
+                // A `date` column rejects '' outright (only a real date or
+                // NULL) — unlike every text field here, an empty birthdate
+                // must become null, never ''.
+                birthdate: (birthdateInput && birthdateInput.value) ? birthdateInput.value : null,
+                gender: genderInput ? genderInput.value : '',
+                emergency_contact_name: emergencyNameInput ? emergencyNameInput.value.trim() : '',
+                emergency_contact_number,
+            };
+
             staffSettingsSaveProfileBtn.disabled = true;
-            const { error } = await window.sb.from('profiles').update({ full_name, contact_num }).eq('id', window.inigosyncProfile.id);
+            let { error } = await window.sb.from('profiles').update(fullPatch).eq('id', window.inigosyncProfile.id);
+
+            // Revision S3 (database/schema/018_staff_details.sql) — not
+            // applied yet: retry with just full_name/contact_num, the two
+            // columns every prior revision already relied on, same
+            // schema-mismatch-retry idiom the Walk-In wizard's save uses
+            // further up this file.
+            let usedReducedPayload = false;
+            if (error && isSchemaMismatchError(error)) {
+                ({ error } = await window.sb.from('profiles').update({ full_name, contact_num }).eq('id', window.inigosyncProfile.id));
+                usedReducedPayload = true;
+            }
+
             staffSettingsSaveProfileBtn.disabled = false;
 
             if (error) {
@@ -2382,10 +2535,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 return;
             }
 
-            window.inigosyncProfile.full_name = full_name;
-            window.inigosyncProfile.contact_num = contact_num;
+            Object.assign(window.inigosyncProfile, fullPatch);
             renderStaffProfile(window.inigosyncProfile);
-            window.InigoToast?.show('Profile updated.');
+            window.InigoToast?.show(usedReducedPayload
+                ? 'Profile updated — address/birthdate/gender/emergency contact need a database update (ask the owner to run 018).'
+                : 'Profile updated.');
         });
     }
 
