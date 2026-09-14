@@ -425,6 +425,84 @@ appear next to it.
 
 ---
 
+## E6. Paste in the Invite user email template *(recommended — branding, and makes the log-in email explicit)*
+
+**Why it's blocked:** it's an email template in the Supabase dashboard, the
+same place as E2–E4 above, just a different template — **Invite user**
+instead of Magic Link / Reset Password / Confirm signup.
+
+**Why this matters, but isn't a REQUIRED item like E2–E4.** Staff Management
+→ **+ Add New Staff** invites the new hire through the `invite-staff` Edge
+Function, which creates their account and asks Supabase to send its **Invite
+user** email. Nothing is broken if you skip this — Supabase's own default
+Invite user template already contains a working link, so the invite still
+arrives and still gets the new hire in. What you get without this file is
+Supabase's generic default wording (no IñigoSync branding, no mention of
+what the account is for or what position it's for), and no reminder of the
+one thing that trips people up: **Supabase always sends this email to the
+account's own address, so whatever the owner types into Add New Staff's
+"Personal email address" field is both where this email goes AND that
+person's future log-in.** There is no separate "work email" anywhere in this
+flow.
+
+**What to do:** open `docs/email_templates/invite_staff.html`, copy the whole
+file, then go to Supabase Dashboard → **Authentication → Email Templates →
+Invite user**, paste it into the message body, and Save. Suggested subject:
+
+```
+Your IñigoSync staff account
+```
+
+**Two settings on the same URL Configuration page need to be correct before
+you test this** (Authentication → URL Configuration):
+1. **Site URL** must be set to your real app URL (e.g.
+   `http://localhost:8532` for local development). This template reads
+   `{{ .SiteURL }}` twice — once in the footer, once to build the "sign in at
+   the Staff Portal" line — so a blank or wrong Site URL sends both to the
+   wrong place.
+2. **Redirect URLs** (the same page, just below Site URL) must allow
+   wherever the invite link is meant to land — see item E above for exactly
+   how to set this. Unlike E2–E4, which were all rewritten to be code-only
+   specifically so they no longer depend on this allowlist, **this is the one
+   template in this folder that keeps a real link on purpose** (see the
+   file's own header comment for why), so it is the one that still needs
+   item E done.
+
+**Enter the staff member's personal email, not a work address.** Supabase
+gives no way to send account creation to one address and day-to-day log-in
+to another — they are the same field. Pages/owner_dashboard.html's Add New
+Staff modal already labels the field "Personal email address" and says this
+next to it for that reason.
+
+**How to test:** Staff Management → **+ Add New Staff** → fill in a real
+address you can read → **Send Invite**. The email should arrive branded as
+IñigoSync (not Supabase's generic default wording), greet the name you
+typed (or "Hi there" if you left it blank), show the position if you chose
+one, and its button should lead to a working "set your password" screen.
+
+**Notes worth knowing:**
+- **This one keeps its link on purpose — unlike E2–E4.** Those three are
+  deliberately code-only because the same browser waiting for the code has
+  to receive it. Here, the OWNER is the one at the keyboard, not the invited
+  staff member, so there is no tab anywhere waiting for a code — a link is
+  the only way for the invite to reach whatever device the new hire actually
+  reads their email on.
+- **Do not "tidy" the file.** As with E2–E4, the tables, inline styles and
+  the `<!--[if mso]>` blocks are deliberate. This one has an extra piece the
+  other three don't: a small VML block so the button still renders as a
+  button in Outlook, not just the other three's code box.
+- **"24 hours"** is what the template quotes for how long the invite link
+  stays valid — see the file's own header comment for exactly which
+  dashboard setting controls that, and how it compares to the shorter figure
+  E2–E4 quote for their 6-digit codes.
+- **The button's "set your password" screen is this site's own** —
+  `{{ .ConfirmationURL }}` lands on `Pages/Index.html`, which detects the
+  `type=invite` it carries and opens a "Set your password" panel (reusing
+  the password-recovery UI in `includes/auth.js`); submitting signs the new
+  hire straight into `staff_dashboard.html`, no separate log-in step needed.
+
+---
+
 ## F. Set real court rates *(no longer needs me — you can do this yourself now)*
 
 Every `court.rate` is currently `NULL`, so the UI honestly shows **"Rate TBA"**
@@ -462,11 +540,12 @@ Get the real answers and I'll drop them in, or edit the file directly.
 | **B** (`pg_cron` check) | Lets me *design* auto-cancellation + reminders correctly |
 | **C** (PayMongo) | Payment Automation objective, receipts, payment loading phase |
 | **D** (Resend) | Gmail booking reminders |
-| **E** (redirect URLs) | Only the old link-style reset emails still in flight; reset itself no longer needs it |
+| **E** (redirect URLs) | Needed for E6's invite link to land correctly; otherwise only the old link-style reset emails still in flight — reset itself no longer needs it |
 | **E2** (Magic Link template) | **Required** — first-login OTP is unusable without it, for all three roles |
 | **E3** (Reset Password template) | **Required** — "Forgot password?" cannot be completed without the code |
 | **E4** (Confirm signup template) | **Required** — new sign-ups cannot get past the verify screen without it |
 | **E5** (Phone provider + test OTP numbers) | **Required** — Account Settings' mobile-number verification cannot send/verify a code without it |
+| **E6** (Invite user template) | Recommended, not required — branded staff-invite email instead of Supabase's generic default, and makes explicit that the invite (and every future notice) goes to the account's own **personal** email |
 | **F** (court rates) | Replaces every "Rate TBA" with real pricing |
 | **G** (T&C values) | Completes the Terms & Conditions page |
 
@@ -477,3 +556,8 @@ including log-in, sign-up and password reset, all three of which are *currently
 broken* on a default Supabase project because none of the default templates
 contain `{{ .Token }}`. Add **E5** (five more minutes, no SMS account needed —
 just the free test-OTP numbers) to light up mobile-number verification too.
+If you're about to onboard real staff, add **E6** as well — not required
+(Supabase's default Invite user template already has a working link), but it's
+another five minutes, and — because it's the one auth email in this project
+that still carries a real link — it is also the one that needs item **E**
+(redirect URLs) actually done, not just left as a nice-to-have.

@@ -444,6 +444,61 @@ document.addEventListener('DOMContentLoaded', () => {
     const isRecoveryRedirect = /type=recovery/.test(window.location.hash) || /type=recovery/.test(window.location.search);
     let recoveryHandled = false;
 
+    // ------------------------------------------------------------------
+    // Staff invite — reuses this same `reset` panel.
+    //
+    // Owner Dashboard → Staff Management → Add New Staff calls the
+    // invite-staff Edge Function, which asks Supabase to send its "Invite
+    // user" email (docs/email_templates/invite_staff.html). Its
+    // {{ .ConfirmationURL }} lands back here exactly like a recovery link
+    // does — same implicit flow, same short-lived (but real) session
+    // already established from the URL before this script runs — just
+    // `type=invite` instead of `type=recovery`. So this reuses
+    // enterRecoveryMode()'s panel and the mode === 'reset' submit handler
+    // below rather than building a second "set a password" screen, and is
+    // detected the same direct-URL way for the same reason given above
+    // (Supabase's own URL parsing can finish before this script gets a
+    // chance to subscribe to onAuthStateChange).
+    //
+    // The one real behavioral difference: recovery signs back out and
+    // returns to Log In, because nobody here knows which dashboard a
+    // recovery link belongs to (see the mode === 'reset' handler). Invite
+    // is always a brand-new staff account with a session already sitting
+    // there ready to use, so it finishes straight into the dashboard
+    // instead — see resetPurpose below and its `=== 'invite'` branch in
+    // the mode === 'reset' handler.
+    // ------------------------------------------------------------------
+    const isInviteRedirect = /type=invite/.test(window.location.hash) || /type=invite/.test(window.location.search);
+    let inviteHandled = false;
+
+    // Per-purpose copy for the shared `reset` panel — same idea as
+    // OTP_PURPOSE_COPY above, just for the one other panel that needs it.
+    // Recovery's strings are exactly the markup's own defaults in
+    // Pages/Index.html, so nothing calls setResetPurpose('recovery');
+    // resetPurpose simply never leaves that default outside an invite link.
+    const RESET_PURPOSE_COPY = {
+        recovery: { heading: 'Set a new password', tagline: 'Choose a new password for your account.' },
+        invite: { heading: 'Set your password', tagline: 'Welcome to IñigoSync — choose a password for your new staff account.' }
+    };
+    let resetPurpose = 'recovery';
+
+    function setResetPurpose(purpose) {
+        resetPurpose = purpose;
+        const copy = RESET_PURPOSE_COPY[purpose] || RESET_PURPOSE_COPY.recovery;
+        const heading = overlay.querySelector('[data-reset-heading]');
+        if (heading) heading.textContent = copy.heading;
+        const tagline = overlay.querySelector('[data-reset-tagline]');
+        if (tagline) tagline.textContent = copy.tagline;
+    }
+
+    // Shown when the panel opens for an invite link Supabase already
+    // rejected before this script ever got a session to work with — used
+    // once already (the email opened/clicked twice) or past its 24-hour
+    // expiry (docs/OWNER_ACTION_LIST.md item E6). A wrong/mismatched
+    // password never reaches this message — the form validates both
+    // locally before updateUser() is ever called.
+    const INVITE_EXPIRED_MESSAGE = 'This invite link has expired or has already been used. Please ask the owner to re-send the invite from Staff Management.';
+
     // Where a recovery link should return the visitor to. Passed on every
     // resetPasswordForEmail call — the code path does not need it, but the
     // link path above does, and both must keep landing on the same page and
@@ -461,20 +516,47 @@ document.addEventListener('DOMContentLoaded', () => {
         openModal('reset');
     }
 
+    // See the "Staff invite" comment above isInviteRedirect for why this
+    // mirrors enterRecoveryMode() rather than opening a different panel.
+    function enterInviteMode() {
+        if (inviteHandled) return;
+        inviteHandled = true;
+        if (window.InigoLoading) window.InigoLoading.hide();
+        setResetPurpose('invite');
+        openModal('reset');
+
+        // Proactive expired/used-link check: a valid invite link already
+        // has the session its own access_token just established, so
+        // getSession() resolving empty here means updateUser() on submit
+        // would fail anyway. Surface that now rather than only after the
+        // visitor has already filled in a password — submitting anyway
+        // still fails safely either way, via the shared catch block below.
+        if (!window.sb) return;
+        window.sb.auth.getSession().then(({ data: { session } }) => {
+            if (!session) setAuthNotice(INVITE_EXPIRED_MESSAGE, true);
+        });
+    }
+
     if (window.sb) {
         window.sb.auth.onAuthStateChange((event) => {
             if (event === 'PASSWORD_RECOVERY') enterRecoveryMode();
+            // Supabase has no separate "invite accepted" event — parsing a
+            // `type=invite` URL fires the same SIGNED_IN a password login
+            // would, so this is gated on the URL check too; an ordinary
+            // login's SIGNED_IN, with no such URL, never reaches this.
+            if (event === 'SIGNED_IN' && isInviteRedirect) enterInviteMode();
         });
     }
 
     if (isRecoveryRedirect) enterRecoveryMode();
+    if (isInviteRedirect) enterInviteMode();
 
     // A forced sign-out from includes/authGuard.js (idle timeout, or this
     // account signing in on another device) leaves a one-shot reason
     // behind in sessionStorage before it redirects here — surface it with
     // the same notice mechanism (setAuthNotice) used everywhere else in
-    // this modal. Never let it preempt an in-progress password-recovery
-    // flow, which takes priority above.
+    // this modal. Never let it preempt an in-progress password-recovery or
+    // invite flow, either of which takes priority above.
     const AUTH_NOTICE_MESSAGES = {
         idle: 'You were signed out after a period of inactivity. Please log in again.',
         superseded: 'You were signed out because your account was signed in on another device.'
@@ -494,7 +576,7 @@ document.addEventListener('DOMContentLoaded', () => {
         setAuthNotice(message, false);
     }
 
-    if (!isRecoveryRedirect) consumePendingAuthNotice();
+    if (!isRecoveryRedirect && !isInviteRedirect) consumePendingAuthNotice();
 
     // Google's OAuth flow is a full-page redirect away and back — there's no
     // in-page callback to hook into. So on every load of this page, check
@@ -514,11 +596,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (window.sb) {
         window.sb.auth.getSession().then(({ data: { session } }) => {
-            // A recovery-link session must NOT auto-complete a normal
-            // login — it exists only so mode === 'reset' below can call
-            // updateUser(); routing it into completeLogin() would skip
-            // straight past "set a new password" into the dashboard.
-            if (!session || isRecoveryRedirect || recoveryHandled) return;
+            // A recovery-link OR invite-link session must NOT auto-complete
+            // a normal customer login — it exists only so mode === 'reset'
+            // below can call updateUser(); routing it into completeLogin()
+            // here would skip straight past "set a new password" and, for
+            // an invite, also complete the login as the wrong role.
+            if (!session || isRecoveryRedirect || recoveryHandled || isInviteRedirect || inviteHandled) return;
             if (isOauthReturn && window.InigoLoading) window.InigoLoading.show('Signing you in…');
             completeLogin(['customer']).catch(() => {
                 if (window.InigoLoading) window.InigoLoading.hide();
@@ -595,7 +678,7 @@ document.addEventListener('DOMContentLoaded', () => {
         // typed password survive a Close and a later Reopen — the field is
         // genuinely always empty on load, but never got cleared again after
         // that. Safe to do unconditionally here: every call site of
-        // openModal() (a [data-auth-open] trigger, the recovery-link
+        // openModal() (a [data-auth-open] trigger, the recovery-/invite-link
         // redirect, the forced-signout notice) is a fresh "open the modal"
         // moment, never a tab switch or a mid-signup step change — those go
         // through setActivePanel() / setSignupStep() directly and never
@@ -1660,9 +1743,26 @@ document.addEventListener('DOMContentLoaded', () => {
                     // Shown only AFTER the two local checks above: both of
                     // them `return` straight out of the try block, which the
                     // catch that hides this overlay never sees.
-                    if (window.InigoLoading) window.InigoLoading.show('Updating your password…');
+                    if (window.InigoLoading) window.InigoLoading.show(resetPurpose === 'invite' ? 'Setting your password…' : 'Updating your password…');
                     const { error } = await window.sb.auth.updateUser({ password: newPassword });
                     if (error) throw error;
+
+                    if (resetPurpose === 'invite') {
+                        // The invite link's session IS the new staff
+                        // account's session — same trust model as a fresh
+                        // sign-in (see the header comment above
+                        // isInviteRedirect) — so finish exactly like one:
+                        // completeLogin() reads profiles.role, registers
+                        // the active_session single-session guard, and
+                        // redirects into the matching dashboard. It also
+                        // closes this modal itself, unlike the recovery
+                        // branch below.
+                        setAuthNotice('Password set — welcome aboard!', false);
+                        if (window.InigoLoading) window.InigoLoading.show('Setting up your dashboard…');
+                        await completeLogin(['staff']);
+                        return;
+                    }
+
                     // Sign out of the short-lived recovery session so the
                     // visitor logs back in fresh with the new password —
                     // simpler and safer than guessing which dashboard a

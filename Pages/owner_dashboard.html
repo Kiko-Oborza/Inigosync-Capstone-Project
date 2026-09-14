@@ -865,10 +865,16 @@
                 <input type="text" class="admin-input" placeholder="Juan Dela Cruz" data-admin-staff-name>
             </div>
             <div class="admin-form-group">
-                <span class="admin-form-label">Email address</span>
-                <input type="email" class="admin-input" placeholder="staff@inigossportscenter.com" data-admin-staff-email>
+                <span class="admin-form-label">Personal email address</span>
+                <input type="email" class="admin-input" placeholder="juan.delacruz@gmail.com" data-admin-staff-email>
             </div>
         </div>
+        <!-- This becomes their log-in, not a work address — Supabase only
+             ever sends the Invite user email to the account's own address
+             (docs/email_templates/invite_staff.html, docs/OWNER_ACTION_LIST.md
+             item E6), so whatever the owner types above IS the future
+             username too. -->
+        <p class="admin-form-hint">This becomes their login email — the account invite is sent here.</p>
         <div class="admin-form-group">
             <span class="admin-form-label">Position</span>
             <select class="admin-select" data-admin-staff-role>

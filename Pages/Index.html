@@ -736,6 +736,14 @@
                  Both are handled in includes/auth.js; see the "TWO ENTRY
                  POINTS, ONE `reset` PANEL" comment there.
 
+                 This panel also doubles as the Staff Management "Add New
+                 Staff" invite link's "set your password" screen — same
+                 by-link detection, same session-already-established
+                 shortcut, just `type=invite` instead of `type=recovery`.
+                 data-reset-heading / data-reset-tagline are rewritten by
+                 includes/auth.js's setResetPurpose() for that case only;
+                 the text below is the recovery (and default) copy.
+
                  This is the second (and only other) place a password is
                  CREATED, so it carries the same live checklist and the same
                  policy as Sign Up step 1 — otherwise password recovery would
@@ -743,8 +751,8 @@
                  deliberately left alone: existing accounts predate the policy
                  and must keep working. -->
             <form class="auth-form" data-auth-panel="reset" novalidate>
-                <h2 class="auth-heading">Set a new password</h2>
-                <p class="auth-tagline" style="margin-bottom: 18px;">Choose a new password for your account.</p>
+                <h2 class="auth-heading" data-reset-heading>Set a new password</h2>
+                <p class="auth-tagline" style="margin-bottom: 18px;" data-reset-tagline>Choose a new password for your account.</p>
 
                 <div class="auth-password-group" data-password-policy>
                     <label class="auth-field">
