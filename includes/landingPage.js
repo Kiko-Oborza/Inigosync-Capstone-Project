@@ -76,11 +76,12 @@ function monogramFor(sportSlug, name) {
 // own full-bleed variant (see includes/home-showcase.js) since they need to
 // stack under the hero-scrim rather than sit inside a rounded card.
 function renderMediaSlot({ imageUrl, alt, monogram }) {
+    if (window.InigoVisuals) imageUrl = window.InigoVisuals.venuePhoto(imageUrl);
     const safeAlt = escapeHtml(alt || '');
     if (imageUrl) {
         return `<div class="media-slot has-image"><img src="${escapeHtml(imageUrl)}" alt="${safeAlt}" loading="lazy"></div>`;
     }
-    return `<div class="media-slot is-placeholder" role="img" aria-label="${safeAlt}"><span class="media-slot-monogram" aria-hidden="true">${escapeHtml(monogram)}</span></div>`;
+    return `<div class="media-slot is-placeholder" role="img" aria-label="Original ${safeAlt} photo not yet available"><span class="venue-photo-placeholder"><span>Original court photo</span><small>Photo placeholder · awaiting venue image</small></span></div>`;
 }
 
 // ============================================================================
@@ -549,6 +550,10 @@ window.InigoContent = {
 // ============================================================================
 function renderCourtCard(court) {
     const monogram = monogramFor(court.sportSlug, court.name);
+    const artIndex = window.InigoVisuals?.sportIndex(court.sportSlug) ?? -1;
+    const coverHtml = artIndex >= 0
+        ? `<div class="court-art" aria-hidden="true"><div class="court-art-image sport-art-${artIndex}"></div></div>`
+        : renderMediaSlot({ imageUrl: court.imageUrl, alt: court.name, monogram });
 
     // Rate: ₱<rate><rate_unit> when non-null, an honest "Rate TBA"
     // placeholder when null — every court's rate is NULL in the live DB
@@ -573,14 +578,13 @@ function renderCourtCard(court) {
     // guarantees is unique across the rendered list.
     return `
         <button type="button" class="court-card" data-court-id="${escapeHtml(court.sportSlug)}" aria-haspopup="dialog">
-            ${renderMediaSlot({ imageUrl: court.imageUrl, alt: court.name, monogram })}
+            ${coverHtml}
             <div class="court-card-body">
                 <h3>${escapeHtml(court.name)}</h3>
                 ${ratingHtml}
                 <p class="court-count"><span class="court-count-value">${escapeHtml(String(court.quantity))}</span><span class="court-count-unit">${escapeHtml(court.unit)}</span></p>
                 ${rateHtml}
-                <p class="court-note">${escapeHtml(court.note)}</p>
-                <span class="court-card-open">View
+                <span class="court-card-open">View court photos
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6" stroke-linecap="round" stroke-linejoin="round"/></svg>
                 </span>
             </div>
@@ -663,7 +667,7 @@ function createCourtViewer() {
     const FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
     const PHOTO_STATUS_HAVE = 'Photo provided by Iñigos Sports Center.';
-    const PHOTO_STATUS_NONE = 'Photo coming soon — court photos are added by Iñigos through admin Court Listings.';
+    const PHOTO_STATUS_NONE = 'Original venue photo coming soon.';
     const PHOTO_STATUS_BROKEN = 'This photo could not be loaded, so the placeholder is shown instead.';
 
     let lastFocused = null;
@@ -687,8 +691,9 @@ function createCourtViewer() {
         const alt = unit.label ? `${activeCourt.name} — ${unit.label}` : activeCourt.name;
 
         // renderMediaSlot escapes both the alt text and the image URL.
-        mediaEl.innerHTML = renderMediaSlot({ imageUrl: unit.imageUrl, alt, monogram });
-        photoEl.textContent = unit.imageUrl ? PHOTO_STATUS_HAVE : PHOTO_STATUS_NONE;
+        const imageUrl = window.InigoVisuals ? window.InigoVisuals.venuePhoto(unit.imageUrl) : unit.imageUrl;
+        mediaEl.innerHTML = renderMediaSlot({ imageUrl, alt, monogram });
+        photoEl.textContent = imageUrl ? PHOTO_STATUS_HAVE : PHOTO_STATUS_NONE;
 
         const img = mediaEl.querySelector('img');
         if (!img) return;

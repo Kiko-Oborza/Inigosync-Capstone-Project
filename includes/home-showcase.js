@@ -47,18 +47,26 @@ document.addEventListener('DOMContentLoaded', () => {
         });
 
     function renderSlides(events) {
-        const { escapeHtml, monogramFor, formatEventMeta } = content;
+        const { escapeHtml, formatEventMeta } = content;
 
         mediaContainer.innerHTML = events.map((ev, i) => {
             const activeClass = i === 0 ? ' is-active' : '';
-            if (ev.imageUrl) {
+            const imageUrl = window.InigoVisuals ? window.InigoVisuals.venuePhoto(ev.imageUrl) : ev.imageUrl;
+            if (imageUrl) {
                 const safeAlt = escapeHtml(ev.title);
-                return `<img src="${escapeHtml(ev.imageUrl)}" alt="${safeAlt}" class="hero-media-img${activeClass}" data-home-slide="${i}" loading="${i === 0 ? 'eager' : 'lazy'}">`;
+                return `<img src="${escapeHtml(imageUrl)}" alt="${safeAlt}" class="hero-media-img${activeClass}" data-home-slide="${i}" loading="${i === 0 ? 'eager' : 'lazy'}">`;
             }
-            const monogram = escapeHtml(monogramFor(ev.sportSlug, ev.title));
-            const safeAlt = escapeHtml(ev.title);
-            return `<div class="hero-media-slot${activeClass}" data-home-slide="${i}" role="img" aria-label="${safeAlt}"><span class="hero-media-slot-monogram" aria-hidden="true">${monogram}</span></div>`;
+            return `<div class="hero-media-slot${activeClass}" data-home-slide="${i}" role="img" aria-label="Venue photo placeholder"><span class="hero-photo-placeholder">Original venue photo<small>Photo placeholder</small></span></div>`;
         }).join('');
+        mediaContainer.querySelectorAll('img').forEach(img => img.addEventListener('error', () => {
+            const slot = document.createElement('div');
+            slot.className = 'hero-media-slot' + (img.classList.contains('is-active') ? ' is-active' : '');
+            slot.dataset.homeSlide = img.dataset.homeSlide;
+            slot.setAttribute('role', 'img');
+            slot.setAttribute('aria-label', 'Venue photo unavailable');
+            slot.innerHTML = '<span class="hero-photo-placeholder">Original venue photo<small>Photo temporarily unavailable</small></span>';
+            img.replaceWith(slot);
+        }, { once: true }));
 
         copyContainer.innerHTML = events.map((ev, i) => {
             const activeClass = i === 0 ? ' is-active' : '';
@@ -93,15 +101,35 @@ document.addEventListener('DOMContentLoaded', () => {
 
         let currentIndex = 0;
         let autoplayTimer = null;
+        let userPaused = false;
+        const pauseBtn = showcaseEl.querySelector('[data-home-pause]');
 
-        const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        const motionPreference = window.matchMedia('(prefers-reduced-motion: reduce)');
+        copyContainer.setAttribute('aria-live', 'off');
+        function syncPauseButton() {
+            if (!pauseBtn) return;
+            const paused = userPaused || motionPreference.matches;
+            pauseBtn.textContent = paused ? 'Play' : 'Pause';
+            pauseBtn.setAttribute('aria-label', paused ? 'Play slideshow' : 'Pause slideshow');
+            pauseBtn.setAttribute('aria-pressed', String(paused));
+            pauseBtn.disabled = motionPreference.matches;
+            copyContainer.setAttribute('aria-live', paused ? 'polite' : 'off');
+        }
+        pauseBtn?.addEventListener('click', () => {
+            userPaused = !userPaused;
+            syncPauseButton();
+            if (userPaused) clearAutoplay(); else startAutoplay();
+        });
+        motionPreference.addEventListener('change', () => { syncPauseButton(); clearAutoplay(); startAutoplay(); });
+        document.addEventListener('visibilitychange', () => { clearAutoplay(); if (!document.hidden) startAutoplay(); });
+        syncPauseButton();
 
         function updateSlide(newIndex, skipTimer = false) {
             // Wrap around
             if (newIndex >= slideCount) newIndex = 0;
             if (newIndex < 0) newIndex = slideCount - 1;
 
-            slides.forEach((s) => {
+            showcaseEl.querySelectorAll('[data-home-slide]').forEach((s) => {
                 const isActive = Number(s.dataset.homeSlide) === newIndex;
                 s.classList.toggle('is-active', isActive);
             });
@@ -121,7 +149,9 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         function startAutoplay() {
-            if (prefersReducedMotion) return;
+            clearAutoplay();
+            if (motionPreference.matches || userPaused || document.hidden || slideCount < 2
+                || showcaseEl.matches(':hover') || showcaseEl.contains(document.activeElement)) return;
 
             autoplayTimer = setInterval(() => {
                 updateSlide(currentIndex + 1, false);

@@ -1,0 +1,200 @@
+/* Approved landing-page artwork and depth treatment. Loaded by Index only;
+   shared dashboard, typography, auth behavior and database styles stay intact. */
+.landing-night {
+    --surface-page: #111515; --surface-band: #161b1b;
+    --surface-card: #1c2222; --surface-card-hover: #232b2b;
+    --border-soft: #ffffff1f; --border-card: #ffffff38;
+    --color-bg: var(--surface-page); --color-bg-elevated: var(--surface-band);
+    --color-bg-card: var(--surface-card); --color-line: var(--border-soft);
+    --color-ink: #f5f3ee; --color-ink-dim: #c4c8c5; --color-ink-faint: #a9b2ae;
+    --color-nav-bg: #101616e6; --color-nav-shadow: 0 8px 30px #0003;
+    --color-accent-text: #ff853f;
+    background: var(--surface-page); color: var(--color-ink);
+}
+:root[data-theme="light"] .landing-night {
+    --surface-page: #f8f5ef; --surface-band: #eeebe5;
+    --surface-card: #fffdf9; --surface-card-hover: #f2ece2;
+    --border-soft: #252d2529; --border-card: #252d255c;
+    --color-ink: #202a25; --color-ink-dim: #4b5750; --color-ink-faint: #59655e;
+    --color-nav-bg: #fffdf5f0; --color-nav-shadow: 0 8px 30px #1a241a14;
+    --color-accent-text: #a63809;
+}
+.landing-night .section-inner { max-width: 1440px; padding-inline: clamp(20px, 5vw, 72px); }
+.landing-night .landing-skip { position: fixed; top: 12px; left: 20px; z-index: 200; padding: 12px 20px; color: #111; background: #ff853f; transform: translateY(-200%); }
+.landing-night .landing-skip:focus { transform: none; }
+.landing-night .site-nav { padding: 24px clamp(16px, 4vw, 56px); }
+.landing-night .site-nav-pill { max-width: 1344px; margin: auto; padding: 10px 20px; box-shadow: 0 4px 32px #0002; }
+.landing-night .site-nav .logo-text { font-size: 23px; letter-spacing: -.04em; }
+.landing-night .site-nav-links a { font-size: 14px; border-radius: 0; padding: 12px 10px; }
+.landing-night .site-nav-links a.active { background: transparent; color: var(--color-accent-text); border-bottom: 2px solid var(--color-primary); }
+.landing-night .site-nav-links ul { gap: 24px; }
+.landing-night .book-now { border: 1px solid var(--border-card); border-radius: 10px; background: transparent; color: var(--color-ink); font-size: 13px; padding: 12px 20px; }
+.landing-night .book-now:hover { background: var(--surface-card-hover); color: var(--color-ink); }
+.landing-night .theme-toggle { width: 44px; height: 44px; border: 0; }
+.landing-night .hero { min-height: 0; background: #1a1c1b; isolation: isolate; }
+.landing-night .hero-media-slot { background: radial-gradient(ellipse at 80% 42%,#58595155,transparent 65%),linear-gradient(155deg,#232524,#252521 55%,#131717); }
+.landing-night .hero-media-slot::before { display: none; }
+.landing-night .hero-scrim,
+:root[data-theme="light"] .landing-night .hero-scrim { background: linear-gradient(0deg,#0e1414e8,transparent 65%),linear-gradient(90deg,#1217176b,transparent 80%); }
+.landing-night .hero-photo-placeholder { position: absolute; left: 68%; top: 36%; transform: translate(-50%,-50%); text-align: center; color: #e3e4db; font-size: 14px; line-height: 1.7; }
+.landing-night .hero-photo-placeholder::before { content: ''; display: block; width: 30px; height: 1px; background: #c4c8c5; margin: 0 auto 14px; }
+.landing-night .hero-photo-placeholder small { display: block; font-size: 12px; color: #c4c8c5; }
+.landing-night .hero-content { position: relative; inset: auto; min-height: 620px; max-width: 1440px; margin: auto; padding: 250px clamp(20px,5vw,72px) 44px; display: flex; flex-direction: column; align-items: flex-start; justify-content: flex-end; gap: 20px; }
+.landing-night .hero-copy-wrap { width: min(700px,68%); max-width: none; }
+.landing-night .hero-title { font-size: clamp(28px,3.8vw,50px); font-weight: 700; line-height: 1.16; letter-spacing: -.035em; text-wrap: balance; }
+.landing-night .hero-tag { background: none; border-radius: 0; padding: 0; color: #ff9a65; letter-spacing: .17em; font-size: 11px; margin-bottom: 12px; }
+.landing-night .hero-meta { font-size: 16px; line-height: 1.65; margin-bottom: 24px; max-width: 610px; }
+.landing-night .cta-button { font-size: 14px; border-radius: 9px; padding: 14px 26px; min-height: 48px; background: #ff782e; color: #1b1009; border: 1px solid transparent; }
+.landing-night .cta-button:hover { background: #ff9358; color: #1b1009; }
+.landing-night .cta-button.secondary { background: #151a1a50; border-color: #f3f3eb80; color: #f5f3ee; }
+.landing-night .hero-progress { flex-direction: row-reverse; align-items: center; gap: 12px; }
+.landing-night .hero-dots { gap: 0; }
+.landing-night .hero-dot { width: 36px; height: 44px; background: transparent; position: relative; }
+.landing-night .hero-dot::after { content: ''; position: absolute; width: 9px; height: 9px; border-radius: 50%; background: #a2aca4; top: 50%; left: 50%; transform: translate(-50%,-50%); }
+.landing-night .hero-dot.is-active { background: transparent; }
+.landing-night .hero-dot.is-active::after { background: #ff853f; }
+.landing-night .hero-pause { background: transparent; border: 1px solid #ffffff4d; border-radius: 6px; color: #f5f3ee; min-width: 60px; min-height: 44px; font: inherit; font-size: 11px; cursor: pointer; }
+.landing-night .hero-pause:disabled { opacity: .6; cursor: default; }
+.landing-night .hero-equipment { position: absolute; z-index: 2; width: min(35vw,470px); bottom: 6px; right: max(2vw,calc((100vw - 1440px)/2)); pointer-events: none; }
+.landing-night .hero-equipment img { display: block; width: 100%; height: auto; }
+.landing-night .courts { padding: 48px 0 72px; background: var(--surface-page); }
+.landing-night .section-title { font-size: clamp(26px,3vw,38px); line-height: 1.2; letter-spacing: -.035em; font-weight: 600; margin-bottom: 12px; text-wrap: balance; }
+.landing-night .section-intro { font-size: 15px; line-height: 1.7; margin-bottom: 30px; max-width: 770px; }
+.landing-night .court-grid { grid-template-columns: repeat(4,minmax(0,1fr)); gap: 20px; perspective: 1200px; }
+.landing-night .court-card { min-width: 0; border-radius: 12px; background: var(--surface-card); box-shadow: 0 6px 18px #0002; transition: border-color .25s,box-shadow .25s,background-color .25s; transform-style: preserve-3d; }
+.landing-night .court-card:hover { box-shadow: 0 16px 32px #0004; }
+.landing-night .court-art { width: 100%; aspect-ratio: 1.22; flex-shrink: 0; overflow: hidden; background: #151918; border-bottom: 1px solid var(--border-soft); }
+.landing-night .court-art-image { width: 100%; height: 100%; background-image: url('../assets/landing/sports-equipment.png'); background-size: 400% 200%; background-repeat: no-repeat; transition: transform .7s cubic-bezier(.2,.75,.25,1); }
+.landing-night .court-card:hover .court-art-image,.landing-night .court-card:focus-visible .court-art-image { transform: scale(1.065); }
+.sport-art-0 { background-position: 0% 0%; }.sport-art-1 { background-position: 33.333333% 0%; }
+.sport-art-2 { background-position: 66.666667% 0%; }.sport-art-3 { background-position: 100% 0%; }
+.sport-art-4 { background-position: 0% 100%; }.sport-art-5 { background-position: 33.333333% 100%; }
+.sport-art-6 { background-position: 66.666667% 100%; }.sport-art-7 { background-position: 100% 100%; }
+.landing-night .court-card-body { padding: 18px 20px 20px; }
+.landing-night .court-card h3 { font-size: 19px; line-height: 1.35; letter-spacing: -.03em; margin-bottom: 10px; }
+.landing-night .court-count { font-size: 13px; color: var(--color-ink-dim); gap: 5px; margin-bottom: 4px; }
+.landing-night .court-count-unit { font-size: 12px; color: var(--color-ink-dim); }
+.landing-night .court-rate,.landing-night .court-rate.is-tba { font-size: 12px; line-height: 1.5; }
+.landing-night .court-card-open { text-transform: none; letter-spacing: 0; font-family: var(--font-body); color: var(--color-ink); font-size: 12px; padding-top: 16px; gap: 12px; }
+.landing-night .court-card-open svg { width: 17px; height: 17px; color: var(--color-accent-text); }
+.landing-night .court-art-note { color: var(--color-ink-faint); font-size: 11px; margin: 18px 0 0; }
+.landing-night .about { background: var(--surface-band); padding: 76px 0 0; }
+.landing-night .about-grid { gap: 72px; align-items: center; }
+.landing-night .about-business-logo { display: block; width: 190px; height: auto; margin: 0 0 28px; }
+.landing-night .about-copy .body-text { font-size: 15px; line-height: 1.85; max-width: 680px; margin-bottom: 16px; }
+.landing-night .about-copy .eyebrow { color: var(--color-accent-text); }
+.landing-night .about-stats { gap: 32px; }
+.landing-night .stat-number { color: var(--color-accent-text); font-size: 38px; }
+.landing-night .stat-label { font-size: 13px; }
+.landing-night .about-reviews { margin-top: 76px; padding: 64px 0 72px; background: var(--surface-page); border-top: 1px solid var(--border-soft); }
+.landing-night .testimonial-grid { gap: 20px; }
+.landing-night .testimonial-card { border-radius: 12px; padding: 28px; box-shadow: none; background: var(--surface-card); }
+.landing-night .testimonial-quote { font-size: 15px; line-height: 1.8; }
+.landing-night .site-footer { background: var(--surface-band); padding: 52px 0 24px; }
+.landing-night .footer-inner { display: grid; grid-template-columns: 1fr 1.6fr; gap: 36px 48px; }
+.landing-night .footer-business-logo { width: 200px; height: auto; margin-bottom: 12px; }
+.landing-night .footer-tagline { max-width: 320px; font-size: 13px; line-height: 1.7; }
+.landing-night .footer-card { padding: 0; border: 0; background: transparent; box-shadow: none; gap: 8px; }
+.landing-night .footer-card h3 { color: var(--color-ink); font-size: 14px; margin-bottom: 8px; }
+.landing-night .footer-card p,.landing-night .footer-card a { font-size: 12px; overflow-wrap: anywhere; }
+.landing-night .footer-card a { min-height: 32px; }
+.landing-night .footer-map-block { grid-column: 1/-1; display: block; }
+.landing-night .footer-map-block .section-title { margin-bottom: 24px; font-size: 30px; }
+.landing-night .footer-map-canvas { position: relative; border: 1px solid var(--border-card); border-radius: 14px; overflow: hidden; background: var(--surface-card); }
+.landing-night .footer-map-frame { display: block; width: 100%; height: 440px; border: 0; border-radius: 0; }
+.landing-night .map-location-card { position: absolute; top: 24px; right: 24px; width: 292px; padding: 24px; color: #f5f3ee; background: #121c1df5; border: 1px solid #ffffff40; border-radius: 10px; box-shadow: 0 12px 30px #0004; }
+.landing-night .map-card-label { display: flex; align-items: center; gap: 8px; font-size: 10px; letter-spacing: .14em; color: #ffa06b; margin-bottom: 14px; }
+.landing-night .map-card-label svg { width: 18px; height: 20px; }
+.landing-night .map-location-card h3 { font-size: 17px; font-weight: 600; margin: 0 0 12px; }
+.landing-night .map-location-card address { font-style: normal; font-size: 12px; line-height: 1.8; color: #d0d6d2; }
+.landing-night .map-plus-code { color: #b7c1bb; font-size: 10px; margin: 10px 0 0; }
+.landing-night .map-directions { margin-top: 18px; display: flex; align-items: center; justify-content: space-between; min-height: 44px; padding: 12px 16px; border-radius: 6px; background: #ff853f; color: #1d130b; font-weight: 600; font-size: 12px; text-decoration: none; }
+.landing-night .map-external-link { display: inline-flex; min-height: 44px; align-items: center; color: var(--color-accent-text); font-size: 12px; text-underline-offset: 4px; margin-top: 8px; }
+.landing-night .footer-bottom { grid-column: 1/-1; border-top: 1px solid var(--border-soft); padding-top: 20px; display: flex; justify-content: space-between; gap: 12px; font-size: 11px; color: var(--color-ink-faint); }
+.landing-night .court-viewer-dialog { max-width: 820px; }
+.landing-night .court-viewer-media .media-slot { height: min(48vh,440px); aspect-ratio: auto; }
+.landing-night .court-viewer-media .media-slot img { object-fit: contain; background: var(--surface-page); }
+.landing-night .media-slot.is-placeholder::before { display: none; }
+.landing-night .venue-photo-placeholder { padding: 24px; display: flex; flex-direction: column; gap: 12px; align-items: center; text-align: center; }
+.landing-night .venue-photo-placeholder>span { font-family: var(--font-display); font-size: 24px; color: var(--color-ink-dim); }
+.landing-night .venue-photo-placeholder small { font-size: 12px; line-height: 1.7; color: var(--color-ink-faint); }
+.landing-night .court-viewer-close { width: 44px; height: 44px; }
+@media(min-width:769px) and (max-width:1040px) {
+    .landing-night .site-nav-links ul { gap: 8px; }
+    .landing-night .site-nav-links a { font-size: 12px; padding-inline: 7px; }
+    .landing-night .site-nav-pill { gap: 14px; }
+    .landing-night .site-nav .logo-text { font-size: 20px; }
+    .landing-night .book-now { padding-inline: 12px; font-size: 12px; }
+    .landing-night .court-grid { grid-template-columns: repeat(2,minmax(0,1fr)); }
+    .landing-night .footer-inner { grid-template-columns: 1fr; }
+}
+@media(max-width:768px) {
+    .landing-night .site-nav { padding: 14px 16px; }
+    .landing-night .site-nav-pill { padding: 6px 10px 6px 14px; gap: 8px; }
+    .landing-night .site-nav .logo-text { font-size: 19px; }
+    .landing-night .site-nav .logo-image { width: 28px; height: 34px; }
+    .landing-night .menu-toggle { width: 44px; height: 44px; border: 0; background: transparent; padding: 0; }
+    .landing-night .menu-toggle-bar { width: 20px; left: 12px; }
+    .landing-night .menu-toggle-bar:nth-child(1) { top: 15px; }
+    .landing-night .menu-toggle-bar:nth-child(2) { top: 21px; }
+    .landing-night .menu-toggle-bar:nth-child(3) { top: 27px; }
+    .landing-night .menu-toggle-checkbox:checked ~ .site-nav-pill .menu-toggle-bar:nth-child(1),
+    .landing-night .menu-toggle-checkbox:checked ~ .site-nav-pill .menu-toggle-bar:nth-child(3) { top: 21px; }
+    .landing-night .nav-menu { top: 84px; background: var(--surface-card); max-height: calc(100dvh - 100px); overflow-y: auto; }
+    .landing-night .hero-equipment { display: none; }
+    .landing-night .hero-content { min-height: 520px; padding: 240px 22px 24px; gap: 12px; }
+    .landing-night .hero-copy-wrap { width: 100%; max-width: 100%; }
+    .landing-night .hero-title { font-size: clamp(24px,6vw,34px); letter-spacing: -.03em; line-height: 1.22; }
+    .landing-night .hero-tag { font-size: 9px; margin-bottom: 8px; }
+    .landing-night .hero-meta { font-size: 12px; margin-bottom: 18px; line-height: 1.6; }
+    .landing-night .hero-photo-placeholder { left: 50%; top: 156px; width: 85%; font-size: 12px; }
+    .landing-night .hero-photo-placeholder small { font-size: 10px; }
+    .landing-night .hero-photo-placeholder::before { margin-bottom: 8px; }
+    .landing-night .cta-buttons { gap: 10px; }
+    .landing-night .cta-button { font-size: 13px; padding: 12px 18px; min-height: 46px; }
+    .landing-night .hero-progress { width: 100%; justify-content: center; }
+    .landing-night .hero-dot { width: 32px; }
+    .landing-night .hero-pause { min-width: 52px; }
+    .landing-night .courts { padding: 32px 0 44px; }
+    .landing-night .section-title { font-size: 26px; margin-bottom: 10px; }
+    .landing-night .section-intro { font-size: 12px; margin-bottom: 22px; }
+    .landing-night .court-grid { grid-template-columns: repeat(2,minmax(0,1fr)); gap: 12px; }
+    .landing-night .court-card { border-radius: 9px; }
+    .landing-night .court-art { aspect-ratio: 1.16; }
+    .landing-night .court-card-body { padding: 12px; }
+    .landing-night .court-card h3 { font-size: 15px; margin-bottom: 8px; }
+    .landing-night .court-count,.landing-night .court-count-unit,.landing-night .court-rate,.landing-night .court-rate.is-tba { font-size: 11px; }
+    .landing-night .court-card-open { font-size: 10px; line-height: 1.4; gap: 6px; padding-top: 12px; }
+    .landing-night .court-card-open svg { width: 14px; flex-shrink: 0; }
+    .landing-night .court-art-note { font-size: 10px; line-height: 1.7; }
+    .landing-night .about { padding-top: 44px; }
+    .landing-night .about-grid { gap: 24px; }
+    .landing-night .about-business-logo { width: 160px; margin-bottom: 24px; }
+    .landing-night .about-copy .body-text { font-size: 13px; }
+    .landing-night .about-stats { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 16px; padding-top: 24px; }
+    .landing-night .stat-number { font-size: 28px; }
+    .landing-night .stat-label { font-size: 10px; line-height: 1.6; }
+    .landing-night .about-reviews { margin-top: 44px; padding: 40px 0; }
+    .landing-night .testimonial-grid { grid-template-columns: 1fr; gap: 14px; }
+    .landing-night .testimonial-card { padding: 24px; }
+    .landing-night .testimonial-quote { font-size: 13px; }
+    .landing-night .site-footer { padding: 36px 0 24px; }
+    .landing-night .footer-inner { grid-template-columns: 1fr; gap: 28px; }
+    .landing-night .footer-business-logo { width: 175px; }
+    .landing-night .footer-grid { grid-template-columns: repeat(2,minmax(0,1fr)); gap: 24px 16px; }
+    .landing-night .footer-card a { min-height: 44px; }
+    .landing-night .footer-map-block .section-title { font-size: 26px; margin-bottom: 20px; }
+    .landing-night .footer-map-frame { height: 620px; }
+    .landing-night .map-location-card { top: auto; bottom: 56px; left: 16px; right: 16px; width: auto; padding: 20px; }
+    .landing-night .map-location-card h3 { font-size: 16px; }
+    .landing-night .map-location-card address { font-size: 11px; }
+    .landing-night .footer-bottom { flex-direction: column; font-size: 10px; }
+    .landing-night .court-viewer { padding: 0; }
+    .landing-night .court-viewer-dialog { height: 100dvh; max-height: 100dvh; max-width: 100%; border: 0; border-radius: 0; padding-bottom: env(safe-area-inset-bottom); }
+    .landing-night .court-viewer-media .media-slot { border-radius: 0; height: 42dvh; }
+    .landing-night .venue-photo-placeholder>span { font-size: 20px; }
+}
+@media(prefers-reduced-motion:reduce) {
+    .landing-night .court-card,.landing-night .court-art-image { transition: none; }
+    .landing-night .court-card:hover,.landing-night .court-card:hover .court-art-image { transform: none; }
+}
