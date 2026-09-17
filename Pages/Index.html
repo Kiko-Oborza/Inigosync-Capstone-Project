@@ -701,12 +701,20 @@
                     </div>
                 </label>
 
+                <div class="auth-row">
+                    <label class="auth-checkbox">
+                        <input type="checkbox" name="remember">
+                        <span>Remember me</span>
+                    </label>
+                    <button type="button" class="auth-link" data-auth-tab="forgot">Forgot password?</button>
+                </div>
+
                 <button type="submit" class="auth-submit">Log In as Admin</button>
 
                 <p class="auth-switch"><button type="button" class="auth-link" data-auth-tab="login">← Back to customer login</button></p>
             </form>
 
-            <!-- FORGOT PASSWORD PANEL — reached via "Forgot password?" on the Log In panel.
+            <!-- FORGOT PASSWORD PANEL — shared by customer and admin login.
                  Sending hands off to the shared Verify panel above with
                  otpPurpose === 'recovery' (see includes/auth.js), so the copy
                  says CODE, not link: docs/email_templates/reset_password.html
@@ -725,7 +733,7 @@
 
                 <button type="submit" class="auth-submit">Send Reset Code</button>
 
-                <p class="auth-switch"><button type="button" class="auth-link" data-auth-tab="login">← Back to log in</button></p>
+                <p class="auth-switch"><button type="button" class="auth-link" data-auth-tab="login" data-recovery-back>← Back to log in</button></p>
             </form>
 
             <!-- RESET PASSWORD PANEL — reached two ways, never by a tab:

@@ -30,7 +30,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     // booking summary or filling in a walk-in form, but short enough to matter
     // on a shared/front-desk device left unattended. Named constants (not
     // magic numbers) so these are easy to retune later.
-    const IDLE_TIMEOUT_MS = 30 * 60 * 1000;        // inactivity duration that triggers sign-out
+    const IDLE_TIMEOUT_MS = 5 * 60 * 1000;        // inactivity duration that triggers sign-out
     const IDLE_WARNING_MS = 2 * 60 * 1000;         // show the "still there?" warning this long before sign-out
     const IDLE_CHECK_INTERVAL_MS = 15 * 1000;      // coarse clock re-check cadence
     const IDLE_ACTIVITY_THROTTLE_MS = 5 * 1000;    // min gap between activity timestamp writes (cheap on mousemove/scroll)

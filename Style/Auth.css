@@ -108,20 +108,6 @@ body.auth-lock {
     padding-bottom: 10px;
 }
 
-/* The accent rule. Not a full-width hairline: a short centred bar reads as
-   part of the lockup rather than as a divider stranded above the tabs. */
-.auth-brand::after {
-    content: '';
-    position: absolute;
-    left: 50%;
-    bottom: 0;
-    transform: translateX(-50%);
-    width: 44px;
-    height: 3px;
-    border-radius: 999px;
-    background: var(--color-primary);
-}
-
 /* inline-flex inside a text-align:center parent = a centred block that is only
    as wide as its content, with the text inside it left-aligned. */
 .auth-brand-lockup {

@@ -62,6 +62,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // always set explicitly right before the Verify panel is shown, so a
     // leftover value can never be verified against by accident.
     let pendingRecoveryEmail = '';
+    let recoveryLoginPanel = 'login';
     // Which verifyOtp() call — and which follow-up action — the Verify
     // panel's submit handler should perform: 'signup' (default, existing
     // post-sign-up behavior), 'login' (new-device gate) or 'recovery'
@@ -299,8 +300,9 @@ document.addEventListener('DOMContentLoaded', () => {
         if (heading) heading.textContent = copy.heading;
         const backLink = overlay.querySelector('[data-otp-back-link]');
         if (backLink) {
-            backLink.dataset.authTab = copy.backTab;
-            backLink.textContent = copy.backLabel;
+            const isAdminLogin = purpose === 'login' && pendingLoginOtp?.allowedRoles.includes('admin');
+            backLink.dataset.authTab = isAdminLogin ? 'admin' : copy.backTab;
+            backLink.textContent = isAdminLogin ? '← Back to admin login' : copy.backLabel;
         }
     }
 
@@ -378,6 +380,7 @@ document.addEventListener('DOMContentLoaded', () => {
             ['authIsOpen', () => authIsOpen],
             ['lastFocusedEl', () => lastFocusedEl],
             ['pendingLoginOtp', () => pendingLoginOtp],
+            ['recoveryLoginPanel', () => recoveryLoginPanel],
             ['otpPurpose', () => otpPurpose],
             ['signupStep', () => signupStep],
             // resetSignupFlow() -> clearSignupStepErrors() reads this one
@@ -581,7 +584,8 @@ document.addEventListener('DOMContentLoaded', () => {
     // Google's OAuth flow is a full-page redirect away and back — there's no
     // in-page callback to hook into. So on every load of this page, check
     // whether a session already exists (true right after that redirect
-    // returns) and route straight into the dashboard. Errors are swallowed
+    // returns) and route straight into the dashboard. Existing remembered
+    // staff/admin sessions also resume on their own dashboard. Errors are swallowed
     // rather than shown, since landing here isn't something the visitor
     // actively did — e.g. a stale non-customer session shouldn't surface a
     // toast on an otherwise ordinary page load.
@@ -602,14 +606,32 @@ document.addEventListener('DOMContentLoaded', () => {
             // here would skip straight past "set a new password" and, for
             // an invite, also complete the login as the wrong role.
             if (!session || isRecoveryRedirect || recoveryHandled || isInviteRedirect || inviteHandled) return;
+            // A password login awaiting its first-device code must not be
+            // completed just because the visitor reloads the landing page.
+            if (!isOauthReturn && !isDeviceTrusted(session.user.id)) return;
             if (isOauthReturn && window.InigoLoading) window.InigoLoading.show('Signing you in…');
-            completeLogin(['customer']).catch(() => {
+            completeLogin(isOauthReturn ? ['customer'] : ['customer', 'staff', 'admin']).catch(() => {
                 if (window.InigoLoading) window.InigoLoading.hide();
             });
         });
     }
 
     function setActivePanel(name) {
+        if (name === 'forgot') {
+            const previousPanel = overlay.querySelector('[data-auth-panel].is-active');
+            const previousName = previousPanel?.dataset.authPanel;
+            if (previousName === 'admin' || previousName === 'login') {
+                recoveryLoginPanel = previousName;
+                const email = previousPanel.querySelector('input[type="email"]');
+                const recoveryEmail = overlay.querySelector('[data-auth-panel="forgot"] input[name="email"]');
+                if (recoveryEmail) recoveryEmail.value = email?.value.trim() || '';
+            }
+            const backLink = overlay.querySelector('[data-recovery-back]');
+            if (backLink) {
+                backLink.dataset.authTab = recoveryLoginPanel;
+                backLink.textContent = recoveryLoginPanel === 'admin' ? '← Back to admin login' : '← Back to log in';
+            }
+        }
         // Switching to any panel OTHER than 'verify' while a login-OTP gate
         // is pending means the visitor backed out via the "← Back to log
         // in" link (or any other tab) instead of closing the modal —
@@ -1036,7 +1058,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Tab / inline switch links (Log In ↔ Sign Up ↔ Admin ↔ back to Log In)
     tabs.forEach((tab) => {
-        tab.addEventListener('click', () => setActivePanel(tab.dataset.authTab));
+        tab.addEventListener('click', () => {
+            setActivePanel(tab.dataset.authTab);
+            if (tab.dataset.authTab === 'forgot' || tab.hasAttribute('data-recovery-back')) {
+                overlay.querySelector('[data-auth-panel].is-active input')?.focus();
+            }
+        });
     });
 
     // Password visibility toggles
@@ -1497,6 +1524,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
             try {
                 if (mode === 'login') {
+                    window.InigoAuthStorage.setRememberSession(data.remember === 'on');
                     if (window.InigoLoading) window.InigoLoading.show('Signing you in…');
                     const { data: signInData, error } = await window.sb.auth.signInWithPassword({
                         email: data.email,
@@ -1677,6 +1705,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
 
                 if (mode === 'admin') {
+                    window.InigoAuthStorage.setRememberSession(data.remember === 'on');
                     if (window.InigoLoading) window.InigoLoading.show('Signing you in…');
                     const { data: signInData, error } = await window.sb.auth.signInWithPassword({
                         email: data['admin-email'],
@@ -1774,7 +1803,8 @@ document.addEventListener('DOMContentLoaded', () => {
                     // form.reset() fires no input event, so the checklist
                     // would otherwise stay ticked over an emptied field.
                     syncPasswordRules();
-                    setActivePanel('login');
+                    setActivePanel(recoveryLoginPanel);
+                    overlay.querySelector('[data-auth-panel].is-active input')?.focus();
                     setAuthNotice('Password updated — please log in with your new password.', false);
                     return;
                 }
