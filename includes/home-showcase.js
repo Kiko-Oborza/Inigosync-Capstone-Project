@@ -1,257 +1,103 @@
-// IñigoSync — Hero Showcase Carousel
-// Auto-rotating carousel with 5-second interval, crossfade transitions,
-// keyboard/swipe navigation, and pause-on-hover/focus. Drives the full-bleed
-// hero background photo (or image slot, if the event has no photo yet) plus
-// its bottom-left caption on the landing page.
-//
-// Slides are now built from window.InigoContent.getEvents() — the SAME
-// event data (and the same Supabase-first/static-fallback path) that feeds
-// the Featured Events grid in includes/landingPage.js — instead of the
-// hardcoded <img>/<div> markup Index.html used to ship. This requires
-// includes/landingPage.js to run first so window.InigoContent exists; see
-// the <script> order in Pages/Index.html.
-//
-// Slides are grouped by index via [data-home-slide="N"] — more than one
-// element can share the same index (a media layer AND a caption block) and
-// they'll crossfade together, so markup isn't limited to one element per
-// slide.
-
+// Live event carousel. Published Supabase rows remain the source of truth.
 document.addEventListener('DOMContentLoaded', () => {
-    const showcaseEl = document.querySelector('[data-home-showcase]');
-    if (!showcaseEl) return;
-
-    const mediaContainer = showcaseEl.querySelector('[data-home-media]');
-    const copyContainer = showcaseEl.querySelector('[data-home-copy-stack]');
-    const dotsContainer = showcaseEl.querySelector('[data-home-dots]');
-    if (!mediaContainer || !copyContainer || !dotsContainer) return;
-
-    const content = window.InigoContent;
-    if (!content) {
-        console.error('[IñigoSync] home-showcase.js needs window.InigoContent — make sure includes/landingPage.js loads before includes/home-showcase.js in Pages/Index.html.');
-        return;
+    const hero = document.querySelector('[data-home-showcase]');
+    if (!hero || !window.InigoContent) return;
+    const media = hero.querySelector('[data-home-media]');
+    const copy = hero.querySelector('[data-home-copy-stack]');
+    const dots = hero.querySelector('[data-home-dots]');
+    const pause = hero.querySelector('[data-home-pause]');
+    const reduced = matchMedia('(prefers-reduced-motion: reduce)');
+    const hover = matchMedia('(hover: hover)');
+    const { escapeHtml, formatEventMeta } = window.InigoContent;
+    let rows = [], index = 0, timer = null, paused = false, refreshId = 0;
+    let touch = null;
+    function stop() { clearInterval(timer); timer = null; }
+    function sync() {
+        const stopped = paused || reduced.matches;
+        pause.hidden = rows.length < 2;
+        pause.disabled = reduced.matches;
+        pause.textContent = stopped ? 'Play' : 'Pause';
+        pause.setAttribute('aria-label', stopped ? 'Play slideshow' : 'Pause slideshow');
+        pause.setAttribute('aria-pressed', String(stopped));
+        copy.setAttribute('aria-live', stopped || rows.length < 2 ? 'polite' : 'off');
     }
-
-    // More than this and the 5s-per-slide carousel takes too long to cycle
-    // back around, and the dot row starts to crowd on narrow screens.
-    const MAX_HERO_SLIDES = 5;
-
-    content.getEvents()
-        .then((events) => {
-            const slides = events.slice(0, MAX_HERO_SLIDES);
-            if (slides.length === 0) return;
-            renderSlides(slides);
-            initCarousel();
-        })
-        .catch((err) => {
-            console.error('[IñigoSync] Could not load events for the hero carousel.', err);
+    function start() {
+        stop();
+        if (paused || reduced.matches || document.hidden || rows.length < 2 || hero.contains(document.activeElement) || (hover.matches && hero.matches(':hover'))) return;
+        timer = setInterval(() => show(index + 1), 5000);
+    }
+    function show(next) {
+        if (!rows.length) return;
+        index = (next + rows.length) % rows.length;
+        hero.querySelectorAll('[data-home-slide]').forEach(el => {
+            const active = Number(el.dataset.homeSlide) === index;
+            el.classList.toggle('is-active', active);
+            el.setAttribute('aria-hidden', String(!active));
         });
-
-    function renderSlides(events) {
-        const { escapeHtml, formatEventMeta } = content;
-
-        mediaContainer.innerHTML = events.map((ev, i) => {
-            const activeClass = i === 0 ? ' is-active' : '';
-            const imageUrl = window.InigoVisuals ? window.InigoVisuals.venuePhoto(ev.imageUrl) : ev.imageUrl;
-            if (imageUrl) {
-                const safeAlt = escapeHtml(ev.title);
-                return `<img src="${escapeHtml(imageUrl)}" alt="${safeAlt}" class="hero-media-img${activeClass}" data-home-slide="${i}" loading="${i === 0 ? 'eager' : 'lazy'}">`;
-            }
-            return `<div class="hero-media-slot${activeClass}" data-home-slide="${i}" role="img" aria-label="Venue photo placeholder"><span class="hero-photo-placeholder">Original venue photo<small>Photo placeholder</small></span></div>`;
+        dots.querySelectorAll('button').forEach((el, i) => {
+            el.classList.toggle('is-active', i === index);
+            el.setAttribute('aria-current', String(i === index));
+        });
+        start();
+    }
+    function placeholder(i, note = 'Photo placeholder') {
+        return '<div class="hero-media-slot" data-home-slide="' + i + '"><span class="hero-photo-placeholder">Original venue photo<small>' + note + '</small></span></div>';
+    }
+    function render() {
+        media.innerHTML = rows.map((row, i) => {
+            const src = window.InigoVisuals.venuePhoto(row.imageUrl);
+            return src ? '<img class="hero-media-img" src="' + escapeHtml(src) + '" alt="' + escapeHtml(row.title) + '" data-home-slide="' + i + '" loading="' + (i ? 'lazy' : 'eager') + '">' : placeholder(i);
         }).join('');
-        mediaContainer.querySelectorAll('img').forEach(img => img.addEventListener('error', () => {
-            const slot = document.createElement('div');
-            slot.className = 'hero-media-slot' + (img.classList.contains('is-active') ? ' is-active' : '');
-            slot.dataset.homeSlide = img.dataset.homeSlide;
-            slot.setAttribute('role', 'img');
-            slot.setAttribute('aria-label', 'Venue photo unavailable');
-            slot.innerHTML = '<span class="hero-photo-placeholder">Original venue photo<small>Photo temporarily unavailable</small></span>';
+        media.querySelectorAll('img').forEach(img => img.addEventListener('error', () => {
+            const template = document.createElement('template');
+            template.innerHTML = placeholder(img.dataset.homeSlide, 'Photo temporarily unavailable');
+            const slot = template.content.firstElementChild;
+            slot.classList.toggle('is-active', img.classList.contains('is-active'));
+            slot.setAttribute('aria-hidden', img.getAttribute('aria-hidden'));
             img.replaceWith(slot);
-        }, { once: true }));
-
-        copyContainer.innerHTML = events.map((ev, i) => {
-            const activeClass = i === 0 ? ' is-active' : '';
-            const metaText = formatEventMeta(ev);
-            return `
-                <div class="hero-copy${activeClass}" data-home-slide="${i}">
-                    <span class="hero-tag">${escapeHtml(ev.tag || 'Featured')}</span>
-                    <h2 class="hero-title">${escapeHtml(ev.title)}</h2>
-                    <p class="hero-meta">${escapeHtml(metaText)}</p>
-                </div>
-            `;
-        }).join('');
-
-        dotsContainer.innerHTML = events.map((_, i) => {
-            const activeClass = i === 0 ? ' is-active' : '';
-            return `<button class="hero-dot${activeClass}" data-home-slide-dot="${i}" aria-label="Slide ${i + 1}" aria-current="${i === 0 ? 'true' : 'false'}"></button>`;
-        }).join('');
+        }, {once:true}));
+        copy.innerHTML = rows.map((row, i) => '<div class="hero-copy" data-home-slide="' + i + '"><span class="hero-tag">' + escapeHtml(row.tag || 'At Iñigos') + '</span><h2 class="hero-title">' + escapeHtml(row.title) + '</h2><p class="hero-meta">' + escapeHtml(formatEventMeta(row)) + '</p></div>').join('');
+        dots.innerHTML = rows.map((row, i) => '<button type="button" class="hero-dot" data-home-slide-dot="' + i + '" aria-label="Show ' + escapeHtml(row.title) + '"></button>').join('');
+        show(Math.min(index, rows.length - 1));
+        sync();
     }
-
-    function initCarousel() {
-        const slides = showcaseEl.querySelectorAll('[data-home-slide]');
-        const dots = showcaseEl.querySelectorAll('[data-home-slide-dot]');
-        const prevBtn = showcaseEl.querySelector('[data-home-slide-prev]');
-        const nextBtn = showcaseEl.querySelector('[data-home-slide-next]');
-
-        if (slides.length === 0) return;
-
-        const slideCount = Array.from(slides).reduce(
-            (max, s) => Math.max(max, Number(s.dataset.homeSlide) + 1),
-            0
-        );
-
-        let currentIndex = 0;
-        let autoplayTimer = null;
-        let userPaused = false;
-        const pauseBtn = showcaseEl.querySelector('[data-home-pause]');
-
-        const motionPreference = window.matchMedia('(prefers-reduced-motion: reduce)');
-        copyContainer.setAttribute('aria-live', 'off');
-        function syncPauseButton() {
-            if (!pauseBtn) return;
-            const paused = userPaused || motionPreference.matches;
-            pauseBtn.textContent = paused ? 'Play' : 'Pause';
-            pauseBtn.setAttribute('aria-label', paused ? 'Play slideshow' : 'Pause slideshow');
-            pauseBtn.setAttribute('aria-pressed', String(paused));
-            pauseBtn.disabled = motionPreference.matches;
-            copyContainer.setAttribute('aria-live', paused ? 'polite' : 'off');
-        }
-        pauseBtn?.addEventListener('click', () => {
-            userPaused = !userPaused;
-            syncPauseButton();
-            if (userPaused) clearAutoplay(); else startAutoplay();
-        });
-        motionPreference.addEventListener('change', () => { syncPauseButton(); clearAutoplay(); startAutoplay(); });
-        document.addEventListener('visibilitychange', () => { clearAutoplay(); if (!document.hidden) startAutoplay(); });
-        syncPauseButton();
-
-        function updateSlide(newIndex, skipTimer = false) {
-            // Wrap around
-            if (newIndex >= slideCount) newIndex = 0;
-            if (newIndex < 0) newIndex = slideCount - 1;
-
-            showcaseEl.querySelectorAll('[data-home-slide]').forEach((s) => {
-                const isActive = Number(s.dataset.homeSlide) === newIndex;
-                s.classList.toggle('is-active', isActive);
-            });
-            dots.forEach((d) => {
-                const isActive = Number(d.dataset.homeSlideDot) === newIndex;
-                d.classList.toggle('is-active', isActive);
-                d.setAttribute('aria-current', isActive ? 'true' : 'false');
-            });
-
-            currentIndex = newIndex;
-
-            // Restart autoplay timer
-            if (!skipTimer) {
-                clearAutoplay();
-                startAutoplay();
-            }
-        }
-
-        function startAutoplay() {
-            clearAutoplay();
-            if (motionPreference.matches || userPaused || document.hidden || slideCount < 2
-                || showcaseEl.matches(':hover') || showcaseEl.contains(document.activeElement)) return;
-
-            autoplayTimer = setInterval(() => {
-                updateSlide(currentIndex + 1, false);
-            }, 5000);
-        }
-
-        function clearAutoplay() {
-            if (autoplayTimer) {
-                clearInterval(autoplayTimer);
-                autoplayTimer = null;
-            }
-        }
-
-        // Navigation handlers
-        if (prevBtn) {
-            prevBtn.addEventListener('click', () => {
-                updateSlide(currentIndex - 1);
-            });
-        }
-
-        if (nextBtn) {
-            nextBtn.addEventListener('click', () => {
-                updateSlide(currentIndex + 1);
-            });
-        }
-
-        // Dot navigation
-        dots.forEach((dot) => {
-            dot.addEventListener('click', () => {
-                updateSlide(Number(dot.dataset.homeSlideDot));
-            });
-        });
-
-        // Keyboard navigation
-        document.addEventListener('keydown', (e) => {
-            if (!showcaseEl.contains(document.activeElement)) return;
-
-            if (e.key === 'ArrowLeft') {
-                e.preventDefault();
-                updateSlide(currentIndex - 1);
-            } else if (e.key === 'ArrowRight') {
-                e.preventDefault();
-                updateSlide(currentIndex + 1);
-            }
-        });
-
-        // Pause on hover
-        showcaseEl.addEventListener('mouseenter', () => {
-            clearAutoplay();
-        });
-
-        showcaseEl.addEventListener('mouseleave', () => {
-            startAutoplay();
-        });
-
-        // Pause on focus
-        showcaseEl.addEventListener('focusin', () => {
-            clearAutoplay();
-        });
-
-        showcaseEl.addEventListener('focusout', () => {
-            // Check if focus moved outside the showcase
-            setTimeout(() => {
-                if (!showcaseEl.contains(document.activeElement)) {
-                    startAutoplay();
-                }
-            }, 0);
-        });
-
-        // Touch swipe support
-        let touchStartX = 0;
-        let touchEndX = 0;
-
-        showcaseEl.addEventListener('touchstart', (e) => {
-            touchStartX = e.changedTouches[0].screenX;
-        });
-
-        showcaseEl.addEventListener('touchend', (e) => {
-            touchEndX = e.changedTouches[0].screenX;
-            handleSwipe();
-        });
-
-        function handleSwipe() {
-            const diffX = touchStartX - touchEndX;
-            const threshold = 50;
-
-            if (Math.abs(diffX) > threshold) {
-                if (diffX > 0) {
-                    // Swiped left, go to next slide
-                    updateSlide(currentIndex + 1);
-                } else {
-                    // Swiped right, go to previous slide
-                    updateSlide(currentIndex - 1);
-                }
-            }
-        }
-
-        // Start autoplay
-        startAutoplay();
-
-        console.log('[IñigoSync] hero showcase carousel loaded — driven by window.InigoContent.getEvents() (Supabase `event` table, static fallback on failure/empty).');
+    function message(text, retry = false) {
+        rows = []; stop();
+        media.innerHTML = '<div class="hero-media-slot is-active"></div>';
+        copy.innerHTML = '<div class="hero-copy is-active"><span class="hero-tag">Iñigos Sports Center</span><h2 class="hero-title">Make time to play.</h2><p class="hero-meta">' + text + '</p>' + (retry ? '<button type="button" class="hero-pause" data-events-retry>Retry events</button>' : '') + '</div>';
+        dots.replaceChildren(); sync();
     }
+    async function refresh(force = false) {
+        const request = ++refreshId;
+        try {
+            const updated = await window.InigoContent.getEvents({ force });
+            if (request !== refreshId) return;
+            if (!updated.length) { message('There are no published events at the moment. Explore the courts below.'); return; }
+            const previous = rows[index]?.title;
+            rows = updated.slice(0, 5);
+            index = Math.max(0, rows.findIndex(row => row.title === previous));
+            render();
+        } catch { if (request === refreshId) message('Events could not be loaded. Please try again.', true); }
+    }
+    dots.addEventListener('click', event => { const button = event.target.closest('[data-home-slide-dot]'); if (button) show(Number(button.dataset.homeSlideDot)); });
+    copy.addEventListener('click', event => { if (event.target.closest('[data-events-retry]')) refresh(true); });
+    pause.addEventListener('click', () => { paused = !paused; sync(); start(); });
+    hero.addEventListener('mouseenter', stop);
+    hero.addEventListener('mouseleave', start);
+    hero.addEventListener('focusin', stop);
+    hero.addEventListener('focusout', () => setTimeout(start, 0));
+    hero.addEventListener('keydown', event => {
+        if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') { event.preventDefault(); show(index + (event.key === 'ArrowRight' ? 1 : -1)); }
+    });
+    hero.addEventListener('touchstart', event => { const t=event.changedTouches[0]; touch={x:t.clientX,y:t.clientY}; }, {passive:true});
+    hero.addEventListener('touchend', event => {
+        if (!touch) return;
+        const t=event.changedTouches[0], dx=touch.x-t.clientX, dy=touch.y-t.clientY;
+        if (Math.abs(dx)>50 && Math.abs(dx)>Math.abs(dy)) show(index + (dx>0 ? 1 : -1));
+        touch=null;
+    }, {passive:true});
+    reduced.addEventListener('change', () => { sync(); start(); });
+    document.addEventListener('visibilitychange', () => { stop(); if (!document.hidden) refresh(true); });
+    message('Loading the latest from Iñigos…');
+    refresh();
 });

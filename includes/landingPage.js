@@ -1,37 +1,7 @@
-// IñigoSync — Landing page interactions
-//
-// Responsibilities:
-//   1. A small shared data module (window.InigoContent) that fetches
-//      courts / events / testimonials from Supabase and falls back to a
-//      static array if the fetch fails, errors, times out, or comes back
-//      empty — so the landing page never renders a blank section. This
-//      module is defined at the top level (not inside DOMContentLoaded) so
-//      includes/home-showcase.js — which loads *after* this file — can use
-//      it too, keeping courts/events to ONE source of truth instead of the
-//      three drifting hardcoded copies this page used to have.
-//   2. Rendering the Courts & Pricing grid and the Feedback & Reviews grid
-//      from that shared data, with every piece of untrusted text escaped
-//      before it touches innerHTML. Pricing used to be a second section with
-//      its own render function (renderPricingRow, removed in the Courts+
-//      Pricing merge); rates now show on the grid card (renderCourtCard) and
-//      in the court viewer's price block (open(), below) instead — both
-//      still reading the SAME memoized getCourts() promise, one fetch, one
-//      list, never a second hardcoded price sheet (D2).
-//   3. The court viewer: one reusable modal, opened from the court cards,
-//      that shows one unit's photo (or its honest placeholder) large plus a
-//      labelled combobox listing every individual court / lane / table for
-//      that sport — see resolveCourtUnits() for where those units come from,
-//      because `public.court` is one row per SPORT, not per unit.
-//   4. Scroll-reveal for `.reveal` sections, nav scroll-spy, the mobile
-//      menu, and the theme-toggle button wiring.
-//
-// The standalone Featured Events section was removed in the landing-page
-// redesign; getEvents() below stays because includes/home-showcase.js still
-// drives the hero carousel and its captions from it.
-//
-// See database/schema/002_content_tables.sql for the `court` / `event` /
-// `testimonial` table shapes this reads, and includes/courts-data.js for
-// the COURTS_INVENTORY fallback array.
+// IñigoSync landing page: published Supabase content, shared in-flight requests,
+// decorative sport cards and an original-photo viewer with type/unit selection.
+// Empty/error states never substitute demonstration records. Content refreshes
+// when the tab becomes visible and court details refresh before the viewer opens.
 
 // ============================================================================
 // Escaping — the ONE place untrusted text is allowed to become HTML.
@@ -49,11 +19,7 @@
 const escapeHtml = window.escapeHtml;
 
 // ============================================================================
-// Image slots — no photos exist in the DB yet. `image_url` is nullable on
-// both `court` and `event`; null renders this placeholder (a pattern + a
-// sport monogram) instead of a broken <img>. Setting image_url later swaps
-// in a real <img> with no markup changes needed anywhere else.
-// ============================================================================
+// Original-photo slots. Decorative sport artwork is rendered separately.
 const SPORT_MONOGRAM = {
     'basketball': 'BB',
     'badminton': 'BD',
@@ -87,11 +53,7 @@ function renderMediaSlot({ imageUrl, alt, monogram }) {
 // ============================================================================
 // Date helpers
 // ============================================================================
-function addDays(date, days) {
-    const d = new Date(date);
-    d.setDate(d.getDate() + days);
-    return d;
-}
+
 
 // `event.event_date` comes back from Supabase as a plain "YYYY-MM-DD"
 // string. Appending a local T00:00:00 (rather than parsing the bare date
@@ -125,15 +87,7 @@ function pickRandom(list, count) {
 }
 
 // ============================================================================
-// Courts — normalize DB rows and the COURTS_INVENTORY fallback into one
-// shape, then merge rows that share a sport (Bowling's Duckpin + Ten-Pin
-// rows) into a single card. This replaces the old id==='bowling-duckpin'
-// special-casing with a generic rule, so a third bowling variant (or any
-// other multi-row sport) merges correctly without another code change —
-// bug 2's "three drifting sources" becomes one normalize+merge path used
-// for both the DB rows and the offline fallback.
-// ============================================================================
-
+// Courts: normalize published rows and preserve all variants for the viewer.
 // `court.unit_images` — the OPTIONAL per-unit photo list added by
 // database/schema/006_court_unit_images.sql, shaped
 // [{"label": "Court 1", "image_url": "https://…"}, …].
@@ -208,30 +162,6 @@ function normalizeCourtFromDb(row) {
     };
 }
 
-function normalizeCourtFromFallback(item) {
-    return {
-        // Fallback ids double as sport slugs; duckpin/ten-pin just carry a
-        // suffix so they land in the same group as each other.
-        sportSlug: String(item.id).replace(/-duckpin$|-tenpin$/, ''),
-        name: item.name || '',
-        quantity: Number(item.quantity) || 0,
-        unit: item.unit || 'courts',
-        note: item.description || '',
-        rate: (item.rate === '—' || item.rate === null || item.rate === undefined) ? null : Number(item.rate),
-        rateUnit: item.rateUnit || '/hr',
-        imageUrl: item.image_url || null,
-        // COURTS_INVENTORY never carries a rating — the offline fallback
-        // never invents one either.
-        rating: null,
-        // Nor any photos: includes/courts-data.js keeps image_url null on
-        // every row and carries no unit_images, so this is always []. Read
-        // through the same normalizer anyway so both code paths produce the
-        // identical court shape — the viewer must not care where a row
-        // came from.
-        unitImages: normalizeUnitImages(item.unit_images, item.id),
-    };
-}
-
 function variantLabel(name) {
     const parts = String(name).split('—');
     return parts.length > 1 ? parts[1].trim() : name;
@@ -265,7 +195,8 @@ function mergeCourtsBySport(items) {
             quantity: totalQuantity,
             unit: group[0].unit,
             note,
-            rate: group.every((c) => c.rate === null) ? null : group[0].rate,
+            rate: group.every(c => c.rate === group[0].rate && c.rateUnit === group[0].rateUnit) ? group[0].rate : null,
+            hasVariantRates: !group.every(c => c.rate === group[0].rate && c.rateUnit === group[0].rateUnit),
             rateUnit: group[0].rateUnit,
             imageUrl: withImage ? withImage.imageUrl : null,
             rating: group.every((c) => c.rating === null || c.rating === undefined) ? null : group[0].rating,
@@ -285,34 +216,8 @@ function mergeCourtsBySport(items) {
 }
 
 // ============================================================================
-// Per-unit resolution — what the court viewer's combobox lists.
-//
-// `public.court` is one row per sport, so "which of the 9 badminton courts am
-// I looking at?" is not a question the schema can answer on its own. The
-// viewer builds its option list from the FIRST case below that applies
-// (implementation_plan.md → Increment 2):
-//
-//   1. `unit_images` is a non-empty array → one option per entry, each with
-//      its own label and its own image. Fully per-court. Needs the owner to
-//      have applied database/schema/006_court_unit_images.sql AND filled the
-//      column in.
-//   2. the sport merged more than one DB row (Bowling: Duckpin + Ten-Pin) →
-//      one option per row, using that row's own name and its own image_url.
-//      Real today, no migration needed.
-//   3. otherwise → derive `quantity` options from the unit noun
-//      (Court 1..N / Lane N / Table N), all sharing the sport's single
-//      image_url — which is NULL for every row right now, so today every
-//      option shows the same honest placeholder.
-//
-// Cases 2 and 3 are why the combobox is useful *before* the migration lands,
-// and each sport upgrades to real per-court photos the moment its
-// `unit_images` is populated — with no code change.
-// ============================================================================
-
-// The singular noun for one bookable unit. `court.unit` is plural in the
-// schema ('courts' | 'lanes' | 'tables' — database/schema/002_content_tables
-// .sql) except Volleyball's seeded row, which is the singular 'court', so
-// both spellings have to map.
+// Per-unit photos preserve the full inventory even when only a few photos
+// are uploaded. Bowling type is selected separately before resolving its lanes.
 const UNIT_NOUN = {
     court: 'Court',
     courts: 'Court',
@@ -339,58 +244,22 @@ function unitNoun(unit) {
 // a one-item <select> is a dead control, not a choice.
 function resolveCourtUnits(court) {
     const noun = unitNoun(court.unit);
-
-    const fromImages = Array.isArray(court.unitImages) ? court.unitImages : [];
-    if (fromImages.length > 0) {
-        return {
-            pickerLabel: `Choose a ${noun.toLowerCase()}`,
-            units: fromImages.map((entry, i) => ({
-                label: entry.label || `${noun} ${i + 1}`,
-                imageUrl: entry.imageUrl,
-            })),
-        };
-    }
-
-    const variants = Array.isArray(court.variants) ? court.variants : [];
-    if (variants.length > 1) {
-        return {
-            // "Choose a lane" would be wrong here — the options are Duckpin
-            // and Ten-Pin, which are kinds of lane, not individual lanes.
-            pickerLabel: `Choose a ${noun.toLowerCase()} type`,
-            units: variants.map((row) => ({
-                label: variantLabel(row.name),
-                imageUrl: row.imageUrl,
-            })),
-        };
-    }
-
+    const photos = Array.isArray(court.unitImages) ? court.unitImages : [];
     const count = Math.max(0, Math.floor(Number(court.quantity) || 0));
-    const units = [];
-    for (let i = 1; i <= count; i++) {
-        units.push({ label: `${noun} ${i}`, imageUrl: court.imageUrl });
-    }
-    // quantity 0 or missing: still show the sport's own photo, but with
-    // nothing to pick between and no invented "Court 1" that doesn't exist.
-    if (units.length === 0) {
-        units.push({ label: null, imageUrl: court.imageUrl });
-    }
-
-    return { pickerLabel: `Choose a ${noun.toLowerCase()}`, units };
+    const units = Array.from({ length: count || Math.max(photos.length, 1) }, (_, i) => {
+        // Partial uploads must not remove unphotographed lanes from the picker.
+        const numbered = photos.find(entry => Number(entry.label?.match(/(\d+)\s*$/)?.[1]) === i + 1);
+        const indexed = photos[i];
+        const entry = numbered || (indexed && !/(\d+)\s*$/.test(indexed.label || '') ? indexed : null);
+        const specific = Boolean(entry?.imageUrl);
+        return {
+            label: entry?.label || (count ? noun + ' ' + (i + 1) : null),
+            imageUrl: entry?.imageUrl || court.imageUrl || null,
+            specific,
+        };
+    });
+    return { pickerLabel: 'Choose a ' + noun.toLowerCase(), units };
 }
-
-// ============================================================================
-// Events — fallback list kept in sync by hand with
-// database/seed/002_seed_content.sql. daysFromNow mirrors that file's
-// `current_date + N` so the demo looks "current" instead of showing a
-// hardcoded past date, exactly like the SQL comment describes.
-// ============================================================================
-const EVENTS_FALLBACK = [
-    { sportSlug: 'basketball', tag: 'Tournament', title: 'Bocohan Summer Basketball League — Finals', meta: 'Court 1 · Elimination round', daysFromNow: 2, imageUrl: '../database/web/basketball.jpg' },
-    { sportSlug: null, tag: 'This weekend', title: 'Weekend Open Play', meta: 'Sat & Sun · 8:00 AM – 10:00 PM · all courts', daysFromNow: 3, imageUrl: '../database/web/announcement.jpg' },
-    { sportSlug: 'badminton', tag: 'New courts', title: 'Badminton Courts Now Open', meta: '9 courts total · book any slot online', daysFromNow: null, imageUrl: '../database/web/badminton.jpg' },
-    { sportSlug: 'bowling', tag: 'Lanes', title: 'Duckpin & Ten-Pin Night', meta: '20 lanes total · Mon–Thu', daysFromNow: null, imageUrl: '../database/web/bowling.jpg' },
-    { sportSlug: 'volleyball', tag: 'Open gym', title: 'Volleyball Open Gym', meta: 'Every Friday · 6:00 PM – 9:00 PM', daysFromNow: null, imageUrl: '../database/web/volleyball.jpg' },
-];
 
 function normalizeEventFromDb(row) {
     return {
@@ -403,32 +272,6 @@ function normalizeEventFromDb(row) {
     };
 }
 
-function normalizeEventFromFallback(item) {
-    return {
-        sportSlug: item.sportSlug || null,
-        tag: item.tag || '',
-        title: item.title || '',
-        meta: item.meta || '',
-        eventDate: (item.daysFromNow === null || item.daysFromNow === undefined) ? null : addDays(new Date(), item.daysFromNow),
-        imageUrl: item.imageUrl || null,
-    };
-}
-
-// ============================================================================
-// Testimonials — fallback list kept in sync by hand with
-// database/seed/002_seed_content.sql's placeholder rows. See
-// implementation_plan.md (D3) for why this is labeled testimonials and not
-// presented as a live Google Reviews feed.
-// ============================================================================
-const TESTIMONIALS_FALLBACK = [
-    { author_name: 'Placeholder Customer A', rating: 5, quote: "[PLACEHOLDER] Great courts and easy to book — swap in a real quote once it's approved.", source_label: 'Placeholder — awaiting a real quote' },
-    { author_name: 'Placeholder Customer B', rating: 5, quote: '[PLACEHOLDER] Friendly staff and the place is always clean.', source_label: 'Placeholder — awaiting a real quote' },
-    { author_name: 'Placeholder Customer C', rating: 4, quote: '[PLACEHOLDER] Good variety of sports under one roof.', source_label: 'Placeholder — awaiting a real quote' },
-    { author_name: 'Placeholder Customer D', rating: 5, quote: '[PLACEHOLDER] Booking online saved us so much back-and-forth.', source_label: 'Placeholder — awaiting a real quote' },
-    { author_name: 'Placeholder Customer E', rating: 4, quote: '[PLACEHOLDER] Lanes were in great shape for our bowling night.', source_label: 'Placeholder — awaiting a real quote' },
-    { author_name: 'Placeholder Customer F', rating: 5, quote: '[PLACEHOLDER] Been coming here for years, never disappoints.', source_label: 'Placeholder — awaiting a real quote' },
-];
-
 function normalizeTestimonialFromDb(row) {
     return {
         authorName: row.author_name || 'A guest',
@@ -438,97 +281,46 @@ function normalizeTestimonialFromDb(row) {
     };
 }
 
-function normalizeTestimonialFromFallback(item) {
-    return {
-        authorName: item.author_name,
-        rating: item.rating,
-        quote: item.quote,
-        sourceLabel: item.source_label || null,
-    };
-}
+// Live published content, with shared in-flight requests.
+const FETCH_TIMEOUT_MS = 10000;
+const contentRequests = new Map();
 
-// ============================================================================
-// Fetch layer — Supabase first, static fallback on any error, timeout, or
-// empty result. Each getter memoizes its promise so courts/events/
-// testimonials are only ever fetched once per page load, no matter how many
-// renderers (this file's own sections, plus home-showcase.js's hero) ask
-// for them.
-// ============================================================================
-const FETCH_TIMEOUT_MS = 6000;
-
-function withTimeout(promise, ms) {
-    return Promise.race([
-        promise,
-        new Promise((resolve) => {
-            setTimeout(() => resolve({ data: null, error: new Error(`Supabase request timed out after ${ms}ms`) }), ms);
-        }),
-    ]);
-}
-
-// Resolves to the raw row array on success, or null if Supabase is
-// unreachable, errors, times out, or the table is empty — null is the
-// signal callers use to fall back to static content instead of rendering
-// a blank section.
+// Empty published tables are genuinely empty. Failed requests are not demo data.
 async function safeSelect(runQuery) {
-    if (!window.sb) return null;
+    if (!window.sb) throw new Error('The content connection is unavailable. Please try again.');
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
     try {
-        const { data, error } = await withTimeout(runQuery(), FETCH_TIMEOUT_MS);
-        if (error) {
-            console.warn('[IñigoSync] Supabase query failed — using fallback content instead.', error.message || error);
-            return null;
-        }
-        return (Array.isArray(data) && data.length > 0) ? data : null;
-    } catch (err) {
-        console.warn('[IñigoSync] Supabase query threw — using fallback content instead.', err);
-        return null;
-    }
+        const { data, error } = await runQuery().abortSignal(controller.signal);
+        if (error) throw error;
+        return Array.isArray(data) ? data : [];
+    } finally { clearTimeout(timer); }
 }
-
-let courtsPromise = null;
-let eventsPromise = null;
-let testimonialsPromise = null;
-
-function getCourts() {
-    if (!courtsPromise) {
-        courtsPromise = safeSelect(() => window.sb
-            .from('court')
-            .select('*, sport(slug, name)')
-            .eq('is_active', true)
-            .order('display_order')
-        ).then((rows) => {
-            const normalized = rows
-                ? rows.map(normalizeCourtFromDb)
-                : (typeof COURTS_INVENTORY !== 'undefined' ? COURTS_INVENTORY.map(normalizeCourtFromFallback) : []);
-            return mergeCourtsBySport(normalized);
-        });
-    }
-    return courtsPromise;
+function requestContent(key, force, fetchRows, normalize) {
+    let entry = contentRequests.get(key);
+    if (entry && (!force || !entry.settled)) return entry.promise;
+    entry = { settled: false };
+    entry.promise = safeSelect(fetchRows).then(normalize).catch(error => {
+        if (contentRequests.get(key) === entry) contentRequests.delete(key);
+        throw error;
+    }).finally(() => { entry.settled = true; });
+    contentRequests.set(key, entry);
+    return entry.promise;
 }
-
-function getEvents() {
-    if (!eventsPromise) {
-        eventsPromise = safeSelect(() => window.sb
-            .from('event')
-            .select('*, sport(slug, name)')
-            .eq('is_published', true)
-            .order('display_order')
-        ).then((rows) => (rows ? rows.map(normalizeEventFromDb) : EVENTS_FALLBACK.map(normalizeEventFromFallback)));
-    }
-    return eventsPromise;
+function getCourts({ force = false } = {}) {
+    return requestContent('courts', force, () => window.sb.from('court')
+        .select('*, sport(slug, name)').eq('is_active', true).order('display_order'),
+        rows => mergeCourtsBySport(rows.map(normalizeCourtFromDb)));
 }
-
-function getTestimonials() {
-    if (!testimonialsPromise) {
-        testimonialsPromise = safeSelect(() => window.sb
-            .from('testimonial')
-            .select('*')
-            .eq('is_published', true)
-        ).then((rows) => {
-            const pool = rows ? rows.map(normalizeTestimonialFromDb) : TESTIMONIALS_FALLBACK.map(normalizeTestimonialFromFallback);
-            return pickRandom(pool, 3);
-        });
-    }
-    return testimonialsPromise;
+function getEvents({ force = false } = {}) {
+    return requestContent('events', force, () => window.sb.from('event')
+        .select('*, sport(slug, name)').eq('is_published', true).order('display_order'),
+        rows => rows.map(normalizeEventFromDb));
+}
+function getTestimonials({ force = false } = {}) {
+    return requestContent('testimonials', force, () => window.sb.from('testimonial')
+        .select('*').eq('is_published', true),
+        rows => pickRandom(rows.map(normalizeTestimonialFromDb), 3));
 }
 
 // Exposed for includes/home-showcase.js, which loads after this file (see
@@ -560,7 +352,9 @@ function renderCourtCard(court) {
     // right now (database/seed/002_seed_content.sql leaves it unconfirmed
     // on purpose). Never invented; this starts showing real numbers the
     // moment the owner sets them via the admin Court Listings CRUD.
-    const rateHtml = court.rate !== null
+    const rateHtml = court.hasVariantRates
+        ? '<p class="court-rate">See rates by type</p>'
+        : court.rate !== null
         ? `<p class="court-rate">₱${escapeHtml(String(court.rate))}<span>${escapeHtml(court.rateUnit)}</span></p>`
         : `<p class="court-rate is-tba">Rate TBA</p>`;
 
@@ -640,6 +434,8 @@ function createCourtViewer() {
     const titleEl = root.querySelector('[data-court-viewer-title]');
     const unitEl = root.querySelector('[data-court-viewer-unit]');
     const pickerEl = root.querySelector('[data-court-viewer-units]');
+    const typePicker = root.querySelector('[data-court-viewer-types]');
+    const typeSelect = root.querySelector('[data-court-viewer-type]');
     const pickerLabelEl = root.querySelector('[data-court-viewer-units-label]');
     const selectEl = root.querySelector('[data-court-viewer-select]');
     const noteEl = root.querySelector('[data-court-viewer-note]');
@@ -678,6 +474,7 @@ function createCourtViewer() {
     // makes a late <img> error from a previously-selected unit a no-op
     // instead of letting it clobber whatever is showing now.
     let activeCourt = null;
+    let activeVariant = null;
     let units = [];
     let mediaToken = 0;
 
@@ -688,12 +485,12 @@ function createCourtViewer() {
     function paintMedia(unit) {
         const token = ++mediaToken;
         const monogram = monogramFor(activeCourt.sportSlug, activeCourt.name);
-        const alt = unit.label ? `${activeCourt.name} — ${unit.label}` : activeCourt.name;
+        const alt = unit.specific && unit.label ? `${activeVariant.name} — ${unit.label}` : `${activeVariant.name} — general photo`;
 
         // renderMediaSlot escapes both the alt text and the image URL.
         const imageUrl = window.InigoVisuals ? window.InigoVisuals.venuePhoto(unit.imageUrl) : unit.imageUrl;
         mediaEl.innerHTML = renderMediaSlot({ imageUrl, alt, monogram });
-        photoEl.textContent = imageUrl ? PHOTO_STATUS_HAVE : PHOTO_STATUS_NONE;
+        photoEl.textContent = imageUrl ? (unit.specific ? PHOTO_STATUS_HAVE : 'General ' + activeVariant.name + ' photo — not assigned to an individual ' + unitNoun(activeVariant.unit).toLowerCase() + '.') : PHOTO_STATUS_NONE;
 
         const img = mediaEl.querySelector('img');
         if (!img) return;
@@ -722,62 +519,44 @@ function createCourtViewer() {
         // It renders as the .eyebrow above the sport name — a caption for the
         // photo, not a second heading.
         unitEl.textContent = unit.label || '';
+        bookEl.textContent = (activeCourt.variants?.length > 1 ? variantLabel(activeVariant.name) + ' · ' : '') + (unit.label || activeVariant.name);
         // With a single unit there is no combobox to caption, and the title +
         // "What you book" row already say everything a lone "Court 1"
         // eyebrow would.
         unitEl.hidden = !unit.label || units.length < 2;
     }
 
-    function open(court, invoker) {
-        if (!court) return;
-
-        lastFocused = invoker || document.activeElement;
-        activeCourt = court;
-
-        // Rebuilt from scratch on every open, so reopening for a different
-        // sport can never show a stale option list or a stale selection.
-        const resolved = resolveCourtUnits(court);
+    function chooseType(index) {
+        const variants = activeCourt.variants?.length ? activeCourt.variants : [activeCourt];
+        activeVariant = variants[Math.min(Math.max(Number(index) || 0, 0), variants.length - 1)];
+        const resolved = resolveCourtUnits(activeVariant);
         units = resolved.units;
         const hasChoice = units.length > 1;
-
         pickerLabelEl.textContent = resolved.pickerLabel;
-        selectEl.innerHTML = units
-            .map((unit, i) => `<option value="${i}">${escapeHtml(unit.label || court.name)}</option>`)
-            .join('');
+        selectEl.innerHTML = units.map((unit, i) => '<option value="' + i + '">' + escapeHtml(unit.label || activeVariant.name) + '</option>').join('');
         selectEl.selectedIndex = 0;
         pickerEl.hidden = !hasChoice;
-        // The focus trap below matches `select:not([disabled])`, and
-        // querySelectorAll knows nothing about [hidden] — leaving the select
-        // enabled while hidden would put an unfocusable element in the trap's
-        // list, and Tab would drop focus out of the dialog onto <body>.
         selectEl.disabled = !hasChoice;
-
-        titleEl.textContent = court.name;
-
-        // Paints the media, the photo-status line and the unit eyebrow.
+        noteEl.textContent = activeVariant.note || '';
+        noteEl.hidden = !activeVariant.note;
+        rateEl.className = 'court-viewer-rate' + (activeVariant.rate == null ? ' is-tba' : '');
+        rateEl.textContent = activeVariant.rate == null ? 'Rate TBA — please check with the front desk.' : '₱' + activeVariant.rate + activeVariant.rateUnit;
         selectUnit(0);
+    }
 
-        noteEl.textContent = court.note || '';
-        noteEl.hidden = !court.note;
-
-        // Price block — "What you book" is plain textContent (quantity is a
-        // number, unit is owner-written free text, neither is ever markup),
-        // same quantity + unit the grid card's own count chip shows.
-        bookEl.textContent = `${court.quantity} ${court.unit}`;
-
-        // Rate: same rule as the grid card's .court-rate chip — a real
-        // number when the owner has set one via admin Court Listings, an
-        // honest TBA otherwise. Never invented; every court's rate is NULL
-        // in the live DB today (database/seed/002_seed_content.sql), so this
-        // is expected to read "Rate TBA" on all 8 sports until the owner
-        // sets real rates.
-        if (court.rate !== null && court.rate !== undefined) {
-            rateEl.className = 'court-viewer-rate';
-            rateEl.textContent = `₱${court.rate}${court.rateUnit}`;
-        } else {
-            rateEl.className = 'court-viewer-rate is-tba';
-            rateEl.textContent = 'Rate TBA — rates are still being confirmed with the front desk.';
+    function open(court, invoker) {
+        if (!court) return;
+        lastFocused = invoker || document.activeElement;
+        activeCourt = court;
+        titleEl.textContent = court.name;
+        const hasTypes = Boolean(court.variants?.length > 1);
+        if (typePicker && typeSelect) {
+            typePicker.hidden = !hasTypes;
+            typeSelect.disabled = !hasTypes;
+            typeSelect.innerHTML = hasTypes ? court.variants.map((variant, i) => '<option value="' + i + '">' + escapeHtml(variantLabel(variant.name)) + ' (' + variant.quantity + ' lanes)</option>').join('') : '';
+            typeSelect.selectedIndex = hasTypes ? 0 : -1;
         }
+        chooseType(0);
 
         if (hideTimer) {
             window.clearTimeout(hideTimer);
@@ -825,6 +604,8 @@ function createCourtViewer() {
             unitEl.textContent = '';
             units = [];
             activeCourt = null;
+            activeVariant = null;
+            if (typePicker && typeSelect) { typePicker.hidden = true; typeSelect.disabled = true; typeSelect.innerHTML = ''; }
             hideTimer = null;
         }, CLOSE_DELAY_MS);
 
@@ -836,6 +617,7 @@ function createCourtViewer() {
         lastFocused = null;
     }
 
+    typeSelect?.addEventListener('change', () => { if (activeCourt) chooseType(typeSelect.value); });
     if (closeBtn) closeBtn.addEventListener('click', close);
     if (backdrop) backdrop.addEventListener('click', close);
     // Belt and braces: a click on the dialog's own padding/margin area.
@@ -894,56 +676,65 @@ function createCourtViewer() {
 document.addEventListener('DOMContentLoaded', () => {
     const courtViewer = createCourtViewer();
 
-    // Courts & Pricing grid — Supabase's `court` table first, falling
-    // back to COURTS_INVENTORY (includes/courts-data.js) if that fetch
-    // fails or is empty, which is what will actually happen until the
-    // owner runs database/schema + database/seed in the Supabase SQL editor.
-    //
-    // Keyed by sport slug so a card click can find its court object without
-    // re-reading the DOM. mergeCourtsBySport guarantees the slug is unique
-    // across the rendered list.
     const courtGrid = document.querySelector('[data-court-grid]');
-    const courtsBySlug = new Map();
-
-    if (courtGrid) {
-        getCourts().then((courts) => {
-            courtsBySlug.clear();
-            courts.forEach((court) => courtsBySlug.set(court.sportSlug, court));
-
-            courtGrid.innerHTML = courts.length
-                ? courts.map(renderCourtCard).join('')
-                : '<p class="court-grid-empty">Court information is being set up. Please check back shortly, or ask at the front desk.</p>';
-        }).catch((err) => {
-            console.error('[IñigoSync] Could not render the courts grid.', err);
-        });
-
-        // Delegated, so it works no matter when the cards finish rendering.
-        // The cards are real <button>s, so Enter and Space arrive here as
-        // clicks too — no separate keydown handling needed.
-        courtGrid.addEventListener('click', (e) => {
-            const card = e.target && e.target.closest ? e.target.closest('.court-card') : null;
-            if (!card || !courtGrid.contains(card)) return;
-
-            const court = courtsBySlug.get(card.dataset.courtId);
-            if (!court) {
-                console.warn('[IñigoSync] No court matched data-court-id="%s" — the viewer was not opened.', card.dataset.courtId);
-                return;
-            }
-            if (!courtViewer) return;
-            courtViewer.open(court, card);
-        });
-    }
-
-    // Feedback & Reviews — exactly 3 testimonials, chosen at random on
-    // every load (D3: testimonials shared with us, never a live review feed).
+    const status = document.querySelector('[data-courts-status]');
     const testimonialGrid = document.querySelector('[data-testimonial-grid]');
-    if (testimonialGrid) {
-        getTestimonials().then((testimonials) => {
-            testimonialGrid.innerHTML = testimonials.map(renderTestimonialCard).join('');
-        }).catch((err) => {
-            console.error('[IñigoSync] Could not render testimonials.', err);
-        });
+    let clickSequence = 0;
+    const retryMarkup = (text, target) => '<p class="content-state" role="status">' + text + ' <button type="button" data-content-retry="' + target + '">Try again</button></p>';
+
+    async function loadCourts(force = false) {
+        if (!courtGrid) return;
+        courtGrid.setAttribute('aria-busy', 'true');
+        if (status) status.textContent = 'Loading current court information…';
+        try {
+            const courts = await getCourts({ force });
+            const focusedSlug = courtGrid.contains(document.activeElement) ? document.activeElement.dataset.courtId : null;
+            courtGrid.innerHTML = courts.length ? courts.map(renderCourtCard).join('') : '<p class="content-state">No courts are currently listed. Please check with the front desk.</p>';
+            if (status) status.textContent = '';
+            if (focusedSlug) [...courtGrid.querySelectorAll('.court-card')].find(card => card.dataset.courtId === focusedSlug)?.focus({ preventScroll: true });
+            document.dispatchEvent(new Event('inigo:courts-rendered'));
+        } catch {
+            courtGrid.innerHTML = retryMarkup('Court information could not be loaded.', 'courts');
+            if (status) status.textContent = '';
+        } finally { courtGrid.setAttribute('aria-busy', 'false'); }
     }
+    async function loadTestimonials(force = false) {
+        if (!testimonialGrid) return;
+        testimonialGrid.setAttribute('aria-busy', 'true');
+        if (!testimonialGrid.children.length) testimonialGrid.innerHTML = '<p class="content-state">Loading feedback…</p>';
+        try {
+            const rows = await getTestimonials({ force });
+            testimonialGrid.innerHTML = rows.length ? rows.map(renderTestimonialCard).join('') : '<p class="content-state">Feedback will appear here once published by Iñigos.</p>';
+        } catch { testimonialGrid.innerHTML = retryMarkup('Feedback could not be loaded.', 'feedback'); }
+        finally { testimonialGrid.setAttribute('aria-busy', 'false'); }
+    }
+    courtGrid?.addEventListener('click', async event => {
+        const card = event.target.closest('.court-card');
+        if (!card || !courtGrid.contains(card) || !courtViewer) return;
+        const sequence = ++clickSequence;
+        card.setAttribute('aria-busy', 'true');
+        if (status) status.textContent = 'Loading the latest photos and prices…';
+        try {
+            const rows = await getCourts({ force: true });
+            if (sequence !== clickSequence) return;
+            const court = rows.find(row => row.sportSlug === card.dataset.courtId);
+            if (!court) { if (status) status.textContent = 'This sport is no longer listed. Please refresh the court list.'; return; }
+            if (status) status.textContent = '';
+            courtViewer.open(court, card);
+        } catch { if (sequence === clickSequence && status) status.textContent = 'The latest photos could not be loaded. Select the sport again to retry.'; }
+        finally { card.removeAttribute('aria-busy'); }
+    });
+    document.addEventListener('keydown', event => { if (event.key === 'Escape') { clickSequence++; if (status) status.textContent = ''; } });
+    document.addEventListener('click', event => {
+        const target = event.target.closest('[data-content-retry]')?.dataset.contentRetry;
+        if (target === 'courts') loadCourts(true);
+        if (target === 'feedback') loadTestimonials(true);
+    });
+    document.addEventListener('visibilitychange', () => {
+        if (!document.hidden) { loadCourts(true); loadTestimonials(true); }
+    });
+    loadCourts();
+    loadTestimonials();
 
     // ------------------------------------------------------------------
     // Theme toggle — includes/theme.js manages the data-theme attribute
@@ -994,7 +785,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     }
                 });
             },
-            { threshold: 0.15 }
+            { threshold: 0.01, rootMargin: '0px 0px -24px 0px' }
         );
 
         revealEls.forEach((el) => revealObserver.observe(el));

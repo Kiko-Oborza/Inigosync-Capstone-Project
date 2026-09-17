@@ -28,6 +28,64 @@
 <body class="landing-night">
     <a class="landing-skip" href="#courts">Skip to courts</a>
 
+    <header class="site-nav">
+        <input type="checkbox" id="menu-toggle" class="menu-toggle-checkbox">
+
+        <div class="site-nav-pill">
+            <div class="logo-brand">
+                <img src="../assets/Logo/WebLogo.png" alt="IñigoSync logo" class="logo-image">
+                <div class="logo-text">IñigoSync</div>
+            </div>
+
+            <nav class="site-nav-links" aria-label="Primary">
+                <ul>
+                    <li><a href="#home" class="active">Home</a></li>
+                    <li><a href="#courts">Courts &amp; Pricing</a></li>
+                    <li><a href="#about">About</a></li>
+                </ul>
+            </nav>
+
+            <div class="site-nav-actions">
+                <button type="button" class="theme-toggle" data-theme-toggle aria-label="Toggle theme" aria-pressed="false">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="12" cy="12" r="5" class="sun-circle"/>
+                        <line x1="12" y1="1" x2="12" y2="3" class="sun-line"/>
+                        <line x1="12" y1="21" x2="12" y2="23" class="sun-line"/>
+                        <line x1="4.22" y1="4.22" x2="5.64" y2="5.64" class="sun-line"/>
+                        <line x1="18.36" y1="18.36" x2="19.78" y2="19.78" class="sun-line"/>
+                        <line x1="1" y1="12" x2="3" y2="12" class="sun-line"/>
+                        <line x1="21" y1="12" x2="23" y2="12" class="sun-line"/>
+                        <line x1="4.22" y1="19.78" x2="5.64" y2="18.36" class="sun-line"/>
+                        <line x1="18.36" y1="5.64" x2="19.78" y2="4.22" class="sun-line"/>
+                        <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" class="moon-path" style="display:none;"/>
+                    </svg>
+                </button>
+                <button type="button" class="book-now" data-auth-open="login">Log In / Sign Up</button>
+                <button type="button" class="menu-toggle" aria-label="Open menu" aria-expanded="false" aria-controls="landing-mobile-menu" data-landing-menu>
+                    <span class="menu-toggle-bar"></span>
+                    <span class="menu-toggle-bar"></span>
+                    <span class="menu-toggle-bar"></span>
+                </button>
+            </div>
+        </div>
+
+        <!-- Off-canvas mobile menu (mirrors the links above; shown only below the nav-collapse breakpoint) -->
+        <button type="button" class="landing-menu-backdrop" data-menu-dismiss aria-label="Close navigation" hidden tabindex="-1"></button>
+        <nav class="nav-menu" id="landing-mobile-menu" aria-label="Mobile navigation" inert>
+            <button type="button" class="drawer-close" data-menu-dismiss aria-label="Close menu">×</button>
+            <div class="nav-menu-brand">
+                <img src="../assets/Logo/WebLogo.png" alt="IñigoSync logo" class="nav-menu-logo">
+                <div class="logo-text">IñigoSync</div>
+            </div>
+            <ul>
+                <li><a href="#home" class="active">Home</a></li>
+                <li><a href="#courts">Courts &amp; Pricing</a></li>
+                <li><a href="#about">About</a></li>
+            </ul>
+            <button type="button" class="book-now nav-menu-cta" data-auth-open="login">Log In / Sign Up</button>
+        </nav>
+    </header>
+
     <main>
 
         <h1 class="sr-only">IñigoSync — book courts at Iñigos Sports Center, Lucena City</h1>
@@ -36,66 +94,15 @@
         <section class="hero" id="home" data-home-showcase>
 
             <!-- Populated by includes/home-showcase.js from window.InigoContent.getEvents()
-                 (Supabase `event` table, falls back to a static list) — see bug 2/6 fixes. -->
+                 (published Supabase events) — see bug 2/6 fixes. -->
             <div class="hero-media" data-home-media></div>
             <div class="hero-scrim" aria-hidden="true"></div>
-            <div class="hero-equipment" aria-hidden="true"><img src="../assets/landing/hero-equipment.png" width="1536" height="1024" alt="" decoding="async"></div>
+            <div class="hero-equipment" aria-hidden="true">
+                <div class="hero-ball hero-sport-layer"></div>
+                <div class="hero-shuttle hero-sport-layer"></div>
+            </div>
 
-            <header class="site-nav">
-                <input type="checkbox" id="menu-toggle" class="menu-toggle-checkbox">
 
-                <div class="site-nav-pill">
-                    <div class="logo-brand">
-                        <img src="../assets/Logo/WebLogo.png" alt="IñigoSync logo" class="logo-image">
-                        <div class="logo-text">IñigoSync</div>
-                    </div>
-
-                    <nav class="site-nav-links" aria-label="Primary">
-                        <ul>
-                            <li><a href="#home" class="active">Home</a></li>
-                            <li><a href="#courts">Courts &amp; Pricing</a></li>
-                            <li><a href="#about">About</a></li>
-                        </ul>
-                    </nav>
-
-                    <div class="site-nav-actions">
-                        <button type="button" class="theme-toggle" data-theme-toggle aria-label="Toggle theme" aria-pressed="false">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                <circle cx="12" cy="12" r="5" class="sun-circle"/>
-                                <line x1="12" y1="1" x2="12" y2="3" class="sun-line"/>
-                                <line x1="12" y1="21" x2="12" y2="23" class="sun-line"/>
-                                <line x1="4.22" y1="4.22" x2="5.64" y2="5.64" class="sun-line"/>
-                                <line x1="18.36" y1="18.36" x2="19.78" y2="19.78" class="sun-line"/>
-                                <line x1="1" y1="12" x2="3" y2="12" class="sun-line"/>
-                                <line x1="21" y1="12" x2="23" y2="12" class="sun-line"/>
-                                <line x1="4.22" y1="19.78" x2="5.64" y2="18.36" class="sun-line"/>
-                                <line x1="18.36" y1="5.64" x2="19.78" y2="4.22" class="sun-line"/>
-                                <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" class="moon-path" style="display:none;"/>
-                            </svg>
-                        </button>
-                        <button type="button" class="book-now" data-auth-open="login">Log In / Sign Up</button>
-                        <button type="button" class="menu-toggle" aria-label="Open menu" aria-expanded="false" aria-controls="landing-mobile-menu" data-landing-menu>
-                            <span class="menu-toggle-bar"></span>
-                            <span class="menu-toggle-bar"></span>
-                            <span class="menu-toggle-bar"></span>
-                        </button>
-                    </div>
-                </div>
-
-                <!-- Off-canvas mobile menu (mirrors the links above; shown only below the nav-collapse breakpoint) -->
-                <nav class="nav-menu" id="landing-mobile-menu" aria-label="Mobile navigation" inert>
-                    <div class="nav-menu-brand">
-                        <img src="../assets/Logo/WebLogo.png" alt="IñigoSync logo" class="nav-menu-logo">
-                        <div class="logo-text">IñigoSync</div>
-                    </div>
-                    <ul>
-                        <li><a href="#home" class="active">Home</a></li>
-                        <li><a href="#courts">Courts &amp; Pricing</a></li>
-                        <li><a href="#about">About</a></li>
-                    </ul>
-                    <button type="button" class="book-now nav-menu-cta" data-auth-open="login">Log In / Sign Up</button>
-                </nav>
-            </header>
 
             <div class="hero-content">
                 <div class="hero-copy-wrap">
@@ -135,7 +142,8 @@
                     Choose a sport to explore the courts, view venue photos, and find your next game.
                 </p>
 
-                <div class="court-grid" data-court-grid></div>
+                <p class="content-status" data-courts-status role="status"></p>
+                <div class="court-grid" data-court-grid aria-busy="true"></div>
                 <p class="court-art-note">Sport artwork is illustrative. Open a card to see the original court photos.</p>
             </div>
         </section>
@@ -193,11 +201,10 @@
                     <p class="eyebrow">Feedback &amp; Reviews</p>
                     <h2 class="section-title">What people say about Iñigos.</h2>
                     <p class="body-text section-intro">
-                        A few words from the people who play here, shared with us directly —
-                        not a live review feed. Three at random, every time you load the page.
+                        Feedback published by Iñigos Sports Center, shared directly by the people who play here. This is not a Google Reviews feed.
                     </p>
 
-                    <div class="testimonial-grid" data-testimonial-grid></div>
+                    <div class="testimonial-grid" data-testimonial-grid aria-live="polite" aria-busy="true"></div>
                 </div>
             </div>
         </section>
@@ -208,7 +215,8 @@
         <div class="section-inner footer-inner">
             <div class="footer-brand">
                 <div class="footer-brand-main">
-                    <img src="../assets/Logo/Logo.png" alt="Iñigos Sports Center" class="footer-business-logo" width="2400" height="987" loading="lazy">
+                    <img src="../assets/Logo/WebLogo.png" alt="" class="logo-image" width="237" height="314" loading="lazy">
+                    <span class="logo-text">IñigoSync</span>
                 </div>
                 <p class="footer-tagline">Book courts, manage schedules, and stay connected with Iñigos Sports Center.</p>
             </div>
@@ -238,6 +246,12 @@
                         <span>Facebook</span>
                     </a>
                 </div>
+                <nav class="footer-card footer-policies" aria-labelledby="footer-policies-title">
+                    <h3 id="footer-policies-title">Policies</h3>
+                    <a href="privacy.html">Privacy Policy</a>
+                    <a href="terms.html">Terms &amp; Conditions</a>
+                    <a href="house-rules.html">House Rules</a>
+                </nav>
             </div>
 
             <div class="footer-map-block" id="location">
@@ -245,7 +259,7 @@
                 <div class="footer-map-canvas">
                 <iframe
                     class="footer-map-frame"
-                    src="https://www.google.com/maps?q=place_id:ChIJYWSThmFMvTMRnoWVEJzixOY&amp;z=16&amp;output=embed"
+                    src="https://www.google.com/maps?cid=16628664884079723934&amp;ll=13.9626169,121.5803986&amp;z=17&amp;output=embed"
                     loading="lazy"
                     referrerpolicy="no-referrer-when-downgrade"
                     title="Iñigos Sports Center location"
@@ -259,9 +273,17 @@
                     <a class="map-directions" href="https://www.google.com/maps/dir/?api=1&amp;destination=Inigo%27s%20Sports%20Center%20Lucena&amp;destination_place_id=ChIJYWSThmFMvTMRnoWVEJzixOY" target="_blank" rel="noopener noreferrer">Get directions <span aria-hidden="true">↗</span></a>
                 </div>
                 </div>
-                <a class="map-external-link" href="https://www.google.com/maps/search/?api=1&amp;query=Inigo%27s%20Sports%20Center%20Lucena&amp;query_place_id=ChIJYWSThmFMvTMRnoWVEJzixOY" target="_blank" rel="noopener noreferrer">Open location in Google Maps ↗</a>
+                <a class="map-external-link" href="https://www.google.com/maps/place/Inigo's+Sports+Center/@13.9626274,121.5803195,16.93z/data=!4m6!3m5!1s0x33bd4c6186936461:0xe6c4e29c1095859e!8m2!3d13.9626169!4d121.5803986!16s%2Fg%2F1hdz0hmyy" target="_blank" rel="noopener noreferrer">Open location in Google Maps ↗</a>
             </div>
-            <div class="footer-bottom"><span>Iñigos Sports Center · Lucena City</span><span>Online booking powered by IñigoSync</span></div>
+            <div class="footer-credits" aria-labelledby="footer-credits-title">
+                <h3 id="footer-credits-title">Platform credits</h3>
+                <div class="footer-provider-logos" aria-label="Service credits">
+                    <a class="footer-provider" href="https://supabase.com/" target="_blank" rel="noopener noreferrer" aria-label="Powered by Supabase" title="Powered by Supabase"><img src="../assets/credits/supabase.svg" alt="Supabase" width="40" height="40" loading="lazy"></a>
+                    <a class="footer-provider" href="https://www.google.com/maps/place/Inigo's+Sports+Center/@13.9626274,121.5803195,16.93z/data=!4m6!3m5!1s0x33bd4c6186936461:0xe6c4e29c1095859e!8m2!3d13.9626169!4d121.5803986!16s%2Fg%2F1hdz0hmyy" target="_blank" rel="noopener noreferrer" aria-label="Location on Google Maps" title="Location on Google Maps"><img src="../assets/credits/google-maps.png" alt="Google Maps" width="40" height="40" loading="lazy"></a>
+                    <a class="footer-provider footer-provider-planned" href="https://www.paymongo.com/" target="_blank" rel="noopener noreferrer" aria-label="PayMongo — planned payment provider" title="PayMongo — planned payment provider"><img src="../assets/credits/paymongo.svg" alt="PayMongo" width="32" height="40" loading="lazy"><span class="footer-provider-status">Planned</span></a>
+                </div>
+            </div>
+            <div class="footer-bottom"><span>© <span data-copyright-year>2026</span> Iñigos Sports Center. All rights reserved.</span><span>Lucena City, Quezon, Philippines</span></div>
         </div>
     </footer>
 
@@ -307,6 +329,10 @@
                 <p class="eyebrow court-viewer-unit" data-court-viewer-unit hidden></p>
                 <h2 class="court-viewer-title" id="courtViewerTitle" data-court-viewer-title></h2>
 
+                <div class="court-viewer-units" data-court-viewer-types hidden>
+                    <label class="court-viewer-units-label" for="courtViewerTypeSelect">Bowling type</label>
+                    <div class="court-viewer-select-shell"><select class="court-viewer-select" id="courtViewerTypeSelect" data-court-viewer-type disabled></select></div>
+                </div>
                 <div class="court-viewer-units" data-court-viewer-units hidden>
                     <label class="court-viewer-units-label" for="courtViewerUnitSelect" data-court-viewer-units-label>Choose a court</label>
                     <div class="court-viewer-select-shell">
@@ -838,7 +864,6 @@
     </div>
 
     <script src="../includes/theme.js"></script>
-    <script src="../includes/courts-data.js"></script>
     <!-- Shared HTML-escaping helper — must load before landingPage.js,
          which now calls window.escapeHtml instead of defining its own copy. -->
     <script src="../includes/escape.js"></script>
