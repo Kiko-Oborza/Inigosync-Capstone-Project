@@ -117,8 +117,10 @@
                 </div>
 
                 <div class="hero-progress">
+                    <button type="button" class="hero-arrow hero-arrow-prev" data-home-prev aria-label="Previous featured event" hidden><span aria-hidden="true">←</span></button>
                     <button type="button" class="hero-pause" data-home-pause aria-label="Pause slideshow" aria-pressed="false">Pause</button>
                     <div class="hero-dots" data-home-dots></div>
+                    <button type="button" class="hero-arrow hero-arrow-next" data-home-next aria-label="Next featured event" hidden><span aria-hidden="true">→</span></button>
                 </div>
             </div>
         </section>
@@ -189,22 +191,21 @@
                 </div>
             </div>
 
-            <!-- FEEDBACK & REVIEWS — labeled honestly. This is NOT a live Google
-                 Reviews feed: Places API review content can't legally be
-                 cached/stored, and the only card-free key option explicitly
-                 excludes user-generated reviews — see implementation_plan.md (D3).
-                 The disclosure wording below is a legal/accuracy constraint, not
-                 copy: do not reword it. Exactly 3 testimonials, chosen at random,
-                 on every page load. -->
+            <!-- Published testimonials remain visible until a real Elfsight
+                 widget is configured. google-reviews.js then replaces the
+                 presentation and disclosure without deleting stored feedback. -->
             <div class="about-reviews reveal" id="testimonials">
                 <div class="section-inner">
                     <p class="eyebrow">Feedback &amp; Reviews</p>
                     <h2 class="section-title">What people say about Iñigos.</h2>
-                    <p class="body-text section-intro">
+                    <p class="body-text section-intro" data-testimonial-disclosure>
                         Feedback published by Iñigos Sports Center, shared directly by the people who play here. This is not a Google Reviews feed.
                     </p>
 
                     <div class="testimonial-grid" data-testimonial-grid aria-live="polite" aria-busy="true"></div>
+                    <div class="google-reviews" data-google-reviews hidden aria-label="Google reviews for Iñigos Sports Center"></div>
+                    <p class="google-reviews-note" data-google-reviews-note hidden>Reviews update periodically. You can always read the latest feedback on Google.</p>
+                    <a class="google-reviews-link" href="https://www.google.com/maps?cid=16628664884079723934" target="_blank" rel="noopener noreferrer">Read reviews on Google <span aria-hidden="true">↗</span></a>
                 </div>
             </div>
         </section>
@@ -873,6 +874,8 @@
          that the hero carousel below reads from. -->
     <script src="../includes/landingPage.js"></script>
     <script src="../includes/home-showcase.js"></script>
+    <script src="../Config/googleReviews.js"></script>
+    <script src="../includes/google-reviews.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
     <script src="../Config/supabaseClient.js"></script>
     <script src="../includes/loadingOverlay.js"></script>

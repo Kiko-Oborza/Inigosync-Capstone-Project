@@ -16,7 +16,7 @@ fs.mkdirSync(out,{recursive:true});
         await page.goto(base+'/Pages/Index.html');
         await page.waitForFunction(()=>document.querySelectorAll('.court-card').length===8);
         await page.waitForFunction(()=>document.querySelectorAll('.hero-copy').length===4);
-        assert.equal(await page.locator('.testimonial-card').count(),3);
+        assert(await page.getByRole('link',{name:'Read reviews on Google'}).isVisible());
         const initialRequests=courtRequests;
         await page.locator('[data-court-id="basketball"]').click();
         await page.waitForSelector('[data-court-viewer][data-open]');

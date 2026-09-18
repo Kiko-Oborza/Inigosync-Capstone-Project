@@ -1,0 +1,37 @@
+# Connect the free Google reviews widget
+
+The landing page supports Elfsight but has no widget ID configured yet. It keeps
+the existing, honestly labelled testimonials until a valid ID is supplied.
+The Google listing link is always available, even if the embed is blocked or
+the provider's monthly allowance is exhausted.
+
+1. Sign in to a free Elfsight account and create one Google Reviews widget.
+   Do not add a payment method, select a paid plan, or start a paid upgrade.
+2. Select **Inigo's Sports Center, Lucena City, Philippines**. Verify the address
+   is Lucena Diversion Road, Bocohan and that the map matches the site's listing:
+   https://www.google.com/maps?cid=16628664884079723934
+   Google Place ID: `ChIJYWSThmFMvTMRnoWVEJzixOY`.
+3. Choose a carousel with manual navigation and autoplay off. Show author names,
+   ratings, dates, text, and the provider's current aggregate rating. Do not
+   hardcode 4.4 or invent a review count. Keep original attribution and branding.
+4. Match the site: dark surface #1c2222, text #f5f3ee, orange accent #ff782e,
+   12px card corners, and the existing font where supported by the free editor.
+   Configure responsive cards (three on desktop, one on phones) where supported.
+   Provider settings govern the embedded cards; site CSS does not override
+   private widget internals. Verify readability in both site themes.
+5. Copy the UUID from `elfsight-app-UUID` in the generated embed code into
+   `widgetId` in `Config/googleReviews.js`. Do not paste script HTML or secrets.
+   The landing page loads the official platform script asynchronously itself.
+6. Preview the page, confirm the exact business, live rating and real reviews,
+   and check arrow controls, mobile layout, keyboard access, and a blocked embed.
+   Existing testimonial database records are preserved.
+
+Elfsight currently advertises one free widget, 200 views/month, branding, and no
+credit card. Reviews refresh periodically, not instantly. The widget can be
+deactivated when the view allowance is exceeded; keep the external Google link.
+Confirm the current free-plan terms in the account before activation:
+https://elfsight.com/google-reviews-widget/pricing/
+
+Tests use intercepted provider responses to avoid consuming the free allowance.
+They verify integration behavior, not actual Google review authenticity or the
+provider's refresh schedule. Those require the real configured widget.

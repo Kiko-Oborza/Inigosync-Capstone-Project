@@ -1,0 +1,14 @@
+/* Copy into Elfsight Settings > Custom CSS. The widget inherits these site
+   variables through its shadow root, so theme changes need no reload or second widget. */
+.es-main-container { font-family: var(--font-body, Arial, sans-serif) !important; color: var(--color-ink, #202a25) !important; }
+.es-widget-background-container, .es-widget-background-wrapper, .es-background-base, .es-background-overlay { background: transparent !important; }
+.es-header-container, .es-review-background-container { background: var(--surface-card, #fffdf9) !important; border: 1px solid var(--border-soft, #252d2529) !important; border-radius: 12px !important; box-shadow: none !important; }
+.es-header-heading-text, .es-rating-value, .es-review-author-name, .es-review-content, .es-review-content-text-container, .es-text-shortener { color: var(--color-ink, #202a25) !important; }
+.es-header-rating-reviews-count, .es-review-info-date { color: var(--color-ink-dim, #4b5750) !important; opacity: 1 !important; }
+.es-text-shortener-control { color: var(--color-accent-text, #a63809) !important; }
+.es-review-content { line-height: 1.7 !important; }
+.es-carousel-arrow-control { background: var(--surface-card, #fffdf9) !important; color: var(--color-ink, #202a25) !important; border: 1px solid var(--border-card, #252d255c) !important; min-width: 44px; min-height: 44px; box-shadow: none !important; }
+.es-carousel-arrow-control-icon svg { fill: currentColor !important; }
+.es-carousel-arrow-control:hover { background: var(--surface-card-hover, #f2ece2) !important; }
+a:focus-visible, button:focus-visible { outline: 2px solid var(--color-accent-text, #a63809) !important; outline-offset: 3px; }
+@media (prefers-reduced-motion: reduce) { .swiper-wrapper { transition-duration: 0ms !important; } }

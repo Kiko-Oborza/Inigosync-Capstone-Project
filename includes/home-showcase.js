@@ -6,6 +6,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const copy = hero.querySelector('[data-home-copy-stack]');
     const dots = hero.querySelector('[data-home-dots]');
     const pause = hero.querySelector('[data-home-pause]');
+    const previous = hero.querySelector('[data-home-prev]');
+    const next = hero.querySelector('[data-home-next]');
     const reduced = matchMedia('(prefers-reduced-motion: reduce)');
     const hover = matchMedia('(hover: hover)');
     const { escapeHtml, formatEventMeta } = window.InigoContent;
@@ -15,6 +17,7 @@ document.addEventListener('DOMContentLoaded', () => {
     function sync() {
         const stopped = paused || reduced.matches;
         pause.hidden = rows.length < 2;
+        previous.hidden = next.hidden = rows.length < 2;
         pause.disabled = reduced.matches;
         pause.textContent = stopped ? 'Play' : 'Pause';
         pause.setAttribute('aria-label', stopped ? 'Play slideshow' : 'Pause slideshow');
@@ -80,6 +83,8 @@ document.addEventListener('DOMContentLoaded', () => {
         } catch { if (request === refreshId) message('Events could not be loaded. Please try again.', true); }
     }
     dots.addEventListener('click', event => { const button = event.target.closest('[data-home-slide-dot]'); if (button) show(Number(button.dataset.homeSlideDot)); });
+    previous.addEventListener('click', () => show(index - 1));
+    next.addEventListener('click', () => show(index + 1));
     copy.addEventListener('click', event => { if (event.target.closest('[data-events-retry]')) refresh(true); });
     pause.addEventListener('click', () => { paused = !paused; sync(); start(); });
     hero.addEventListener('mouseenter', stop);

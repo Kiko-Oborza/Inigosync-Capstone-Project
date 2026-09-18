@@ -68,7 +68,20 @@
 .landing-night .cta-button { font-size: 14px; border-radius: 9px; padding: 14px 26px; min-height: 48px; background: #ff782e; color: #1b1009; border: 1px solid transparent; }
 .landing-night .cta-button:hover { background: #ff9358; color: #1b1009; }
 .landing-night .cta-button.secondary { background: #151a1a50; border-color: #f3f3eb80; color: #f5f3ee; }
-.landing-night .hero-progress { flex-direction: row-reverse; align-items: center; gap: 12px; }
+.landing-night .hero-progress { width: 100%; display: grid; grid-template-columns: 48px minmax(0,1fr) 48px; align-items: center; gap: 8px 12px; }
+.landing-night .hero-progress .hero-dots { grid-column: 2; grid-row: 1; justify-content: center; flex-wrap: wrap; }
+.landing-night .hero-progress .hero-pause { grid-column: 2; grid-row: 2; justify-self: center; }
+.landing-night .hero-arrow { width: 48px; height: 48px; border: 1px solid #ffffff80; border-radius: 50%; color: #f5f3ee; background: #151a1ad9; font: inherit; font-size: 24px; cursor: pointer; }
+.landing-night .hero-arrow-prev { grid-column: 1; grid-row: 1; }
+.landing-night .hero-arrow-next { grid-column: 3; grid-row: 1; }
+.landing-night .hero-arrow:hover { background: #ff782e; color: #1b1009; border-color: #ff782e; }
+.landing-night :is(.hero-arrow,.hero-dot,.hero-pause):focus-visible { outline: 3px solid #ff9a65; outline-offset: 4px; }
+.landing-night .hero-progress [hidden] { display: none; }
+.landing-night [data-testimonial-grid][hidden], .landing-night [data-google-reviews][hidden] { display: none; }
+.landing-night .google-reviews { width: 100%; min-width: 0; }
+.landing-night .google-reviews-note { color: var(--color-ink-dim); font-size: 14px; line-height: 1.6; margin-top: 20px; }
+.landing-night .google-reviews-link { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; margin-top: 20px; color: var(--color-accent-text); text-underline-offset: 4px; }
+.landing-night .google-reviews-link:focus-visible { outline: 2px solid var(--color-accent-text); outline-offset: 4px; }
 .landing-night .hero-dots { gap: 0; }
 .landing-night .hero-dot { width: 36px; height: 44px; background: transparent; position: relative; }
 .landing-night .hero-dot::after { content: ''; position: absolute; width: 9px; height: 9px; border-radius: 50%; background: #a2aca4; top: 50%; left: 50%; transform: translate(-50%,-50%); }
