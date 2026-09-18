@@ -54,25 +54,10 @@ document.addEventListener('DOMContentLoaded', () => {
         const hero = document.querySelector('.hero');
         if (!hero) return;
         const compact = context.conditions.mobile;
-        // Separate artwork layers follow scroll progress, including reverse scroll.
-        // matchMedia reverts every transform when reduced motion or sizing changes.
-        gsap.timeline({
-            defaults: { ease: 'none' },
+        gsap.to(hero.querySelector('.hero-media'), {
+            yPercent: compact ? 4 : 8, scale: 1.03, ease: 'none',
             scrollTrigger: { trigger: hero, start: 'top top', end: 'bottom top', scrub: compact ? .35 : .65, invalidateOnRefresh: true }
-        })
-            .to(hero.querySelector('.hero-media'), { yPercent: compact ? 4 : 8, scale: 1.03 }, 0)
-            .to(hero.querySelector('.hero-ball'), {
-                y: () => -Math.min(hero.offsetHeight * .2, compact ? 60 : 180),
-                x: compact ? 8 : 24, rotation: compact ? 12 : 26,
-                rotationY: compact ? -8 : -20, rotationX: compact ? 4 : 10,
-                z: compact ? 12 : 60, scale: compact ? 1.04 : 1.1
-            }, 0)
-            .to(hero.querySelector('.hero-shuttle'), {
-                y: () => -Math.min(hero.offsetHeight * .32, compact ? 100 : 280),
-                x: compact ? -12 : -40, rotation: compact ? -16 : -32,
-                rotationY: compact ? 8 : 18, rotationX: compact ? -6 : -14,
-                z: compact ? 24 : 110, scale: compact ? 1.08 : 1.18
-            }, 0);
+        });
     });
     media.add('(hover: hover) and (pointer: fine) and (prefers-reduced-motion: no-preference)', () => {
         const grid = document.querySelector('[data-court-grid]');

@@ -1,9 +1,10 @@
 # Connect the free Google reviews widget
 
-The landing page supports Elfsight but has no widget ID configured yet. It keeps
-the existing, honestly labelled testimonials until a valid ID is supplied.
-The Google listing link is always available, even if the embed is blocked or
-the provider's monthly allowance is exhausted.
+The landing page is connected to the published Elfsight Free widget in
+`Config/googleReviews.js`. It keeps the existing, honestly labelled testimonials
+only when no valid widget ID is supplied. The standalone Google links have been
+removed by design; reviews retain their own source links and the map retains
+its Get directions button. Loading failures display a plain status message.
 
 1. Sign in to a free Elfsight account and create one Google Reviews widget.
    Do not add a payment method, select a paid plan, or start a paid upgrade.
@@ -17,8 +18,9 @@ the provider's monthly allowance is exhausted.
 4. Match the site: dark surface #1c2222, text #f5f3ee, orange accent #ff782e,
    12px card corners, and the existing font where supported by the free editor.
    Configure responsive cards (three on desktop, one on phones) where supported.
-   Provider settings govern the embedded cards; site CSS does not override
-   private widget internals. Verify readability in both site themes.
+   Paste `Style/GoogleReviews.widget.css` into Elfsight's Custom CSS editor. It
+   uses the provider's `es-` customization classes and inherits the site's color
+   variables through the shadow root, responding to the light/dark toggle.
 5. Copy the UUID from `elfsight-app-UUID` in the generated embed code into
    `widgetId` in `Config/googleReviews.js`. Do not paste script HTML or secrets.
    The landing page loads the official platform script asynchronously itself.
@@ -28,7 +30,7 @@ the provider's monthly allowance is exhausted.
 
 Elfsight currently advertises one free widget, 200 views/month, branding, and no
 credit card. Reviews refresh periodically, not instantly. The widget can be
-deactivated when the view allowance is exceeded; keep the external Google link.
+deactivated when the view allowance is exceeded.
 Confirm the current free-plan terms in the account before activation:
 https://elfsight.com/google-reviews-widget/pricing/
 

@@ -21,7 +21,7 @@ document.addEventListener('DOMContentLoaded', () => {
     script.async = true;
     script.addEventListener('error', () => {
         host.hidden = true;
-        if (note) note.textContent = 'Google reviews could not be loaded here. Read the latest feedback using the link below.';
+        if (note) note.textContent = 'Google reviews are temporarily unavailable. Please try again later.';
     }, { once: true });
     document.head.append(script);
 });

@@ -10,13 +10,15 @@ fs.mkdirSync(out,{recursive:true});
     const browser = await chromium.launch({channel:'msedge',headless:true});
     try {
         const page = await browser.newPage({viewport:{width:1440,height:1000},reducedMotion:'reduce'});
+        // Real widget was verified separately; avoid spending its free views in regression runs.
+        await browser.contexts()[0].route('https://elfsightcdn.com/**',route=>route.abort());
         const errors=[];page.on('pageerror',error=>errors.push(error.message));
         let courtRequests=0;
         page.on('request',request=>{if(request.url().includes('/rest/v1/court?'))courtRequests++;});
         await page.goto(base+'/Pages/Index.html');
         await page.waitForFunction(()=>document.querySelectorAll('.court-card').length===8);
         await page.waitForFunction(()=>document.querySelectorAll('.hero-copy').length===4);
-        assert(await page.getByRole('link',{name:'Read reviews on Google'}).isVisible());
+        assert.equal(await page.locator('.google-reviews-link,.map-external-link').count(),0);
         const initialRequests=courtRequests;
         await page.locator('[data-court-id="basketball"]').click();
         await page.waitForSelector('[data-court-viewer][data-open]');
@@ -82,7 +84,7 @@ fs.mkdirSync(out,{recursive:true});
         await page.waitForTimeout(2500);
         await page.locator('.footer-map-canvas').screenshot({path:path.join(out,'map.png')});
         assert.match(await page.locator('.footer-map-frame').getAttribute('src'),/cid=16628664884079723934/);
-        assert.match(await page.locator('.map-external-link').getAttribute('href'),/13\.9626169!4d121\.5803986/);
+        assert.match(await page.locator('.map-directions').getAttribute('href'),/destination_place_id=ChIJYWSThmFMvTMRnoWVEJzixOY/);
         for(const file of ['privacy.html','house-rules.html','terms.html']) assert.equal((await page.request.get(base+'/Pages/'+file)).status(),200);
         await page.evaluate(()=>scrollTo({top:0,behavior:'instant'}));
         await page.screenshot({path:path.join(out,'desktop.png'),fullPage:true});

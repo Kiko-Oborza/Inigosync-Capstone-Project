@@ -814,6 +814,10 @@ document.addEventListener('DOMContentLoaded', () => {
         const target = href === '#' ? document.querySelector('.hero') : document.querySelector(href);
         return target ? { link, target } : null;
     }).filter(Boolean);
+    // The footer continues About, including its map and platform credits.
+    const aboutLink = sectionMap.find(({ link }) => link.getAttribute('href') === '#about')?.link;
+    const footer = document.querySelector('.site-footer');
+    if (aboutLink && footer) sectionMap.push({ link: aboutLink, target: footer });
 
     function setActiveLink(activeLink) {
         const activeHref = activeLink.getAttribute('href');
@@ -836,22 +840,16 @@ document.addEventListener('DOMContentLoaded', () => {
         if (activeEntry) {
             setActiveLink(activeEntry.entry.link);
         } else {
-            const topLink = sectionMap[0]?.link;
-            if (topLink) setActiveLink(topLink);
+            const preceding = sectionMap.filter(({ target }) => target.getBoundingClientRect().top <= offset).at(-1);
+            const fallback = preceding?.link || sectionMap[0]?.link;
+            if (fallback) setActiveLink(fallback);
         }
     }
 
     if ('IntersectionObserver' in window) {
         sectionMap.forEach(({ target }) => {
             const sectionObserver = new IntersectionObserver(
-                (entries) => {
-                    entries.forEach((entry) => {
-                        if (entry.isIntersecting) {
-                            const matching = sectionMap.find((item) => item.target === entry.target);
-                            if (matching) setActiveLink(matching.link);
-                        }
-                    });
-                },
+                updateActiveLink,
                 { threshold: 0.35 }
             );
 
@@ -866,6 +864,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     window.addEventListener('scroll', updateActiveLink);
+    window.addEventListener('resize', updateActiveLink);
     window.addEventListener('hashchange', updateActiveLink);
     updateActiveLink();
 

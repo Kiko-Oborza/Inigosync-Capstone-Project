@@ -97,12 +97,6 @@
                  (published Supabase events) — see bug 2/6 fixes. -->
             <div class="hero-media" data-home-media></div>
             <div class="hero-scrim" aria-hidden="true"></div>
-            <div class="hero-equipment" aria-hidden="true">
-                <div class="hero-ball hero-sport-layer"></div>
-                <div class="hero-shuttle hero-sport-layer"></div>
-            </div>
-
-
 
             <div class="hero-content">
                 <div class="hero-copy-wrap">
@@ -118,9 +112,9 @@
 
                 <div class="hero-progress">
                     <button type="button" class="hero-arrow hero-arrow-prev" data-home-prev aria-label="Previous featured event" hidden><span aria-hidden="true">←</span></button>
+                    <button type="button" class="hero-arrow hero-arrow-next" data-home-next aria-label="Next featured event" hidden><span aria-hidden="true">→</span></button>
                     <button type="button" class="hero-pause" data-home-pause aria-label="Pause slideshow" aria-pressed="false">Pause</button>
                     <div class="hero-dots" data-home-dots></div>
-                    <button type="button" class="hero-arrow hero-arrow-next" data-home-next aria-label="Next featured event" hidden><span aria-hidden="true">→</span></button>
                 </div>
             </div>
         </section>
@@ -204,8 +198,7 @@
 
                     <div class="testimonial-grid" data-testimonial-grid aria-live="polite" aria-busy="true"></div>
                     <div class="google-reviews" data-google-reviews hidden aria-label="Google reviews for Iñigos Sports Center"></div>
-                    <p class="google-reviews-note" data-google-reviews-note hidden>Reviews update periodically. You can always read the latest feedback on Google.</p>
-                    <a class="google-reviews-link" href="https://www.google.com/maps?cid=16628664884079723934" target="_blank" rel="noopener noreferrer">Read reviews on Google <span aria-hidden="true">↗</span></a>
+                    <p class="google-reviews-note" data-google-reviews-note hidden>Google reviews update periodically.</p>
                 </div>
             </div>
         </section>
@@ -274,15 +267,16 @@
                     <a class="map-directions" href="https://www.google.com/maps/dir/?api=1&amp;destination=Inigo%27s%20Sports%20Center%20Lucena&amp;destination_place_id=ChIJYWSThmFMvTMRnoWVEJzixOY" target="_blank" rel="noopener noreferrer">Get directions <span aria-hidden="true">↗</span></a>
                 </div>
                 </div>
-                <a class="map-external-link" href="https://www.google.com/maps/place/Inigo's+Sports+Center/@13.9626274,121.5803195,16.93z/data=!4m6!3m5!1s0x33bd4c6186936461:0xe6c4e29c1095859e!8m2!3d13.9626169!4d121.5803986!16s%2Fg%2F1hdz0hmyy" target="_blank" rel="noopener noreferrer">Open location in Google Maps ↗</a>
             </div>
             <div class="footer-credits" aria-labelledby="footer-credits-title">
                 <h3 id="footer-credits-title">Platform credits</h3>
                 <div class="footer-provider-logos" aria-label="Service credits">
                     <a class="footer-provider" href="https://supabase.com/" target="_blank" rel="noopener noreferrer" aria-label="Powered by Supabase" title="Powered by Supabase"><img src="../assets/credits/supabase.svg" alt="Supabase" width="40" height="40" loading="lazy"></a>
                     <a class="footer-provider" href="https://www.google.com/maps/place/Inigo's+Sports+Center/@13.9626274,121.5803195,16.93z/data=!4m6!3m5!1s0x33bd4c6186936461:0xe6c4e29c1095859e!8m2!3d13.9626169!4d121.5803986!16s%2Fg%2F1hdz0hmyy" target="_blank" rel="noopener noreferrer" aria-label="Location on Google Maps" title="Location on Google Maps"><img src="../assets/credits/google-maps.png" alt="Google Maps" width="40" height="40" loading="lazy"></a>
+                    <a class="footer-provider" href="https://elfsight.com/google-reviews-widget/" target="_blank" rel="noopener noreferrer" aria-label="Google reviews powered by Elfsight" title="Google reviews powered by Elfsight"><img src="../assets/credits/elfsight.svg" alt="Elfsight" width="52" height="24" loading="lazy"></a>
                     <a class="footer-provider footer-provider-planned" href="https://www.paymongo.com/" target="_blank" rel="noopener noreferrer" aria-label="PayMongo — planned payment provider" title="PayMongo — planned payment provider"><img src="../assets/credits/paymongo.svg" alt="PayMongo" width="32" height="40" loading="lazy"><span class="footer-provider-status">Planned</span></a>
                 </div>
+                <p class="model-credit">3D basketball by <a href="https://sketchfab.com/3d-models/3d-sports-basket-ball-game-asset-pbr-model-c41753d4ea74472a991a93b709889930" target="_blank" rel="noopener noreferrer">B1Blender</a> · <a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener noreferrer">CC BY 4.0</a> · optimized GLB</p>
             </div>
             <div class="footer-bottom"><span>© <span data-copyright-year>2026</span> Iñigos Sports Center. All rights reserved.</span><span>Lucena City, Quezon, Philippines</span></div>
         </div>
@@ -886,5 +880,6 @@
     <script src="../includes/vendor/gsap-3.13.0.min.js"></script>
     <script src="../includes/vendor/ScrollTrigger-3.13.0.min.js"></script>
     <script src="../includes/landing-motion.js"></script>
+    <script type="module" src="../includes/landing-basketball.js"></script>
 </body>
 </html>
