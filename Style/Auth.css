@@ -67,6 +67,8 @@ body.auth-lock {
 
 .auth-close {
     position: absolute;
+    /* Keep the close control above the later, positioned brand header. */
+    z-index: 1;
     top: 18px;
     right: 18px;
     width: 34px;
@@ -1496,5 +1498,33 @@ body.auth-lock {
     .auth-google-button {
         font-size: var(--fs-md);
         gap: 8px;
+    }
+}
+
+.auth-modal { --auth-verified-color: #78dba4; }
+:root[data-theme="light"] .auth-modal { --auth-verified-color: #226b42; }
+.auth-email-label { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+[data-signup-email-status] { flex-shrink: 0; min-height: 1.5em; font-size: var(--fs-xs); line-height: 1.5; text-transform: none; letter-spacing: normal; font-weight: 600; }
+[data-signup-email-status][data-state="available"] { color: var(--auth-verified-color); }
+[data-signup-email-status]:is([data-state="taken"], [data-state="invalid"], [data-state="error"], [data-state="rate_limited"]) { color: var(--color-alert-text); }
+.auth-field input[data-availability="available"] { border-color: var(--auth-verified-color); box-shadow: 0 0 0 1px var(--auth-verified-color); }
+.auth-field input:is([data-availability="taken"], [data-availability="invalid"]) { border-color: var(--color-alert-text); box-shadow: 0 0 0 1px var(--color-alert-text); }
+.auth-phone-row { display: flex; align-items: stretch; gap: 8px; }
+.auth-phone-row input { flex: 1; min-width: 0; padding-inline: 10px; }
+.auth-phone-button { flex: 0 0 96px; min-height: 44px; padding: 8px; border: 1px solid var(--color-line); border-radius: 10px; color: var(--color-ink); background: var(--color-bg-elevated); font: inherit; font-size: var(--fs-xs); font-weight: 600; cursor: pointer; }
+.auth-phone-button:disabled { opacity: .6; cursor: default; }
+.auth-phone-button.is-verified { color: var(--auth-verified-color); border-color: var(--auth-verified-color); opacity: 1; }
+.auth-phone-button:focus-visible { outline: 2px solid var(--color-accent-text); outline-offset: 3px; }
+
+.auth-access-error { color: var(--color-ink); border-left: 3px solid var(--color-accent-text); padding: 10px 12px; margin: 0 0 16px; font-size: var(--fs-sm); line-height: 1.5; }
+[data-auth-panel="phone"] [hidden], .auth-access-error[hidden] { display: none; }
+[data-auth-panel="phone"] > * + * { margin-top: 14px; }
+
+@media (pointer: coarse) {
+    .auth-close {
+        width: 44px;
+        height: 44px;
+        top: 13px;
+        right: 13px;
     }
 }

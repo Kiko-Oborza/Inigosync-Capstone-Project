@@ -248,7 +248,10 @@
     .landing-night .footer-card a { min-height: 32px; }
 }
 @media (max-width: 768px) {
-    .floating-basketball { width: 80px; height: 80px; right: max(12px,env(safe-area-inset-right)); bottom: max(12px,env(safe-area-inset-bottom)); }
+    .floating-basketball { width: 110px; height: 110px; right: max(12px,env(safe-area-inset-right)); bottom: max(12px,env(safe-area-inset-bottom)); }
+}
+@media (max-width: 360px) {
+    .floating-basketball { width: 96px; height: 96px; }
 }
 @media (prefers-reduced-motion: reduce) {
     .floating-basketball { transition: none; }

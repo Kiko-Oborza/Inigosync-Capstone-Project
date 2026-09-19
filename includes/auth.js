@@ -50,6 +50,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
     let lastFocusedEl = null;
     let pendingSignupEmail = '';
+    let pendingSignupPhone = '';
+    let signupStepAdvancing = false;
     // Set while a password login is gated behind a first-login-per-device
     // OTP check (see gateOtpThenCompleteLogin below); null the rest of the
     // time, including throughout the post-signup verify flow.
@@ -173,12 +175,9 @@ document.addEventListener('DOMContentLoaded', () => {
         return { valid: failed.length === 0, failed };
     }
 
-    // After a successful signInWithPassword, confirm the account's role is one
-    // of `allowedRoles` for the panel that was used (customer login vs Admin
-    // login), then redirect to the matching dashboard. Signs back out and
-    // throws if the role doesn't belong on this panel, so nobody can reach a
-    // dashboard by guessing/mismatching credentials on the wrong form.
-    async function completeLogin(allowedRoles) {
+    // Check the trusted profile before sending a login OTP or redirecting.
+    // A rejected customer-login attempt must not sign out other devices.
+    async function validateLoginAccount(allowedRoles) {
         const { data: { session } } = await window.sb.auth.getSession();
         if (!session) throw new Error('Sign-in failed. Please try again.');
 
@@ -189,20 +188,35 @@ document.addEventListener('DOMContentLoaded', () => {
             .single();
 
         if (profileError || !profile) {
-            await window.sb.auth.signOut();
+            await window.sb.auth.signOut({ scope: 'local' });
             throw new Error('Could not load your account. Please try again.');
         }
 
         if (profile.status === 'disabled') {
-            await window.sb.auth.signOut();
+            await window.sb.auth.signOut({ scope: 'local' });
             throw new Error('This account has been disabled. Contact the front desk.');
         }
 
         if (!allowedRoles.includes(profile.role)) {
-            await window.sb.auth.signOut();
-            throw new Error(allowedRoles.includes('customer')
-                ? 'This is a staff/owner account — please use "Log in as Admin" instead.'
-                : 'This account is not authorized for staff/owner access.');
+            await window.sb.auth.signOut({ scope: 'local' });
+            const error = new Error(allowedRoles.includes('customer')
+                ? 'This account belongs to an admin or staff member and cannot be used for customer login or sign-up. Choose “Log in as Admin”, or use a different Google account for customer access.'
+                : 'This is a customer account. Please use the customer Log In tab instead of admin/staff login.');
+            error.code = 'account_role_mismatch';
+            throw error;
+        }
+
+        return { session, profile };
+    }
+
+    async function completeLogin(allowedRoles, verifySignupPhone = false) {
+        const { session, profile } = await validateLoginAccount(allowedRoles);
+        if (verifySignupPhone && pendingSignupPhone) {
+            window.InigoLoading?.hide();
+            setActivePanel('phone');
+            const result = await window.InigoSignupPhone.verify({ phone: pendingSignupPhone, userId: session.user.id });
+            if (result === 'cancelled') return;
+            pendingSignupPhone = '';
         }
 
         // Single Session + device trust — both best-effort, and never
@@ -317,6 +331,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // devtools open from navigating straight to a dashboard URL using the
     // session that already exists before finishing this step.
     async function gateOtpThenCompleteLogin(user, allowedRoles, email) {
+        await validateLoginAccount(allowedRoles);
         if (!user || isDeviceTrusted(user.id)) {
             await completeLogin(allowedRoles);
             return;
@@ -585,10 +600,9 @@ document.addEventListener('DOMContentLoaded', () => {
     // in-page callback to hook into. So on every load of this page, check
     // whether a session already exists (true right after that redirect
     // returns) and route straight into the dashboard. Existing remembered
-    // staff/admin sessions also resume on their own dashboard. Errors are swallowed
-    // rather than shown, since landing here isn't something the visitor
-    // actively did — e.g. a stale non-customer session shouldn't surface a
-    // toast on an otherwise ordinary page load.
+    // staff/admin sessions also resume on their own dashboard. A Google return
+    // is an explicit login attempt, so its errors stay visible in the login
+    // modal. Ordinary revisits still handle stale sessions quietly.
     //
     // The loading overlay should only appear for a genuine "just came back
     // from Google" trip — not for an ordinary revisit where a session
@@ -610,7 +624,13 @@ document.addEventListener('DOMContentLoaded', () => {
             // completed just because the visitor reloads the landing page.
             if (!isOauthReturn && !isDeviceTrusted(session.user.id)) return;
             if (isOauthReturn && window.InigoLoading) window.InigoLoading.show('Signing you in…');
-            completeLogin(isOauthReturn ? ['customer'] : ['customer', 'staff', 'admin']).catch(() => {
+            completeLogin(isOauthReturn ? ['customer'] : ['customer', 'staff', 'admin']).catch(error => {
+                if (isOauthReturn) {
+                    openModal('login');
+                    const notice = overlay.querySelector('[data-auth-access-error]');
+                    notice.textContent = friendlyAuthError(error);
+                    notice.hidden = false;
+                }
                 if (window.InigoLoading) window.InigoLoading.hide();
             });
         });
@@ -718,6 +738,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function closeModal() {
+        window.InigoSignupPhone?.cancel();
         if (pendingLoginOtp) {
             // Backing out of the new-device OTP gate without finishing it.
             // A real Supabase session already exists at this point (see
@@ -1280,7 +1301,7 @@ document.addEventListener('DOMContentLoaded', () => {
             // an unguarded call here would throw into a click handler and
             // dead-end the flow, where the submit-side call still surfaces it
             // as an error toast. Degrade to "let submit handle it".
-            if (typeof window.validatePhMobile === 'function') {
+            if (fields.mobile.value.trim() && typeof window.validatePhMobile === 'function') {
                 const mobileCheck = window.validatePhMobile(fields.mobile.value);
                 if (!mobileCheck.valid) return [{ step: 2, field: 'mobile', message: mobileCheck.message }];
             }
@@ -1330,11 +1351,24 @@ document.addEventListener('DOMContentLoaded', () => {
         issues.forEach((issue) => setSignupStepError(issue.step, issue.message, issue.field));
     }
 
-    function advanceSignupStep() {
+    async function advanceSignupStep() {
+        if (signupStepAdvancing) return false;
         const issues = validateSignupStep(signupStep);
         if (issues.length) {
             showSignupStepIssues(issues);
             return false;
+        }
+        if (signupStep === 1) {
+            signupStepAdvancing = true;
+            const next = signupForm.querySelector('[data-signup-next]');
+            next.disabled = true;
+            try {
+                const available = await window.InigoSignupEmail.check();
+                if (!available || !signupForm.classList.contains('is-active') || !authIsOpen || signupStep !== 1) return false;
+            } finally {
+                signupStepAdvancing = false;
+                next.disabled = false;
+            }
         }
         clearSignupStepErrors(signupStep);
         setSignupStep(signupStep + 1, { focus: true });
@@ -1448,6 +1482,8 @@ document.addEventListener('DOMContentLoaded', () => {
     panels.forEach((form) => {
         form.addEventListener('submit', async (e) => {
             e.preventDefault();
+            if (form.dataset.authPanel === 'phone') return;
+            overlay.querySelector('[data-auth-access-error]').hidden = true;
 
             // Sign Up's stepped flow owns its own validation, and has to run
             // before checkValidity() below rather than inside the mode ===
@@ -1540,7 +1576,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     // the mobile number). Normalized to the local
                     // 09XXXXXXXXX form regardless of which accepted format
                     // was typed, so contact_num is stored one consistent way.
-                    const mobileCheck = window.validatePhMobile(data.mobile);
+                    const mobileCheck = data.mobile?.trim() ? window.validatePhMobile(data.mobile) : { valid: true, normalized: null };
                     if (!mobileCheck.valid) {
                         setAuthNotice(mobileCheck.message, true);
                         return;
@@ -1557,25 +1593,27 @@ document.addEventListener('DOMContentLoaded', () => {
                             }
                         }
                     });
-                    if (error) throw error;
                     if (window.InigoLoading) window.InigoLoading.hide();
+                    if (error && ['user_already_exists', 'email_exists'].includes(error.code)) {
+                        setSignupStep(1);
+                        showSignupStepIssues([{ step: 1, field: 'email', message: 'This email is already registered. Log in or use a different email address.' }]);
+                        return;
+                    }
+                    if (error) throw error;
 
                     // Supabase returns no error and no session for an email that's
                     // already registered — it just silently no-ops (anti-enumeration
                     // behavior) instead of throwing. An empty identities array is the
                     // one signal that distinguishes this from a genuine new signup.
                     if (signUpData.user && signUpData.user.identities && signUpData.user.identities.length === 0) {
-                        setAuthNotice('An account with this email already exists. Please log in instead.', true);
+                        setSignupStep(1);
+                        showSignupStepIssues([{ step: 1, field: 'email', message: 'This email is already registered. Log in or use a different email address.' }]);
                         return;
                     }
 
+                    pendingSignupPhone = mobileCheck.normalized || '';
                     if (signUpData.session) {
-                        // Email confirmation is turned off for this project —
-                        // signUp already returned a live session.
-                        if (window.InigoLoading) window.InigoLoading.show('Setting up your dashboard…');
-                        closeModal();
-                        const redirectUrl = new URL('user_dashboard.html', window.location.href);
-                        window.location.assign(redirectUrl.toString());
+                        await completeLogin(['customer'], true);
                         return;
                     }
 
@@ -1698,9 +1736,8 @@ document.addEventListener('DOMContentLoaded', () => {
                     }
 
                     if (otpError) otpError.classList.remove('is-visible');
-                    closeModal();
-                    const redirectUrl = new URL('user_dashboard.html', window.location.href);
-                    window.location.assign(redirectUrl.toString());
+                    await completeLogin(['customer'], true);
+
                     return;
                 }
 
@@ -1810,7 +1847,13 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             } catch (err) {
                 if (window.InigoLoading) window.InigoLoading.hide();
-                setAuthNotice(friendlyAuthError(err), true);
+                if (err.code === 'account_role_mismatch') {
+                    const notice = overlay.querySelector('[data-auth-access-error]');
+                    notice.textContent = friendlyAuthError(err);
+                    notice.hidden = false;
+                } else {
+                    setAuthNotice(friendlyAuthError(err), true);
+                }
             } finally {
                 setBusy(false);
             }
@@ -2034,6 +2077,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 return;
             }
 
+            overlay.querySelector('[data-auth-access-error]').hidden = true;
             button.disabled = true;
             button.classList.add('is-loading');
             if (window.InigoLoading) window.InigoLoading.show('Redirecting to Google…');
@@ -2041,7 +2085,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
             const { error } = await window.sb.auth.signInWithOAuth({
                 provider: 'google',
-                options: { redirectTo: window.location.href }
+                options: { redirectTo: window.location.href, queryParams: { prompt: 'select_account' } }
             });
 
             if (error) {

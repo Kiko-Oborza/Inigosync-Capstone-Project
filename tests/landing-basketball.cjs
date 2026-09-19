@@ -51,7 +51,7 @@ fs.mkdirSync(out, { recursive: true });
                         aria: o.getAttribute('aria-hidden') };
                 });
                 assert.equal(metrics.fixed, 'fixed'); assert.equal(metrics.pointer, 'none'); assert.equal(metrics.aria, 'true');
-                assert.equal(metrics.width, width <= 768 ? 80 : 140); assert(!metrics.overflow);
+                assert.equal(metrics.width, width <= 360 ? 96 : width <= 768 ? 110 : 140); assert(!metrics.overflow);
                 assert.deepEqual(metrics.before, metrics.after); assert.equal(metrics.target, '32px');
                 await page.screenshot({ path: path.join(out, `hero-${width}-${theme}.png`) });
                 await page.locator('.footer-grid').scrollIntoViewIfNeeded();

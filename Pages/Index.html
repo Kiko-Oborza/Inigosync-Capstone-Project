@@ -391,6 +391,7 @@
             </div>
 
             <!-- Log In / Sign Up tabs — hidden automatically while the Admin or Verify panel is active -->
+            <p class="auth-access-error" data-auth-access-error role="alert" hidden></p>
             <div class="auth-tabs" data-auth-tabs role="tablist">
                 <button type="button" class="auth-tab is-active" data-auth-tab="login" role="tab" aria-selected="true">Log In</button>
                 <button type="button" class="auth-tab" data-auth-tab="signup" role="tab" aria-selected="false">Sign Up</button>
@@ -535,8 +536,8 @@
                          checklist's rendered state. -->
                     <div class="auth-step is-active" data-signup-step="1">
                         <label class="auth-field">
-                            <span class="auth-label">Email address</span>
-                            <input type="email" name="email" placeholder="you@email.com" autocomplete="email" required>
+                            <span class="auth-label auth-email-label">Email address <span id="signup-email-status" data-signup-email-status role="status" aria-live="polite"></span></span>
+                            <input type="email" name="email" placeholder="you@email.com" autocomplete="email" aria-describedby="signup-email-status" required>
                         </label>
 
                         <p class="auth-step-error" data-signup-error="1" data-signup-error-for="email" role="alert"></p>
@@ -655,9 +656,13 @@
                              letter being typed, so the JS filter is the actual
                              enforcement. -->
                         <label class="auth-field">
-                            <span class="auth-label">Mobile number</span>
-                            <input type="tel" name="mobile" placeholder="09XX XXX XXXX" autocomplete="tel"
-                                   inputmode="numeric" maxlength="11" data-digits-only required>
+                            <span class="auth-label">Mobile number (optional)</span>
+                            <span class="auth-phone-row">
+                                <input type="tel" name="mobile" placeholder="09XX XXX XXXX" autocomplete="tel"
+                                       inputmode="numeric" maxlength="11" data-digits-only aria-describedby="signup-phone-help">
+                                <button type="button" class="auth-phone-button" disabled aria-describedby="signup-phone-help">Verify</button>
+                            </span>
+                            <span class="auth-tagline" id="signup-phone-help">Verify after email confirmation.</span>
                         </label>
 
                         <!-- The Terms link opens the in-page dialog below; includes/auth.js
@@ -680,6 +685,25 @@
             </form>
 
             </div><!-- /.auth-panel-stack -->
+
+            <form class="auth-form" data-auth-panel="phone" novalidate>
+                <h2 class="auth-heading">Verify your mobile number</h2>
+                <p class="auth-tagline" data-signup-phone-description>Your account is ready. Verify your number by text, or skip for now.</p>
+                <label class="auth-field">
+                    <span class="auth-label">Mobile number</span>
+                    <span class="auth-phone-row">
+                        <input type="tel" data-signup-phone-number aria-label="Mobile number to verify" readonly>
+                        <button type="button" class="auth-phone-button" data-signup-phone-send>Verify</button>
+                    </span>
+                </label>
+                <label class="auth-field" data-signup-phone-code-field hidden>
+                    <span class="auth-label">6-digit SMS code</span>
+                    <input name="smsCode" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="6" pattern="[0-9]{6}" data-signup-phone-code>
+                </label>
+                <p class="auth-tagline" data-signup-phone-status role="status" aria-live="polite"></p>
+                <button type="submit" class="auth-submit" data-signup-phone-confirm hidden>Confirm code</button>
+                <button type="button" class="auth-link" data-signup-phone-skip>Skip for now</button>
+            </form>
 
             <!-- OTP VERIFICATION PANEL — shown automatically after Sign Up is submitted -->
             <form class="auth-form" data-auth-panel="verify" novalidate>
@@ -876,6 +900,9 @@
     <!-- PH mobile-number validation, shared with Account Settings — must
          load before auth.js, which calls window.validatePhMobile on signup. -->
     <script src="../includes/phoneValidation.js"></script>
+    <script src="../includes/signup-email.js"></script>
+    <script src="../Config/phoneVerification.js"></script>
+    <script src="../includes/signup-phone.js"></script>
     <script src="../includes/auth.js"></script>
     <script src="../includes/vendor/gsap-3.13.0.min.js"></script>
     <script src="../includes/vendor/ScrollTrigger-3.13.0.min.js"></script>
