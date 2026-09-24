@@ -156,8 +156,20 @@ document.addEventListener('DOMContentLoaded', () => {
     function todayRange() {
         const now = new Date();
         const start = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-        const end = new Date(start.getTime() + 24 * 60 * 60 * 1000);
+        const end = new Date(start.getFullYear(), start.getMonth(), start.getDate() + 1);
         return { start, end };
+    }
+
+    function sameCourtName(a, b) {
+        return String(a || '').trim().toLocaleLowerCase() === String(b || '').trim().toLocaleLowerCase();
+    }
+
+    function sameCourtUnit(a, b) {
+        return String(a || '').trim().toLocaleLowerCase() === String(b || '').trim().toLocaleLowerCase();
+    }
+
+    function courtUnitsOverlap(a, b) {
+        return !String(a || '').trim() || !String(b || '').trim() || sameCourtUnit(a, b);
     }
 
     function todayDateInputValue() {
@@ -860,50 +872,27 @@ document.addEventListener('DOMContentLoaded', () => {
     loadWalkinCourts();
 
     // ---- Step 3 — Time (today only) ----
-    // Ported from includes/Dashboard.js's fetchDayBookings()/
+    // Ported from includes/Dashboard.js's fetchDayOccupancy()/
     // computeFreeWindows()/renderTimePickers() (Revision 5, D3) — same
     // From/To picker shape, minus a date parameter (a walk-in is always
     // today, per S3).
-    async function fetchWalkinBookingsForCourt(courtName) {
+    async function fetchWalkinOccupancyForCourt(courtName) {
         if (!window.sb || !courtName) return { ok: false, rows: [] };
         const { start, end } = todayRange();
-        let res = await window.sb
-            .from('booking')
-            .select('court_unit, time_date, end_at, duration_minutes')
-            .eq('courts', courtName)
-            .in('status', ['pending', 'confirmed'])
-            .gte('time_date', start.toISOString())
-            .lt('time_date', end.toISOString());
-        if (res.error && isSchemaMismatchError(res.error)) {
-            res = await window.sb
-                .from('booking')
-                .select('time_date, duration_minutes')
-                .eq('courts', courtName)
-                .in('status', ['pending', 'confirmed'])
-                .gte('time_date', start.toISOString())
-                .lt('time_date', end.toISOString());
+        let res;
+        try {
+            res = await window.sb.rpc('court_occupancy', {
+                from_at: start.toISOString(), to_at: end.toISOString(),
+            });
+        } catch (error) {
+            console.error('[staff] failed to load occupancy for the walk-in time pickers', error);
+            return { ok: false, rows: [] };
         }
         if (res.error) {
-            console.error('[staff] failed to load bookings for the walk-in time pickers', res.error);
+            console.error('[staff] failed to load occupancy for the walk-in time pickers', res.error);
             return { ok: false, rows: [] };
         }
-        return { ok: true, rows: res.data || [] };
-    }
-
-    async function fetchWalkinWalkinsForCourt(courtName) {
-        if (!window.sb || !courtName) return { ok: false, rows: [] };
-        const { start, end } = todayRange();
-        const { data, error } = await window.sb
-            .from('walk_in_booking')
-            .select('*')
-            .eq('courts', courtName)
-            .gte('time_date', start.toISOString())
-            .lt('time_date', end.toISOString());
-        if (error) {
-            console.error('[staff] failed to load walk-ins for the walk-in time pickers', error);
-            return { ok: false, rows: [] };
-        }
-        return { ok: true, rows: data || [] };
+        return { ok: true, rows: (res.data || []).filter((row) => sameCourtName(row.courts, courtName)) };
     }
 
     function isWalkinHourPast(hour) {
@@ -923,7 +912,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (walkinBookings.ok) {
             const bookingMatch = walkinBookings.rows.some((row) => {
-                if ((row.court_unit || '') !== currentUnit) return false;
+                if (!courtUnitsOverlap(row.court_unit, currentUnit)) return false;
                 return windowsOverlap(rowWindow(row), slot);
             });
             if (bookingMatch) return true;
@@ -931,9 +920,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (walkinWalkins.ok) {
             return walkinWalkins.rows.some((row) => {
-                const rowUnit = row.court_unit || '';
-                if (!rowUnit) return windowsOverlap(rowWindow(row), slot);
-                return rowUnit === currentUnit && windowsOverlap(rowWindow(row), slot);
+                return courtUnitsOverlap(row.court_unit, currentUnit) && windowsOverlap(rowWindow(row), slot);
             });
         }
         return false;
@@ -1058,22 +1045,19 @@ document.addEventListener('DOMContentLoaded', () => {
 
     async function refreshWalkinTimePickers() {
         if (!walkinFromSelect || !walkinToSelect) return;
+        const mySeq = ++walkinRequestSeq;
         if (!walkinState.court) { renderWalkinTimePickers(); return; }
 
-        const mySeq = ++walkinRequestSeq;
         walkinFromSelect.innerHTML = '<option value="">Checking availability…</option>';
         walkinToSelect.innerHTML = '<option value="">Checking availability…</option>';
         walkinFromSelect.disabled = true;
         walkinToSelect.disabled = true;
         if (walkinOpenWindowsEl) walkinOpenWindowsEl.textContent = 'Checking availability…';
 
-        const [bookingsRes, walkinsRes] = await Promise.all([
-            fetchWalkinBookingsForCourt(walkinState.court.name),
-            fetchWalkinWalkinsForCourt(walkinState.court.name),
-        ]);
+        const occupancyRes = await fetchWalkinOccupancyForCourt(walkinState.court.name);
         if (mySeq !== walkinRequestSeq) return; // a newer refresh already owns the pickers
-        walkinBookings = bookingsRes;
-        walkinWalkins = walkinsRes;
+        walkinBookings = { ok: occupancyRes.ok, rows: occupancyRes.rows.filter((row) => row.source === 'online') };
+        walkinWalkins = { ok: occupancyRes.ok, rows: occupancyRes.rows.filter((row) => row.source === 'walkin') };
         renderWalkinTimePickers();
     }
 
@@ -1260,6 +1244,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (walkinSaveBtn) {
         walkinSaveBtn.addEventListener('click', async () => {
+            if (walkinSaveBtn.disabled) return;
             if (!window.sb || !window.inigosyncProfile) {
                 window.InigoToast?.show('Unable to reach the server right now. Please try again shortly.', true);
                 return;
@@ -1268,18 +1253,44 @@ document.addEventListener('DOMContentLoaded', () => {
             if (!walkinState.court) { window.InigoToast?.show('Select a sport/court.', true); goToWalkinStep(2); return; }
             if (walkinState.startHour === null || walkinState.endHour === null) { window.InigoToast?.show('Select a start and end time.', true); goToWalkinStep(3); return; }
 
-            // Re-check availability immediately before inserting (same
-            // "re-fetch right before submit" guard as includes/Dashboard.js's
-            // bookSubmit) — walk_in_booking has no database-level EXCLUDE
-            // constraint of its own (database/schema/012_booking_time_range.sql's
-            // own header note on why it doesn't cover this table), so this
-            // app-level recheck is the only guard a walk-in gets.
-            const [recheckBookings, recheckWalkins] = await Promise.all([
-                fetchWalkinBookingsForCourt(walkinState.court.name),
-                fetchWalkinWalkinsForCourt(walkinState.court.name),
-            ]);
-            if (recheckBookings.ok) walkinBookings = recheckBookings;
-            if (recheckWalkins.ok) walkinWalkins = recheckWalkins;
+            const requestedSelection = {
+                courtName: walkinState.court.name,
+                unit: walkinState.unit || '',
+                startHour: walkinState.startHour,
+                endHour: walkinState.endHour,
+                name: walkinState.name,
+                mobile: walkinState.mobile,
+                payment: walkinState.payment,
+            };
+            walkinSaveBtn.disabled = true;
+            walkinSaveBtn.textContent = 'Checking availability…';
+
+            // Re-check both reservation channels from one occupancy
+            // snapshot immediately before inserting. The database's shared
+            // exclusion constraint is still the final race-safe guard.
+            const recheck = await fetchWalkinOccupancyForCourt(requestedSelection.courtName);
+            if (!recheck.ok) {
+                walkinSaveBtn.disabled = false;
+                walkinSaveBtn.textContent = 'Save Walk-In';
+                window.InigoToast?.show('Could not verify live availability. Please try again.', true);
+                refreshWalkinTimePickers();
+                return;
+            }
+            if ((walkinState.court?.name || '') !== requestedSelection.courtName
+                || (walkinState.unit || '') !== requestedSelection.unit
+                || walkinState.startHour !== requestedSelection.startHour
+                || walkinState.endHour !== requestedSelection.endHour
+                || walkinState.name !== requestedSelection.name
+                || walkinState.mobile !== requestedSelection.mobile
+                || walkinState.payment !== requestedSelection.payment) {
+                walkinSaveBtn.disabled = false;
+                walkinSaveBtn.textContent = 'Save Walk-In';
+                window.InigoToast?.show('Your selection changed. Please review the updated time and save again.', true);
+                refreshWalkinTimePickers();
+                return;
+            }
+            walkinBookings = { ok: true, rows: recheck.rows.filter((row) => row.source === 'online') };
+            walkinWalkins = { ok: true, rows: recheck.rows.filter((row) => row.source === 'walkin') };
             let conflict = false;
             if (walkinBookings.ok && walkinWalkins.ok) {
                 for (let h = walkinState.startHour; h <= walkinState.endHour; h++) {
@@ -1288,6 +1299,8 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             if (conflict) {
                 window.InigoToast?.show('That time was just taken — please pick another time.', true);
+                walkinSaveBtn.disabled = false;
+                walkinSaveBtn.textContent = 'Save Walk-In';
                 walkinState.startHour = null;
                 walkinState.endHour = null;
                 renderWalkinTimePickers();
@@ -1343,9 +1356,10 @@ document.addEventListener('DOMContentLoaded', () => {
             // — it only has to drop the two NEWEST columns, not fall all the
             // way back to the pre-016 shape. Same "never fake success"
             // schema-mismatch retry idiom this file has always used for
-            // walk-in inserts, just with an extra rung.
+            // walk-in inserts, just with an extra rung. Court, unit, and
+            // time fields are never dropped because that would save a slot
+            // different from the one the availability check approved.
             let { data, error } = await window.sb.from('walk_in_booking').insert(fullPayload).select();
-            let usedReducedPayload = false;
             let missingPaymentColumnsOnly = false;
             if (error && isSchemaMismatchError(error)) {
                 const paymentColumnsDroppedPayload = {
@@ -1365,20 +1379,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 ({ data, error } = await window.sb.from('walk_in_booking').insert(paymentColumnsDroppedPayload).select());
                 if (!error) {
                     missingPaymentColumnsOnly = true;
-                } else if (isSchemaMismatchError(error)) {
-                    const reducedPayload = {
-                        staff_id: fullPayload.staff_id,
-                        sports: fullPayload.sports,
-                        courts: fullPayload.courts,
-                        customer_name: fullPayload.customer_name,
-                        customer_mobile: fullPayload.customer_mobile,
-                        time_date: fullPayload.time_date,
-                        duration_minutes: fullPayload.duration_minutes,
-                        status: fullPayload.status,
-                        payment_id: fullPayload.payment_id,
-                    };
-                    ({ data, error } = await window.sb.from('walk_in_booking').insert(reducedPayload).select());
-                    usedReducedPayload = true;
                 }
             }
 
@@ -1386,7 +1386,10 @@ document.addEventListener('DOMContentLoaded', () => {
             walkinSaveBtn.textContent = 'Save Walk-In';
 
             if (error) {
-                window.InigoToast?.show(error.message || 'Could not record this walk-in.', true);
+                window.InigoToast?.show(error.code === '23P01'
+                    ? 'That court and time were just taken. Please choose another slot.'
+                    : (error.message || 'Could not record this walk-in.'), true);
+                if (error.code === '23P01') refreshWalkinTimePickers();
                 return;
             }
 
@@ -1397,9 +1400,7 @@ document.addEventListener('DOMContentLoaded', () => {
             writeAuditLog('walkin_recorded', 'walk_in_booking', idField ? String(savedRow[idField]) : null, { customerName: walkinState.name, court: walkinState.court.name });
 
             let saveNote = 'Walk-in recorded.';
-            if (usedReducedPayload) {
-                saveNote = 'Walk-in recorded — court/unit, end time, and payment method need a database update to be saved (see database/schema/016_walkin_checkin.sql).';
-            } else if (missingPaymentColumnsOnly) {
+            if (missingPaymentColumnsOnly) {
                 saveNote = 'Walk-in recorded — payment amounts need database/schema/017_booking_payment.sql.';
             }
             window.InigoToast?.show(saveNote);
@@ -1779,6 +1780,8 @@ document.addEventListener('DOMContentLoaded', () => {
     let scheduleBookingsCache = [];
     let scheduleWalkinsCache = [];
     let scheduleNameMap = new Map();
+    let scheduleDataOk = true;
+    let scheduleRequestSeq = 0;
 
     if (scheduleDateInput) {
         scheduleDateInput.min = todayDateInputValue();
@@ -1845,18 +1848,15 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         const bookingMatch = bookings.find((b) => {
-            const status = String(b.status || '').toLowerCase();
-            if (status !== 'pending' && status !== 'confirmed') return false;
-            if (String(b.courts || '') !== row.court.name) return false;
-            if ((b.court_unit || '') !== row.unitValue) return false;
+            if (!sameCourtName(b.courts, row.court.name)) return false;
+            if (!courtUnitsOverlap(b.court_unit, row.unitValue)) return false;
             return windowsOverlap(rowWindow(b), slot);
         });
         if (bookingMatch) return { cls: 'is-booked', title: scheduleTooltipFor(bookingMatch, 'Online') };
 
         const walkinMatch = walkins.find((w) => {
-            if (String(w.courts || '') !== row.court.name) return false;
-            const rowUnit = w.court_unit || '';
-            if (rowUnit && rowUnit !== row.unitValue) return false;
+            if (!sameCourtName(w.courts, row.court.name)) return false;
+            if (!courtUnitsOverlap(w.court_unit, row.unitValue)) return false;
             return windowsOverlap(rowWindow(w), slot);
         });
         if (walkinMatch) return { cls: 'is-booked', title: scheduleTooltipFor(walkinMatch, 'Walk-in', walkinMatch.customer_name || 'Walk-in customer') };
@@ -1875,6 +1875,11 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!thead || !tbody) return;
 
         thead.innerHTML = `<tr><th>Court / Unit</th>${hours.map((h) => `<th>${window.escapeHtml(window.InigoBusinessHours.formatHourRangeLabelShort(h))}</th>`).join('')}<th>Open hours</th></tr>`;
+
+        if (!scheduleDataOk) {
+            tbody.innerHTML = `<tr><td colspan="${hours.length + 2}" style="text-align:center; color: var(--color-ink-faint);">Could not verify live availability. Please refresh the schedule.</td></tr>`;
+            return;
+        }
 
         if (rows.length === 0) {
             tbody.innerHTML = `<tr><td colspan="${hours.length + 2}" style="text-align:center; color: var(--color-ink-faint);">No courts to show.</td></tr>`;
@@ -1915,21 +1920,33 @@ document.addEventListener('DOMContentLoaded', () => {
     async function refreshCourtSchedule() {
         if (!scheduleTable || !window.sb || !window.InigoCourtsData) return;
 
+        const mySeq = ++scheduleRequestSeq;
         const dateBase = new Date(`${scheduleDate}T00:00:00`);
-        const dayEnd = new Date(dateBase.getTime() + 24 * 60 * 60 * 1000);
+        const dayEnd = new Date(dateBase.getFullYear(), dateBase.getMonth(), dateBase.getDate() + 1);
+        let courts;
+        let occupancyRes;
+        try {
+            [courts, occupancyRes] = await Promise.all([
+                window.InigoCourtsData.getCourts(),
+                window.sb.rpc('court_occupancy', {
+                    from_at: dateBase.toISOString(), to_at: dayEnd.toISOString(),
+                }),
+            ]);
+        } catch (error) {
+            console.error('[staff] failed to load court schedule availability', error);
+            if (mySeq !== scheduleRequestSeq) return;
+            scheduleDataOk = false;
+            renderCourtSchedule(scheduleCourtsCache, [], []);
+            return;
+        }
+        if (mySeq !== scheduleRequestSeq) return;
+        if (occupancyRes.error) console.error('[staff] failed to load court schedule availability', occupancyRes.error);
+        scheduleDataOk = !occupancyRes.error;
+        const rows = scheduleDataOk ? (occupancyRes.data || []) : [];
+        const bookings = rows.filter((row) => row.source === 'online');
+        const walkins = rows.filter((row) => row.source === 'walkin');
 
-        const [courts, bookingsRes, walkinsRes] = await Promise.all([
-            window.InigoCourtsData.getCourts(),
-            window.sb.from('booking').select('*').gte('time_date', dateBase.toISOString()).lt('time_date', dayEnd.toISOString()),
-            window.sb.from('walk_in_booking').select('*').gte('time_date', dateBase.toISOString()).lt('time_date', dayEnd.toISOString()),
-        ]);
-
-        if (bookingsRes.error) console.error('[staff] failed to load bookings for the schedule', bookingsRes.error);
-        if (walkinsRes.error) console.error('[staff] failed to load walk-ins for the schedule', walkinsRes.error);
-        const bookings = bookingsRes.error ? [] : (bookingsRes.data || []);
-        const walkins = walkinsRes.error ? [] : (walkinsRes.data || []);
-
-        scheduleNameMap = await fetchProfileNamesByIds(bookings.map((b) => b.customer_id));
+        scheduleNameMap = new Map();
 
         scheduleCourtsCache = courts;
         scheduleBookingsCache = bookings;

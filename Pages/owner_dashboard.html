@@ -125,7 +125,7 @@
                 </button>
                 <div class="admin-topbar-title">
                     <h1 data-admin-title>Booking Overview</h1>
-                    <p data-admin-subtitle>Reservation trends, staff activity, and business performance at a glance.</p>
+                    <p data-admin-subtitle hidden></p>
                 </div>
             </div>
 
@@ -147,15 +147,7 @@
                     </svg>
                 </button>
 
-                <!-- Notifications (Revision A1, decision A7) — ported from the
-                     customer dashboard's [data-dash-notif*] dropdown
-                     (Pages/user_dashboard.html/includes/Dashboard.js) under
-                     data-admin-notif* names. Replaces the old dead bell
-                     (no dropdown, badge dot permanently visible). Populated
-                     by includes/owner_dashboard.js's refreshAdminNotifications()
-                     from real pending bookings + feedback rows — the dot
-                     starts `hidden` and is only revealed once there's a real
-                     unread item. -->
+                <!-- Owner activity notifications only; bookings and ratings do not appear here. -->
                 <div class="admin-notif" data-admin-notif>
                     <button type="button" class="admin-icon-btn" data-admin-notif-trigger aria-label="Notifications" aria-haspopup="true" aria-expanded="false">
                         <svg viewBox="0 0 24 24" fill="none"><path d="M18 8.5c0-3.5-2.7-6-6-6s-6 2.5-6 6c0 6-2.5 7.5-2.5 7.5h17S18 14.5 18 8.5z" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><path d="M9.7 19a2.3 2.3 0 0 0 4.6 0" stroke="currentColor" stroke-width="1.7"/></svg>
@@ -163,7 +155,7 @@
                     </button>
 
                     <div class="admin-notif-menu" data-admin-notif-menu role="menu" aria-label="Notifications">
-                        <div class="admin-notif-menu-head">Notifications</div>
+                        <div class="admin-notif-menu-head">Notifications <button type="button" class="admin-notif-mark-all" data-admin-notif-mark-all>Mark all as seen</button></div>
                         <div class="admin-notif-list" data-admin-notif-list>
                             <p class="admin-notif-empty">Loading…</p>
                         </div>
@@ -193,10 +185,6 @@
                         <button type="button" data-admin-nav="profile">
                             <svg viewBox="0 0 24 24" fill="none"><rect x="3.5" y="5" width="17" height="14" rx="2.4" stroke="currentColor" stroke-width="1.7"/><circle cx="9.5" cy="11" r="2" stroke="currentColor" stroke-width="1.6"/><path d="M6.5 16c.6-1.5 1.7-2.3 3-2.3s2.4.8 3 2.3" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><path d="M14.5 9.5h3M14.5 12.5h2" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
                             View Profile
-                        </button>
-                        <button type="button" data-admin-nav="settings">
-                            <svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="8" r="4" stroke="currentColor" stroke-width="1.8"/><path d="M4 20c1.5-4 5-6 8-6s6.5 2 8 6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
-                            Account Settings
                         </button>
                         <button type="button" class="admin-logout" data-admin-logout>
                             <svg viewBox="0 0 24 24" fill="none"><path d="M9 21H5a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><path d="M16 17l5-5-5-5M21 12H9" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
@@ -266,6 +254,7 @@
                             <div class="admin-toggle-pill">
                                 <button type="button" class="admin-pill-btn is-active" data-admin-chart-range="week">Weekly</button>
                                 <button type="button" class="admin-pill-btn" data-admin-chart-range="month">Monthly</button>
+                                <button type="button" class="admin-pill-btn" data-admin-chart-range="year">Yearly</button>
                             </div>
                         </div>
                     </div>
@@ -338,7 +327,12 @@
 
                     <div class="admin-card">
                         <div class="admin-card-head">
-                            <h3>Booking status this month</h3>
+                            <h3>Booking status</h3>
+                            <div class="admin-toggle-pill" aria-label="Booking status period">
+                                <button type="button" class="admin-pill-btn" data-admin-status-range="week">Weekly</button>
+                                <button type="button" class="admin-pill-btn is-active" data-admin-status-range="month">Monthly</button>
+                                <button type="button" class="admin-pill-btn" data-admin-status-range="year">Yearly</button>
+                            </div>
                         </div>
                         <!-- Reuses .admin-progress-* (label + count + bar) —
                              the exact same classes the old "Busiest courts"
@@ -366,7 +360,6 @@
                              — "…and configure payment settings" dropped now
                              that the Payment Configuration card below is
                              gone (see the comment where it used to live). -->
-                        <p>Add, update, or remove staff accounts.</p>
                     </div>
                     <!-- Revision A2 (decision B3) — opens
                          [data-admin-staff-modal] (bottom of this document)
@@ -389,7 +382,7 @@
                          fixed default immediately (Revision A1, decision A4)
                          instead of emailing a reset link — see
                          includes/owner_dashboard.js's wireStaffRowActions(). -->
-                    <p class="admin-form-hint" style="margin: -6px 0 4px;">Reset Password sets the account's password to a default (<strong>12345678</strong>) right away — ask them to change it the moment they log back in.</p>
+                    <p class="admin-form-hint" style="margin: -6px 0 4px;">Reset Password emails the staff member a secure link to choose a new password.</p>
 
                     <!-- Revision A3, decision C2 — this table (and its
                          "Active staff accounts" stat, and the profile-panel
@@ -416,50 +409,7 @@
                                     <th>Actions</th>
                                 </tr>
                             </thead>
-                            <tbody>
-                                <tr>
-                                    <td class="admin-cell-main">Marco Cruz</td>
-                                    <td>marco.cruz@inigossportscenter.com</td>
-                                    <td>Court Attendant</td>
-                                    <td><span class="admin-status active">Active</span></td>
-                                    <td>
-                                        <div class="admin-table-actions">
-                                            <button type="button" class="admin-mini-btn" data-admin-view-staff>View</button>
-                                            <button type="button" class="admin-mini-btn" data-admin-reset-password>Reset Password</button>
-                                            <button type="button" class="admin-mini-btn" data-admin-edit-staff>Edit</button>
-                                            <button type="button" class="admin-mini-btn is-danger" data-admin-delete-staff>Deactivate</button>
-                                        </div>
-                                    </td>
-                                </tr>
-                                <tr>
-                                    <td class="admin-cell-main">Jasmine Tolentino</td>
-                                    <td>jasmine.tolentino@inigossportscenter.com</td>
-                                    <td>Court Attendant</td>
-                                    <td><span class="admin-status active">Active</span></td>
-                                    <td>
-                                        <div class="admin-table-actions">
-                                            <button type="button" class="admin-mini-btn" data-admin-view-staff>View</button>
-                                            <button type="button" class="admin-mini-btn" data-admin-reset-password>Reset Password</button>
-                                            <button type="button" class="admin-mini-btn" data-admin-edit-staff>Edit</button>
-                                            <button type="button" class="admin-mini-btn is-danger" data-admin-delete-staff>Deactivate</button>
-                                        </div>
-                                    </td>
-                                </tr>
-                                <tr>
-                                    <td class="admin-cell-main">Edgar Panganiban</td>
-                                    <td>edgar.panganiban@inigossportscenter.com</td>
-                                    <td>Weekend Relief Staff</td>
-                                    <td><span class="admin-status inactive">Deactivated</span></td>
-                                    <td>
-                                        <div class="admin-table-actions">
-                                            <button type="button" class="admin-mini-btn" data-admin-view-staff>View</button>
-                                            <button type="button" class="admin-mini-btn" data-admin-reset-password>Reset Password</button>
-                                            <button type="button" class="admin-mini-btn" data-admin-edit-staff>Edit</button>
-                                            <button type="button" class="admin-mini-btn" data-admin-activate-staff>Activate</button>
-                                        </div>
-                                    </td>
-                                </tr>
-                            </tbody>
+                            <tbody><tr><td colspan="5">Loading staff accounts…</td></tr></tbody>
                         </table>
                     </div>
                 </div>
@@ -484,20 +434,21 @@
                 <div class="admin-panel-head">
                     <div>
                         <h2>Court Listings</h2>
-                        <p>Add new courts, update details, or activate/deactivate existing ones.</p>
                     </div>
-                    <div style="display:flex; gap:12px; flex-wrap:wrap; align-items:center;">
+                </div>
+                <div class="admin-court-toolbar">
+                    <div class="admin-court-toolbar-left">
                         <div class="admin-filter-row">
                             <button type="button" class="admin-chip is-active" data-admin-chip data-admin-court-filter="all">All</button>
                             <button type="button" class="admin-chip" data-admin-chip data-admin-court-filter="active">Active</button>
                             <button type="button" class="admin-chip" data-admin-chip data-admin-court-filter="inactive">Deactivated</button>
                         </div>
-                        <!-- Revision A1 (decision A6) — opens the modal below
-                             instead of toggling an inline panel. Hook kept
-                             unchanged so nothing else about this button
-                             (styling, position) needed to change. -->
-                        <button type="button" class="admin-btn-primary" data-admin-toggle-court-form>+ Add New Court</button>
+                        <label class="admin-search-wrap">
+                            <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="11" cy="11" r="7" stroke="currentColor" stroke-width="1.8"/><path d="M21 21l-4.3-4.3" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+                            <input type="search" class="admin-search" placeholder="Search sports or courts…" aria-label="Search sports or courts" data-admin-court-search>
+                        </label>
                     </div>
+                    <button type="button" class="admin-btn-primary" data-admin-toggle-court-form>+ Add New Court</button>
                 </div>
 
                 <div class="admin-court-grid" data-admin-court-grid>
@@ -517,8 +468,8 @@
                 <div class="admin-panel-head">
                     <div>
                         <h2>Media Manager</h2>
-                        <p>Whatever you upload here shows up on the website's home featured slideshow — both the landing page and the customer dashboard.</p>
                     </div>
+                    <button type="button" class="admin-btn-primary" data-admin-slide-add>+ Add slide</button>
                 </div>
 
                 <!-- Revision A1 (implementation_plan.md, decision A5) — the
@@ -538,89 +489,24 @@
                             <h3>Home featured slideshow</h3>
                             <p class="admin-card-sub" data-admin-slides-sub>Loading…</p>
                         </div>
-                        <span class="admin-media-hint">rotates every 5s</span>
                     </div>
 
                     <div class="admin-slide-grid" data-admin-slides>
                         <p class="admin-court-loading-note" style="color: var(--color-ink-faint); padding: 8px 4px;">Loading slides…</p>
                     </div>
 
-                    <div class="admin-form-actions" style="justify-content: flex-start; margin-top: 18px;">
-                        <button type="button" class="admin-btn-primary" data-admin-slide-add>+ Add slide</button>
-                    </div>
                 </div>
             </section>
 
-            <!-- ============================================================
-                 FEEDBACKS & REVIEWS PANEL — Revision A3 (implementation_plan.md,
-                 decision C5). Google-Play-style summary (average + star row +
-                 distribution bars that double as star filters) over a
-                 sortable/filterable list of `feedback` rows. Data loads on
-                 panel open + 'inigosync:profile-ready' (loadFeedback(),
-                 includes/owner_dashboard.js) rather than eagerly at page
-                 load like every other panel here — a feedback list can run
-                 to hundreds of rows, and this tab isn't the default view.
-                 ============================================================ -->
+            <!-- Google reviews use the same published widget as the landing page. -->
             <section class="admin-panel" data-admin-panel="feedback">
-                <div class="admin-panel-head">
-                    <div>
-                        <h2>Feedbacks &amp; Reviews</h2>
-                        <p>What customers are saying about Iñigos.</p>
-                    </div>
-                </div>
-
-                <div class="admin-card">
-                    <div class="admin-card-head"><h3>Ratings overview</h3></div>
-                    <div class="admin-feedback-summary">
-                        <div class="admin-feedback-summary-avg">
-                            <span class="admin-feedback-avg-number" data-admin-feedback-avg>—</span>
-                            <span class="admin-feedback-avg-stars" data-admin-feedback-avg-stars aria-hidden="true">☆☆☆☆☆</span>
-                            <span class="admin-feedback-avg-count" data-admin-feedback-count>Loading…</span>
-                        </div>
-                        <!-- 5→1 distribution — includes/owner_dashboard.js's
-                             renderFeedbackSummary() renders each row as a
-                             <button data-admin-feedback-dist="N"> so clicking
-                             a bar filters the list below to that star count;
-                             clicking the SAME bar again clears back to "All"
-                             (shared feedbackFilter state with the toolbar
-                             chips further down — see setFeedbackFilter()). -->
-                        <div class="admin-feedback-distribution" data-admin-feedback-distribution>
-                            <p style="color: var(--color-ink-faint);">Loading…</p>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="admin-card">
-                    <div class="admin-card-head">
-                        <h3>All Feedback</h3>
-                        <select class="admin-select admin-feedback-toolbar-select" data-admin-feedback-sort>
-                            <option value="recent">Most recent</option>
-                            <option value="highest">Highest rating</option>
-                            <option value="lowest">Lowest rating</option>
-                        </select>
-                    </div>
-
-                    <!-- Same .admin-chip look as the Court Listings filter
-                         chips (data-admin-chip + a filter-value attribute);
-                         "No rating" filters to feedback submitted with no
-                         star score at all (rating is optional — see
-                         database/schema/009_feedback.sql). -->
-                    <div class="admin-filter-row admin-feedback-filter-row">
-                        <button type="button" class="admin-chip is-active" data-admin-chip data-admin-feedback-filter="all">All</button>
-                        <button type="button" class="admin-chip" data-admin-chip data-admin-feedback-filter="5">5</button>
-                        <button type="button" class="admin-chip" data-admin-chip data-admin-feedback-filter="4">4</button>
-                        <button type="button" class="admin-chip" data-admin-chip data-admin-feedback-filter="3">3</button>
-                        <button type="button" class="admin-chip" data-admin-chip data-admin-feedback-filter="2">2</button>
-                        <button type="button" class="admin-chip" data-admin-chip data-admin-feedback-filter="1">1</button>
-                        <button type="button" class="admin-chip" data-admin-chip data-admin-feedback-filter="none">No rating</button>
-                    </div>
-
-                    <div class="admin-feedback-list" data-admin-feedback-list>
-                        <p style="color: var(--color-ink-faint); padding: 8px 4px;">Loading…</p>
-                    </div>
+                <div class="admin-panel-head"><h2>Feedbacks &amp; Reviews</h2></div>
+                <div class="admin-card admin-google-reviews-card">
+                    <div class="google-reviews" data-google-reviews hidden aria-label="Google reviews for Iñigos Sports Center"></div>
+                    <p class="google-reviews-note" data-google-reviews-note hidden>Google reviews update periodically. Open a review in the widget to see its source.</p>
+                    <p class="google-reviews-note" data-google-reviews-fallback>Google reviews are currently unavailable.</p>
                 </div>
             </section>
-
             <!-- ============================================================
                  ACCOUNT SETTINGS PANEL
                  ============================================================ -->
@@ -629,16 +515,6 @@
                     <div>
                         <h2>Account Settings</h2>
                         <p>Update your personal details and manage your owner password.</p>
-                    </div>
-                </div>
-
-                <div class="admin-card">
-                    <div class="admin-profile-card">
-                        <div class="admin-avatar">RD</div>
-                        <div class="admin-profile-card-info">
-                            <h3>Rosalinda Driz</h3>
-                            <p>Owner · Iñigos Sports Center since 2011</p>
-                        </div>
                     </div>
                 </div>
 
@@ -684,11 +560,40 @@
                             <span class="admin-form-label">Email address</span>
                             <input type="email" class="admin-input" data-admin-settings-email>
                         </div>
+                        <div class="admin-form-group">
+                            <span class="admin-form-label">Mobile number</span>
+                            <input type="tel" class="admin-input" inputmode="tel" data-admin-settings-mobile>
+                        </div>
+                        <div class="admin-form-group">
+                            <span class="admin-form-label">Address</span>
+                            <input type="text" class="admin-input" autocomplete="street-address" data-admin-settings-address>
+                        </div>
+                        <div class="admin-form-group">
+                            <span class="admin-form-label">Date of birth</span>
+                            <input type="date" class="admin-input" data-admin-settings-birthdate>
+                        </div>
+                        <div class="admin-form-group">
+                            <span class="admin-form-label">Gender</span>
+                            <select class="admin-input" data-admin-settings-gender>
+                                <option value="">Prefer not to say</option>
+                                <option value="Male">Male</option>
+                                <option value="Female">Female</option>
+                            </select>
+                        </div>
                     </div>
                     <p class="admin-form-hint">Changing your email sends a confirmation link to the new address — the change only applies after you click it.</p>
                     <div class="admin-form-actions">
                         <button type="button" class="admin-btn-ghost" data-admin-settings-cancel="profile">Cancel</button>
                         <button type="button" class="admin-btn-save" data-admin-settings-save="profile">Save Changes</button>
+                    </div>
+                </div>
+
+                <div class="admin-card">
+                    <div class="admin-card-head"><h3>Additional Google sign-in addresses</h3></div>
+                    <p class="admin-form-hint">Connect another Gmail account by signing in to Google and approving the link. The address can then access this same owner account.</p>
+                    <div data-admin-linked-google-emails><p class="admin-form-hint">Loading linked accounts…</p></div>
+                    <div class="admin-form-actions">
+                        <button type="button" class="admin-btn-save" data-admin-link-google>Add Gmail address</button>
                     </div>
                 </div>
 
@@ -780,13 +685,6 @@
                  this page.
                  ============================================================ -->
             <section class="admin-panel" data-admin-panel="profile">
-                <div class="admin-panel-head">
-                    <div>
-                        <h2>My Profile</h2>
-                        <p>Your account, at a glance.</p>
-                    </div>
-                </div>
-
                 <div class="admin-card admin-profile-hero">
                     <div class="admin-avatar admin-profile-hero-avatar">RD</div>
                     <div class="admin-profile-hero-info">
@@ -807,6 +705,18 @@
                             <dd data-admin-profile-mobile>—</dd>
                         </div>
                         <div class="admin-profile-dl-row">
+                            <dt>Address</dt>
+                            <dd data-admin-profile-address>—</dd>
+                        </div>
+                        <div class="admin-profile-dl-row">
+                            <dt>Age</dt>
+                            <dd data-admin-profile-age>—</dd>
+                        </div>
+                        <div class="admin-profile-dl-row">
+                            <dt>Gender</dt>
+                            <dd data-admin-profile-gender>—</dd>
+                        </div>
+                        <div class="admin-profile-dl-row">
                             <dt>Member since</dt>
                             <dd data-admin-profile-member-since>—</dd>
                         </div>
@@ -820,17 +730,6 @@
                      hook with the Booking Overview tile, so
                      refreshOverviewStats() updates both at once from the
                      one query it already runs. -->
-                <div class="admin-stat-grid admin-profile-stats">
-                    <div class="admin-stat-card">
-                        <span class="admin-stat-value" data-admin-stat="courts-listed">—</span>
-                        <span class="admin-stat-label">Courts listed</span>
-                    </div>
-                    <div class="admin-stat-card">
-                        <span class="admin-stat-value" data-admin-stat="active-staff">—</span>
-                        <span class="admin-stat-label">Active staff accounts</span>
-                    </div>
-                </div>
-
                 <div class="admin-form-actions" style="justify-content: flex-start;">
                     <button type="button" class="admin-btn-save" data-admin-nav="settings">Edit in Account Settings</button>
                 </div>
@@ -1058,8 +957,15 @@
              instead, freeing the row Photo now needs below. -->
         <div class="admin-form-row">
             <div class="admin-form-group">
-                <span class="admin-form-label">Rate per hour (₱) <span class="admin-form-label-hint">— optional, leave blank until confirmed</span></span>
+                <span class="admin-form-label">Rate (₱) <span class="admin-form-label-hint">— leave blank until confirmed</span></span>
                 <input type="number" class="admin-input" placeholder="e.g. 300" min="0" step="0.01" data-admin-court-rate>
+            </div>
+            <div class="admin-form-group">
+                <span class="admin-form-label">Billing unit</span>
+                <select class="admin-select" data-admin-court-rate-unit>
+                    <option value="/hr">Per hour</option>
+                    <option value="/game">Per game</option>
+                </select>
             </div>
             <div class="admin-form-group">
                 <span class="admin-form-label">Status</span>
@@ -1138,6 +1044,17 @@
      Settings avatar upload all use window.InigoImageTools. Must load
      before owner_dashboard.js. -->
 <script src="../includes/imageTools.js"></script>
+<script src="../Config/googleReviews.js"></script>
+<script src="../includes/google-reviews.js"></script>
+
+<div class="admin-modal-overlay" data-admin-slide-modal hidden>
+    <div class="admin-modal admin-slide-modal" role="dialog" aria-modal="true" aria-label="Edit slideshow slide" tabindex="-1" data-admin-slide-dialog>
+        <button type="button" class="admin-modal-close" data-admin-slide-modal-close aria-label="Close slide editor">×</button>
+        <h3>Edit slide</h3>
+        <div data-admin-slide-editor></div>
+        <button type="button" class="admin-btn-ghost" data-admin-slide-modal-close>Close</button>
+    </div>
+</div>
 
 <!-- Script for owner dashboard functionality -->
 <script src="../includes/owner_dashboard.js"></script>

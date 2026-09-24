@@ -77,7 +77,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (request !== refreshId) return;
             if (!updated.length) { message('There are no published events at the moment. Explore the courts below.'); return; }
             const previous = rows[index]?.title;
-            rows = updated.slice(0, 5);
+            rows = updated;
             index = Math.max(0, rows.findIndex(row => row.title === previous));
             render();
         } catch { if (request === refreshId) message('Events could not be loaded. Please try again.', true); }

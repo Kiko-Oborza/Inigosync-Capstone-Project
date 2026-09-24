@@ -343,9 +343,11 @@ window.InigoContent = {
 function renderCourtCard(court) {
     const monogram = monogramFor(court.sportSlug, court.name);
     const artIndex = window.InigoVisuals?.sportIndex(court.sportSlug) ?? -1;
-    const coverHtml = artIndex >= 0
-        ? `<div class="court-art" aria-hidden="true"><div class="court-art-image sport-art-${artIndex}"></div></div>`
-        : renderMediaSlot({ imageUrl: court.imageUrl, alt: court.name, monogram });
+    const coverHtml = court.imageUrl
+        ? renderMediaSlot({ imageUrl: court.imageUrl, alt: court.name, monogram })
+        : artIndex >= 0
+            ? `<div class="court-art" aria-hidden="true"><div class="court-art-image sport-art-${artIndex}"></div></div>`
+            : renderMediaSlot({ imageUrl: null, alt: court.name, monogram });
 
     // Rate: ₱<rate><rate_unit> when non-null, an honest "Rate TBA"
     // placeholder when null — every court's rate is NULL in the live DB

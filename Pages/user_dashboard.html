@@ -45,7 +45,7 @@
 
             <!-- Trimmed to exactly 5 items (§1 of the feedback doc, D1 in
                  implementation_plan.md): Dashboard, Book a Court, My
-                 Bookings, Receipt, Account Settings. Courts is gone as a nav
+                 Bookings, Booking summaries, Account Settings. Courts is gone as a nav
                  item — its card grid now lives inside the Dashboard/Overview
                  panel below (§4/D2). Profile is gone as a nav item too, but
                  its panel (data-dash-panel="profile") is NOT deleted — it
@@ -73,15 +73,9 @@
                     </button>
                 </li>
                 <li>
-                    <!-- data-dash-nav="receipts" (plural) is left unchanged
-                         on purpose — only the visible label goes singular
-                         ("Receipt", per §1) — so the panel wiring, panelMeta
-                         in includes/Dashboard.js, and every other
-                         data-dash-nav="receipts" deep link elsewhere on this
-                         page keep working with no further changes. -->
                     <button type="button" class="dash-nav-link" data-dash-nav="receipts">
                         <svg viewBox="0 0 24 24" fill="none"><path d="M6 2.5h12v19l-2.5-1.5L13 21l-1-1.5-1 1.5-2.5-1.5L6 21.5z" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><path d="M9 8h6M9 11.5h6M9 15h3.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
-                        Receipt
+                        Booking summaries
                     </button>
                 </li>
                 <li>
@@ -92,27 +86,12 @@
                 </li>
             </ul>
 
-            <!-- Feedback (§2 of the feedback doc, D7) — "a small 'Feedback'
-                 card placed at the bottom of the side navigation menu ... a
-                 brief prompt ... paired with a clear, clickable 'Give
-                 Feedback' button." Originally hidden below 860px in favor of
-                 a separate .dash-feedback-btn-mobile button in the topbar;
-                 R4-1 (implementation_plan.md, "Revision 4") removed that
-                 split — the user asked for ONE feedback entry point, in the
-                 side menu, identical on mobile and desktop, since the
-                 sidebar is already reachable below 860px as an off-canvas
-                 drawer (opened via the hamburger button in the topbar). The
-                 old mobile topbar button and all of its CSS are gone;
-                 .dash-sidebar gained overflow-y: auto (Style/Dashboard.css)
-                 so this card stays reachable even on a short viewport.
-                 Opens the modal (data-dash-feedback-overlay, near the end of
-                 this file) via [data-dash-feedback-open] — see
-                 includes/Dashboard.js. -->
+            <!-- Customer review link to the center's public Google Maps listing. -->
             <div class="dash-sidebar-foot">
                 <div class="dash-nav-divider"></div>
                 <div class="dash-feedback-card" data-dash-feedback-card>
                     <p>How are we doing?<br>Let us know!</p>
-                    <button type="button" class="dash-feedback-btn" data-dash-feedback-open>Give Feedback</button>
+                    <a class="dash-feedback-btn" href="https://www.google.com/maps?cid=16628664884079723934" target="_blank" rel="noopener noreferrer">Review on Google</a>
                 </div>
             </div>
         </aside>
@@ -323,7 +302,7 @@
                             </button>
                             <button type="button" class="dash-quick-btn" data-dash-nav="receipts">
                                 <svg viewBox="0 0 24 24" fill="none"><path d="M6 2.5h12v19l-2.5-1.5L13 21l-1-1.5-1 1.5-2.5-1.5L6 21.5z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg>
-                                View receipts
+                                View booking summaries
                             </button>
                         </div>
                     </div>
@@ -579,7 +558,7 @@
                             <h3 class="dash-wizard-panel-title">Confirm your booking</h3>
 
                             <div class="dash-form-group">
-                                <span class="dash-form-label">Payment option</span>
+                                <span class="dash-form-label">Payment preference</span>
                                 <div class="dash-payment-options">
                                     <label class="dash-payment-option is-selected" data-dash-payment-option>
                                         <span class="dash-payment-option-head">
@@ -590,14 +569,14 @@
                                              includes/Dashboard.js rewrites it to the
                                              real app_settings.downpayment_pct (or
                                              this same 50% fallback) once loaded. -->
-                                        <p data-dash-payment-desc="downpayment">Pay 50% now, balance on-site.</p>
+                                        <p data-dash-payment-desc="downpayment">No payment is collected with this request.</p>
                                     </label>
                                     <label class="dash-payment-option" data-dash-payment-option>
                                         <span class="dash-payment-option-head">
                                             <input type="radio" name="payment-option" data-dash-payment="full">
                                             Full Payment
                                         </span>
-                                        <p>Pay the total amount now.</p>
+                                        <p>No payment is collected with this request.</p>
                                     </label>
                                 </div>
                             </div>
@@ -616,7 +595,7 @@
                                  targets. -->
                             <div class="dash-notice">
                                 <svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.7"/><path d="M12 8v5M12 16h.01" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/></svg>
-                                <span>Please note: once a booking is made, it cannot be cancelled, and payments cannot be refunded or converted to cashback. If you arrive more than 30 minutes after your booked time, your reservation will automatically show as "Unattended" and the court may be given to someone else — so please try to arrive on time.</span>
+                                <span>You cannot cancel a booking yourself. Completed payments are non-refundable. If you have not checked in 30 minutes after your start time, your booking is cancelled as a no-show and the court becomes available again.</span>
                             </div>
 
                             <div class="dash-wizard-summary">
@@ -627,14 +606,15 @@
 
                                 <div class="dash-summary-divider"></div>
 
-                                <div class="dash-summary-row"><span>Payment type</span><strong data-dash-summary-payment>Downpayment (50%)</strong></div>
+                                <div class="dash-summary-row"><span>Payment preference</span><strong data-dash-summary-payment>Downpayment (50%)</strong></div>
 
                                 <div class="dash-summary-divider"></div>
 
                                 <div class="dash-summary-total">
-                                    <span>Amount due now</span>
+                                    <span>Estimated payment</span>
                                     <span data-dash-summary-total>—</span>
                                 </div>
+                                <p class="dash-form-hint">Online checkout is not enabled yet. Requesting a booking does not charge you.</p>
 
                                 <button type="button" class="dash-btn-primary" data-dash-book-submit disabled>Select a time range to continue</button>
                             </div>
@@ -682,7 +662,7 @@
                          gets auto-cancelled and its payment forfeited. -->
                     <div class="dash-notice">
                         <svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.7"/><path d="M12 8v5M12 16h.01" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/></svg>
-                        <span>Please note: your bookings cannot be cancelled, and payments are not refunded or given as cashback. Arriving more than 30 minutes after your booked time will automatically mark that booking "Unattended."</span>
+                        <span>You cannot cancel a booking yourself. Completed payments are non-refundable. If you have not checked in 30 minutes after your start time, your booking is cancelled as a no-show and the court becomes available again.</span>
                     </div>
 
                     <div class="dash-card">
@@ -715,7 +695,7 @@
                                         <td><span class="dash-status confirmed">Confirmed</span></td>
                                         <td>
                                             <div class="dash-table-actions">
-                                                <button type="button" class="dash-mini-btn" data-dash-nav="receipts">Receipt</button>
+                                                <button type="button" class="dash-mini-btn" data-dash-nav="receipts">Details</button>
                                             </div>
                                         </td>
                                     </tr>
@@ -727,7 +707,7 @@
                                         <td><span class="dash-status pending">Pending</span></td>
                                         <td>
                                             <div class="dash-table-actions">
-                                                <button type="button" class="dash-mini-btn" data-dash-nav="receipts">Receipt</button>
+                                                <button type="button" class="dash-mini-btn" data-dash-nav="receipts">Details</button>
                                             </div>
                                         </td>
                                     </tr>
@@ -739,7 +719,7 @@
                                         <td><span class="dash-status confirmed">Confirmed</span></td>
                                         <td>
                                             <div class="dash-table-actions">
-                                                <button type="button" class="dash-mini-btn" data-dash-nav="receipts">Receipt</button>
+                                                <button type="button" class="dash-mini-btn" data-dash-nav="receipts">Details</button>
                                             </div>
                                         </td>
                                     </tr>
@@ -751,7 +731,7 @@
                                         <td><span class="dash-status completed">Completed</span></td>
                                         <td>
                                             <div class="dash-table-actions">
-                                                <button type="button" class="dash-mini-btn" data-dash-nav="receipts">Receipt</button>
+                                                <button type="button" class="dash-mini-btn" data-dash-nav="receipts">Details</button>
                                             </div>
                                         </td>
                                     </tr>
@@ -763,7 +743,7 @@
                                         <td><span class="dash-status cancelled">Cancelled</span></td>
                                         <td>
                                             <div class="dash-table-actions">
-                                                <button type="button" class="dash-mini-btn" data-dash-nav="receipts">Receipt</button>
+                                                <button type="button" class="dash-mini-btn" data-dash-nav="receipts">Details</button>
                                             </div>
                                         </td>
                                     </tr>
@@ -774,13 +754,13 @@
                 </section>
 
                 <!-- ============================================================
-                     RECEIPTS / INVOICE PANEL
+                     BOOKING SUMMARY PANEL
                      ============================================================ -->
                 <section class="dash-panel" data-dash-panel="receipts">
                     <div class="dash-panel-head">
                         <div>
-                            <h2>Receipts</h2>
-                            <p>A receipt for every booking you've made, ready to download.</p>
+                            <h2>Booking summaries</h2>
+                            <p>Download your booking details. This is not proof of payment.</p>
                         </div>
                     </div>
 
@@ -1120,7 +1100,7 @@
                         <h4>Quick links</h4>
                         <button type="button" data-dash-nav="booking">Book a Court</button>
                         <button type="button" data-dash-nav="bookings">My Bookings</button>
-                        <button type="button" data-dash-nav="receipts">Receipts</button>
+                        <button type="button" data-dash-nav="receipts">Booking summaries</button>
                         <button type="button" data-dash-nav="settings">Account Settings</button>
                     </div>
 
@@ -1141,7 +1121,7 @@
                     <div class="dash-footer-col">
                         <h4>Policies</h4>
                         <a href="terms.html" target="_blank" rel="noopener noreferrer">Terms &amp; Conditions</a>
-                        <span>Bookings can't be cancelled or refunded; arriving more than 30 minutes late automatically marks it "Unattended."</span>
+                        <span>You cannot cancel a booking yourself. A booking without check-in after the 30-minute grace period is cancelled as a no-show; completed payments are non-refundable.</span>
                         <a href="https://www.facebook.com/profile.php?id=100064109438955" target="_blank" rel="noopener noreferrer" class="dash-footer-social">
                             <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M13.5 22v-8.5h2.8l.4-3.2h-3.2V4.3c0-.9.3-1.6 1.6-1.6h1.7V.1c-.3 0-1.3-.1-2.4-.1-2.4 0-4.1 1.5-4.1 4.2v2.4H7.2v3.2h2.8V22h3.5z"/></svg>
                             Facebook
@@ -1153,50 +1133,6 @@
                     <span>© 2026 IñigoSync · Iñigos Sports Center, Lucena City. All rights reserved.</span>
                 </div>
             </footer>
-        </div>
-    </div>
-
-    <!-- ================================================================
-         FEEDBACK MODAL (§2, D7) — ONE shared dialog for BOTH triggers: the
-         sidebar card's "Give Feedback" button (desktop/tablet) and the
-         topbar's standalone Feedback button (mobile), both marked
-         [data-dash-feedback-open] above. Sits outside .dash-shell (like
-         Pages/Index.html's #courtViewer sits outside <main>) so its
-         position:fixed overlay is never affected by the sidebar's own
-         transform on mobile. Rating is optional (1-5, click a selected star
-         again to clear it); the message is required. Wired in
-         includes/Dashboard.js, which inserts into the new `feedback` table
-         (database/schema/009_feedback.sql) and fails honestly with a toast
-         if that migration hasn't been applied yet. -->
-    <div class="dash-modal-overlay" data-dash-feedback-overlay hidden>
-        <div class="dash-modal" role="dialog" aria-modal="true" aria-labelledby="dashFeedbackTitle" tabindex="-1" data-dash-feedback-dialog>
-            <button type="button" class="dash-modal-close" data-dash-feedback-close aria-label="Close">
-                <svg viewBox="0 0 24 24" fill="none"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
-            </button>
-
-            <h3 id="dashFeedbackTitle">Give Feedback</h3>
-            <p class="dash-modal-sub">Tell us how your experience with IñigoSync has been.</p>
-
-            <div class="dash-form-group">
-                <span class="dash-form-label">Rating (optional)</span>
-                <div class="dash-feedback-rating" data-dash-feedback-rating>
-                    <button type="button" data-dash-feedback-star="1" aria-label="1 star" aria-pressed="false">★</button>
-                    <button type="button" data-dash-feedback-star="2" aria-label="2 stars" aria-pressed="false">★</button>
-                    <button type="button" data-dash-feedback-star="3" aria-label="3 stars" aria-pressed="false">★</button>
-                    <button type="button" data-dash-feedback-star="4" aria-label="4 stars" aria-pressed="false">★</button>
-                    <button type="button" data-dash-feedback-star="5" aria-label="5 stars" aria-pressed="false">★</button>
-                </div>
-            </div>
-
-            <div class="dash-form-group">
-                <span class="dash-form-label">Your message</span>
-                <textarea class="dash-input dash-textarea" rows="4" placeholder="What's working well? What could be better?" data-dash-feedback-message></textarea>
-            </div>
-
-            <div class="dash-form-actions">
-                <button type="button" class="dash-btn-ghost" data-dash-feedback-close>Cancel</button>
-                <button type="button" class="dash-btn-save" data-dash-feedback-submit>Submit Feedback</button>
-            </div>
         </div>
     </div>
 

@@ -77,7 +77,7 @@ document.addEventListener('DOMContentLoaded', () => {
         // its own entry above.
         booking: { title: 'Book a Court', subtitle: 'Follow the 3 simple steps below to reserve your schedule.' },
         bookings: { title: 'My Bookings', subtitle: "Track the status of every reservation you've made." },
-        receipts: { title: 'Receipts', subtitle: 'Payment records and invoices for your completed bookings.' },
+        receipts: { title: 'Booking summaries', subtitle: '' },
         profile: { title: 'My Profile', subtitle: 'Your personal details and booking history at a glance.' },
         settings: { title: 'Account Settings', subtitle: 'Update your personal details and manage your password.' },
     };
@@ -306,7 +306,6 @@ document.addEventListener('DOMContentLoaded', () => {
             }).join('');
         }
 
-        const HERO_MAX_SLIDES = 5;
 
         function loadHeroSlides() {
             if (!window.sb) {
@@ -317,7 +316,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 .select('id,title,meta,tag,image_url,display_order')
                 .eq('is_published', true)
                 .order('display_order')
-                .limit(HERO_MAX_SLIDES)
                 .then(({ data, error }) => {
                     if (error) {
                         console.error('[dashboard] failed to load hero slides — showing the built-in fallback instead.', error);
@@ -540,161 +538,6 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // ------------------------------------------------------------------
-    // Feedback modal (§2, D7 — implementation_plan.md). ONE modal, TWO
-    // triggers already in the markup: the sidebar card's "Give Feedback"
-    // button (desktop/tablet) and the topbar's standalone Feedback button
-    // (mobile) — both carry [data-dash-feedback-open] and open this same
-    // dialog. Open/close borrows the court viewer's fade-out timing
-    // (includes/landingPage.js's createCourtViewer — 250ms) rather than the
-    // simpler [data-open] dropdowns above, since this is a full dialog that
-    // needs a `hidden` round-trip, not just an opacity toggle anchored to a
-    // trigger.
-    // ------------------------------------------------------------------
-    const feedbackOverlay = document.querySelector('[data-dash-feedback-overlay]');
-    const feedbackDialog = document.querySelector('[data-dash-feedback-dialog]');
-    const feedbackMessageEl = document.querySelector('[data-dash-feedback-message]');
-    const feedbackSubmitBtn = document.querySelector('[data-dash-feedback-submit]');
-    const feedbackStars = Array.from(document.querySelectorAll('[data-dash-feedback-star]'));
-
-    const FEEDBACK_CLOSE_DELAY_MS = 250;
-    let feedbackHideTimer = null;
-    let feedbackLastFocused = null;
-    let feedbackIsOpen = false;
-    // Optional (§2: "optional 1-5 rating") — stays null until a star is
-    // clicked, and clicking the already-selected star again clears it back
-    // to null, so a customer who changes their mind can un-rate.
-    let feedbackRating = null;
-
-    function paintFeedbackStars(value) {
-        feedbackStars.forEach((btn) => {
-            const starValue = Number(btn.dataset.dashFeedbackStar);
-            const isSelected = value !== null && starValue <= value;
-            btn.classList.toggle('is-selected', isSelected);
-            btn.setAttribute('aria-pressed', String(value !== null && starValue === value));
-        });
-    }
-
-    feedbackStars.forEach((btn) => {
-        btn.addEventListener('click', () => {
-            const value = Number(btn.dataset.dashFeedbackStar);
-            feedbackRating = (feedbackRating === value) ? null : value;
-            paintFeedbackStars(feedbackRating);
-        });
-    });
-
-    function openFeedbackModal(invoker) {
-        if (!feedbackOverlay || !feedbackDialog) return;
-        feedbackLastFocused = invoker || document.activeElement;
-        closeProfileMenu();
-        closeNotifMenu();
-
-        if (feedbackHideTimer) {
-            window.clearTimeout(feedbackHideTimer);
-            feedbackHideTimer = null;
-        }
-
-        feedbackOverlay.hidden = false;
-        // Force a synchronous layout flush so the browser commits the
-        // hidden->visible state before [data-open] flips opacity to 1 —
-        // same trick includes/landingPage.js's court viewer uses (see its
-        // open()), otherwise the browser can batch both into one style
-        // recalc and skip the fade entirely.
-        void feedbackOverlay.offsetWidth;
-        feedbackOverlay.setAttribute('data-open', '');
-        feedbackIsOpen = true;
-        feedbackDialog.focus();
-    }
-
-    function closeFeedbackModal() {
-        if (!feedbackIsOpen) return;
-        feedbackIsOpen = false;
-
-        feedbackOverlay.removeAttribute('data-open');
-        if (feedbackHideTimer) window.clearTimeout(feedbackHideTimer);
-        feedbackHideTimer = window.setTimeout(() => {
-            feedbackOverlay.hidden = true;
-            feedbackHideTimer = null;
-        }, FEEDBACK_CLOSE_DELAY_MS);
-
-        if (feedbackLastFocused && typeof feedbackLastFocused.focus === 'function' && document.contains(feedbackLastFocused)) {
-            feedbackLastFocused.focus();
-        }
-        feedbackLastFocused = null;
-    }
-
-    document.querySelectorAll('[data-dash-feedback-open]').forEach((btn) => {
-        btn.addEventListener('click', () => openFeedbackModal(btn));
-    });
-
-    document.querySelectorAll('[data-dash-feedback-close]').forEach((btn) => {
-        btn.addEventListener('click', closeFeedbackModal);
-    });
-
-    if (feedbackOverlay) {
-        // Backdrop click only — a click that starts and ends on the overlay
-        // itself (not one that starts inside the dialog and merely
-        // bubbles), same `e.target === root` guard as the court viewer.
-        feedbackOverlay.addEventListener('click', (e) => {
-            if (e.target === feedbackOverlay) closeFeedbackModal();
-        });
-    }
-
-    document.addEventListener('keydown', (e) => {
-        if (e.key === 'Escape' && feedbackIsOpen) closeFeedbackModal();
-    });
-
-    if (feedbackSubmitBtn) {
-        feedbackSubmitBtn.addEventListener('click', async () => {
-            const message = (feedbackMessageEl?.value || '').trim();
-            if (!message) {
-                window.InigoToast?.show('Please enter a message before submitting.', true);
-                feedbackMessageEl?.focus();
-                return;
-            }
-            if (!window.sb || !window.inigosyncProfile) {
-                window.InigoToast?.show('Unable to reach the server right now. Please try again shortly.', true);
-                return;
-            }
-
-            const originalLabel = feedbackSubmitBtn.textContent;
-            feedbackSubmitBtn.disabled = true;
-            feedbackSubmitBtn.textContent = 'Submitting…';
-
-            const { error } = await window.sb.from('feedback').insert({
-                profile_id: window.inigosyncProfile.id,
-                rating: feedbackRating,
-                message,
-            });
-
-            feedbackSubmitBtn.disabled = false;
-            feedbackSubmitBtn.textContent = originalLabel;
-
-            if (error) {
-                console.error('[dashboard] feedback insert failed', error);
-                // This environment cannot apply database/schema/009_feedback.sql
-                // (no Supabase admin access) — isOverviewSchemaMismatch()
-                // (defined further below; despite its name it's a generic
-                // Postgres "relation/column doesn't exist" classifier, same
-                // idiom as includes/staff_dashboard.js's own
-                // isSchemaMismatchError()) turns that specific failure into
-                // a clear, actionable message instead of a raw Postgres
-                // error or a fake success toast.
-                const friendlyMessage = isOverviewSchemaMismatch(error)
-                    ? "Feedback isn't set up yet — this needs a database update. Please try again later."
-                    : (error.message || 'Could not submit your feedback. Please try again.');
-                window.InigoToast?.show(friendlyMessage, true);
-                return;
-            }
-
-            window.InigoToast?.show('Thanks for your feedback!');
-            if (feedbackMessageEl) feedbackMessageEl.value = '';
-            feedbackRating = null;
-            paintFeedbackStars(null);
-            closeFeedbackModal();
-        });
-    }
-
-    // ------------------------------------------------------------------
     // Theme toggle — includes/theme.js manages the data-theme attribute
     // and persistence; this just wires the topbar button to it and keeps
     // the sun/moon icon in sync.
@@ -747,7 +590,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // multi-hour RANGE picker backed by database/schema/
     // 012_booking_time_range.sql's new end_at/duration_minutes/court_unit
     // columns and its booking_no_overlap EXCLUDE constraint — see
-    // refreshTimePickers()/fetchDayBookings() further below and that
+    // refreshTimePickers()/fetchDayOccupancy() further below and that
     // migration's own header comment. bookingState.time (a single "8:00 AM"
     // string) is gone, replaced by bookingState.startHour/endHour (24-hour
     // integers) and bookingState.unit (the Step 1 preview's resolved
@@ -915,7 +758,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const unit = units[index];
         // Null only in the rare "quantity 0, no unit_images" fallback (see
         // window.InigoCourtsData.resolveCourtUnits()) — a real data gap, not
-        // an error; fetchDayBookings()/the insert below both treat a null
+        // an error; fetchDayOccupancy()/the insert below both treat a null
         // unit as "nothing to disambiguate", same as a legacy pre-Part-3
         // booking.
         bookingState.unit = unit.label;
@@ -1072,20 +915,21 @@ document.addEventListener('DOMContentLoaded', () => {
         // only one slot was ever selectable). Still null whenever the rate
         // itself is unknown (every court today — see hasKnownRate() above)
         // so this never invents a peso figure.
-        const amount = (hasKnownRate() && hours > 0) ? (bookingState.rate * hours * (isFull ? 1 : pct / 100)) : null;
+        const amount = (hasKnownRate() && bookingState.rateUnit !== '/game' && hours > 0)
+            ? (bookingState.rate * hours * (isFull ? 1 : pct / 100)) : null;
 
         if (summaryCourt) summaryCourt.textContent = bookingState.court || '—';
         if (summaryDate) summaryDate.textContent = formatDate(bookingState.date);
         if (summaryTime) summaryTime.textContent = bookingTimeRangeLabel() || '— Select a time —';
         if (summaryRate) summaryRate.textContent = hasKnownRate() ? `₱${bookingState.rate}${bookingState.rateUnit}` : 'Rate TBA';
-        if (summaryPayment) summaryPayment.textContent = isFull ? 'Full Payment' : `Downpayment (${pct}%)`;
+        if (summaryPayment) summaryPayment.textContent = isFull ? 'Full payment preference' : `Downpayment preference (${pct}%)`;
         if (summaryTotal) summaryTotal.textContent = amount !== null ? `₱${amount.toFixed(2)}` : '—';
         // Downpayment option's own description line ("Pay N% now, balance
         // on-site.") — kept in sync with the same real downpayment_pct
         // rather than left at its hardcoded "50%" (implementation_plan.md
         // E2, the same duplicated-hardcoded-50% defect Payment
         // Configuration was built to fix).
-        if (downpaymentDesc) downpaymentDesc.textContent = `Pay ${pct}% now, balance on-site.`;
+        if (downpaymentDesc) downpaymentDesc.textContent = `${pct}% preference; no payment is collected with this request.`;
 
         if (bookSubmit) {
             // Revision 5, D3 — both From AND To required (not just
@@ -1176,18 +1020,11 @@ document.addEventListener('DOMContentLoaded', () => {
     // source OVERVIEW_SLOT_HOURS further below and includes/
     // staff_dashboard.js's SCHEDULE_SLOTS now read.
     //
-    // Availability: fetchDayBookings() below queries the real `booking`
-    // table for the selected court + calendar day, restricted to
-    // 'pending'/'confirmed' rows (a cancelled/completed booking never
-    // blocks a new one). An hour is "booked" only if a returned row's
-    // window overlaps it AND that row's court_unit matches the CURRENTLY
-    // selected unit (bookingState.unit) — per-unit, not per-sport (D3):
-    // booking "Court 1" must never block "Court 2" of the same sport. A
-    // legacy row (court_unit is null, made before database/schema/
-    // 012_booking_time_range.sql existed) groups under '' along with any
-    // OTHER booking that also has no unit — i.e. it behaves as a
-    // sport-wide block. Accepted, documented gap (implementation_plan.md's
-    // "Open questions and risks").
+    // Availability comes from court_occupancy(), the database's
+    // privacy-limited view over the shared reservation ledger. It includes
+    // active online and walk-in reservations overlapping the selected day.
+    // Named units only block the same normalized unit; a missing/blank unit
+    // blocks every unit because its physical location cannot be narrowed.
     //
     // Reuses this file's own overlap primitives — overviewBookingWindow()/
     // overviewWindowsOverlap()/overviewSlotWindow() further below in the
@@ -1201,39 +1038,18 @@ document.addEventListener('DOMContentLoaded', () => {
     // outer scope, hoisted, so it doesn't matter that they're defined later
     // in this file than this section.
     //
-    // M2 fix (post-Revision-5 review) — D4 promises Overview and Step 2 can
-    // never disagree, but Overview's peek strip already counted walk-ins
-    // (isOverviewCourtHourOccupied() below) while Step 2 never fetched them
-    // at all, so an hour blocked by a walk-in still looked bookable here.
-    // fetchDayWalkins() below (reusing fetchOverviewWalkins()) fetches the
-    // same table for the selected court/date; isSlotHourBooked() treats any
-    // overlapping walk-in as occupying EVERY unit of the court, exactly
-    // like isOverviewCourtHourOccupied() does, since walk_in_booking has no
-    // court_unit column to narrow it to one.
+    // Online and walk-in rows are fetched in one RPC snapshot, then split
+    // for the shared hour checks below. This keeps both channels and every
+    // unit selector aligned with the overview availability display.
     //
-    // RLS CAVEAT (implementation_plan.md's "Open questions and risks" —
-    // documented, not introduced here, and NOT fixable from this repo):
-    // `booking`'s row-level security policies predate this repo's schema
-    // tracking and are not visible to it (database/schema/
-    // 004_staff_module.sql's own header note). If the signed-in customer
-    // role cannot SELECT other customers' booking rows, the query below
-    // returns only (or none of) their own bookings and these pickers would
-    // cheerfully offer a truly-booked hour as free. This code is written to
-    // be correct regardless of what RLS actually allows, but it cannot
-    // verify or fix RLS from here. The REAL guarantee against a double
-    // booking either way is server-side: database/schema/
-    // 012_booking_time_range.sql's booking_no_overlap EXCLUDE constraint,
-    // which the bookSubmit handler's own 23P01 branch below exists to
-    // surface as a friendly message. If RLS does turn out to hide other
-    // customers' bookings, the fix is a `security definer` RPC that
-    // returns ONLY busy time ranges (no customer identities) — NOT
-    // widening `booking`'s SELECT policy to expose every customer's
-    // bookings to every other signed-in customer.
+    // RLS CAVEAT — direct booking-table SELECT policies stay unchanged. The
+    // availability RPC returns only court/time occupancy, and database
+    // exclusion remains the final race-safe guard. Its 23P01 response is
+    // surfaced as a friendly conflict below.
     // ------------------------------------------------------------------
     let slotGridBookings = { ok: true, rows: [] };
-    // M2 fix (post-Revision-5 review) — walk-ins for the selected court/date,
-    // fetched alongside slotGridBookings above by refreshTimePickers() below
-    // (see fetchDayWalkins() further down). Same { ok, rows } shape so every
+    // Walk-ins from the same occupancy snapshot as slotGridBookings above.
+    // Same { ok, rows } shape so every
     // reader that already checks slotGridBookings.ok can check this one the
     // same way.
     let slotGridWalkins = { ok: true, rows: [] };
@@ -1246,69 +1062,38 @@ document.addEventListener('DOMContentLoaded', () => {
     // the exact same fetched rows for renderTimePickers() below.
     let slotGridRequestSeq = 0;
 
-    async function fetchDayBookings(courtName, dateStr) {
+    async function fetchDayOccupancy(courtName, dateStr) {
         if (!window.sb || !courtName || !dateStr) return { ok: false, rows: [] };
 
         const dayStart = new Date(`${dateStr}T00:00:00`);
-        const dayEnd = new Date(dayStart.getTime() + 24 * 60 * 60 * 1000);
-
-        // court_unit/end_at only exist once database/schema/
-        // 012_booking_time_range.sql has been applied. If it hasn't, this
-        // first attempt fails with a schema-mismatch error (same
-        // classifier fetchOverviewWalkins() below already uses, despite
-        // its "isOverviewSchemaMismatch" name) and this retries with only
-        // the columns that exist today, so the From/To pickers can still
-        // show approximate (sport-wide, not per-unit) availability instead
-        // of nothing.
-        let res = await window.sb
-            .from('booking')
-            .select('court_unit, time_date, end_at, duration_minutes')
-            .eq('courts', courtName)
-            .in('status', ['pending', 'confirmed'])
-            .gte('time_date', dayStart.toISOString())
-            .lt('time_date', dayEnd.toISOString());
-
-        if (res.error && isOverviewSchemaMismatch(res.error)) {
-            res = await window.sb
-                .from('booking')
-                .select('time_date, duration_minutes')
-                .eq('courts', courtName)
-                .in('status', ['pending', 'confirmed'])
-                .gte('time_date', dayStart.toISOString())
-                .lt('time_date', dayEnd.toISOString());
+        const dayEnd = new Date(dayStart.getFullYear(), dayStart.getMonth(), dayStart.getDate() + 1);
+        let res;
+        try {
+            res = await window.sb.rpc('court_occupancy', {
+                from_at: dayStart.toISOString(), to_at: dayEnd.toISOString(),
+            });
+        } catch (error) {
+            console.error('[dashboard] failed to load occupancy for the time pickers', error);
+            return { ok: false, rows: [] };
         }
 
         if (res.error) {
-            console.error('[dashboard] failed to load bookings for the time pickers', res.error);
+            console.error('[dashboard] failed to load occupancy for the time pickers', res.error);
             return { ok: false, rows: [] };
         }
-        return { ok: true, rows: res.data || [] };
+        return { ok: true, rows: (res.data || []).filter((row) => sameCourtName(row.courts, courtName)) };
     }
 
-    // M2 fix (post-Revision-5 review) — walk-ins for the same court/date
-    // fetchDayBookings() just fetched, so Step 2 stops disagreeing with the
-    // Overview strip about a walk-in-blocked hour (D4). Reuses
-    // fetchOverviewWalkins() itself (defined further below in the Overview
-    // Courts section; safe to call from here — hoisted `function`
-    // declaration, same reasoning as this section's own header comment on
-    // overviewBookingWindow()/overviewWindowsOverlap()) rather than a
-    // second walk_in_booking query with its own copy of the schema-mismatch
-    // retry. That function fetches every court's walk-ins for the day
-    // (the Overview widget needs all of them at once); narrowed to THIS
-    // court client-side since Step 2 only ever needs one.
-    async function fetchDayWalkins(courtName, dateStr) {
-        if (!window.sb || !courtName || !dateStr) return { ok: false, rows: [] };
+    function sameCourtName(a, b) {
+        return String(a || '').trim().toLocaleLowerCase() === String(b || '').trim().toLocaleLowerCase();
+    }
 
-        const dayStart = new Date(`${dateStr}T00:00:00`);
-        const dayEnd = new Date(dayStart.getTime() + 24 * 60 * 60 * 1000);
+    function sameCourtUnit(a, b) {
+        return String(a || '').trim().toLocaleLowerCase() === String(b || '').trim().toLocaleLowerCase();
+    }
 
-        const res = await fetchOverviewWalkins(dayStart, dayEnd);
-        if (res.error) {
-            console.error('[dashboard] failed to load walk-ins for the time pickers', res.error);
-            return { ok: false, rows: [] };
-        }
-        const rows = (res.data || []).filter((row) => String(row.courts || '') === courtName);
-        return { ok: true, rows };
+    function courtUnitsOverlap(a, b) {
+        return !String(a || '').trim() || !String(b || '').trim() || sameCourtUnit(a, b);
     }
 
     // True when `hour` (on the currently selected date) has already
@@ -1321,27 +1106,25 @@ document.addEventListener('DOMContentLoaded', () => {
         return start.getTime() < Date.now();
     }
 
-    // True when `hour` on the currently selected date overlaps a fetched
-    // booking that shares the CURRENTLY selected unit (or shares "no
-    // unit" — see this section's header comment on legacy rows), OR
-    // overlaps a walk-in (M2 fix, post-Revision-5 review) — a walk-in has
-    // no court_unit to match against at all, so it blocks EVERY unit of
-    // this court, exactly like isOverviewCourtHourOccupied() below treats
-    // it.
+    // True when an active reservation overlaps this court and selected
+    // unit. A missing/blank unit is a wildcard for either source, matching
+    // the shared database constraint.
     function isSlotHourBooked(hour) {
         if (!slotGridBookings.ok) return false;
         const dateBase = new Date(`${bookingState.date}T00:00:00`);
         const slot = overviewSlotWindow(hour, dateBase);
         const currentUnit = bookingState.unit || '';
         const bookingMatch = slotGridBookings.rows.some((row) => {
-            const rowUnit = row.court_unit || '';
-            if (rowUnit !== currentUnit) return false;
+            if (!courtUnitsOverlap(row.court_unit, currentUnit)) return false;
             return overviewWindowsOverlap(overviewBookingWindow(row), slot);
         });
         if (bookingMatch) return true;
 
         if (!slotGridWalkins.ok) return false;
-        return slotGridWalkins.rows.some((row) => overviewWindowsOverlap(overviewBookingWindow(row), slot));
+        return slotGridWalkins.rows.some((row) => {
+            return courtUnitsOverlap(row.court_unit, currentUnit)
+                && overviewWindowsOverlap(overviewBookingWindow(row), slot);
+        });
     }
 
     function slotHourStatus(hour) {
@@ -1531,7 +1314,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // Re-fetches availability for the currently selected court + date, then
     // repaints the From/To pickers from the result. Called whenever court,
     // unit, or date changes (implementation_plan.md) — a unit-only change
-    // re-fetches too, even though fetchDayBookings() isn't itself
+    // re-fetches too, even though fetchDayOccupancy() isn't itself
     // unit-filtered (filtering happens client-side in isSlotHourBooked()
     // above); the extra round trip is cheap and keeps this one function the
     // single "availability might have changed" entry point. Renamed from
@@ -1540,13 +1323,13 @@ document.addEventListener('DOMContentLoaded', () => {
     // deleted paintSlotGrid().
     async function refreshTimePickers() {
         if (!bookFromSelect || !bookToSelect) return;
+        const mySeq = ++slotGridRequestSeq;
 
         if (!bookingState.court || !bookingState.date) {
             renderTimePickers();
             return;
         }
 
-        const mySeq = ++slotGridRequestSeq;
         bookFromSelect.innerHTML = '<option value="">Checking availability…</option>';
         bookToSelect.innerHTML = '<option value="">Checking availability…</option>';
         bookFromSelect.disabled = true;
@@ -1556,16 +1339,13 @@ document.addEventListener('DOMContentLoaded', () => {
         // M2 fix — fetched together (Promise.all) so a walk-in fetched a
         // request apart from its booking counterpart can't itself become a
         // second, separately-racing source of staleness.
-        const [result, walkinResult] = await Promise.all([
-            fetchDayBookings(bookingState.court, bookingState.date),
-            fetchDayWalkins(bookingState.court, bookingState.date),
-        ]);
+        const result = await fetchDayOccupancy(bookingState.court, bookingState.date);
         // A newer refresh started while this one was in flight — that newer
         // call already owns the pickers, so this stale response is dropped
         // instead of flashing outdated availability.
         if (mySeq !== slotGridRequestSeq) return;
-        slotGridBookings = result;
-        slotGridWalkins = walkinResult;
+        slotGridBookings = { ok: result.ok, rows: result.rows.filter((row) => row.source === 'online') };
+        slotGridWalkins = { ok: result.ok, rows: result.rows.filter((row) => row.source === 'walkin') };
         renderTimePickers();
     }
 
@@ -1606,29 +1386,48 @@ document.addEventListener('DOMContentLoaded', () => {
             const endIso = new Date(`${bookingState.date}T${String(effectiveEnd + 1).padStart(2, '0')}:00:00`).toISOString();
 
             const originalLabel = bookSubmit.textContent;
+            const requestedSelection = {
+                court: bookingState.court,
+                unit: bookingState.unit || '',
+                date: bookingState.date,
+                startHour: bookingState.startHour,
+                endHour: bookingState.endHour,
+                paymentType: bookingState.paymentType,
+            };
             bookSubmit.disabled = true;
             bookSubmit.textContent = 'Submitting…';
 
             // Re-check availability immediately before inserting (D4,
             // implementation_plan.md) — an app-level check ON TOP OF the
-            // database's own booking_no_overlap EXCLUDE constraint below,
-            // not instead of it (see fetchDayBookings()'s own header
-            // comment on the RLS caveat this can't fully close). Refreshes
+            // database's shared reservation constraint. Refreshes
             // slotGridBookings with the very latest data first so this
             // isn't judging against whatever was fetched whenever Step 2
             // last rendered, which could be stale by now. M2 fix (post-
-            // Revision-5 review) — re-fetches walk-ins the same way, since
-            // a walk-in taken in the last few seconds is just as real a
-            // conflict as a booking (and, unlike a booking, has NO database
-            // constraint backing it up — see the insert's own comment below
-            // on why `walk_in_booking` is a different table — so this
-            // app-level recheck is the ONLY guard a walk-in gets).
-            const [recheck, walkinRecheck] = await Promise.all([
-                fetchDayBookings(bookingState.court, bookingState.date),
-                fetchDayWalkins(bookingState.court, bookingState.date),
-            ]);
-            if (recheck.ok) slotGridBookings = recheck;
-            if (walkinRecheck.ok) slotGridWalkins = walkinRecheck;
+            // Revision-5 review) — re-fetches both channels in the same
+            // snapshot, with the shared database constraint handling any
+            // race after this UX check.
+            const recheck = await fetchDayOccupancy(requestedSelection.court, requestedSelection.date);
+            if (!recheck.ok) {
+                bookSubmit.disabled = false;
+                bookSubmit.textContent = originalLabel;
+                window.InigoToast?.show('Could not verify live availability. Please try again.', true);
+                refreshTimePickers();
+                return;
+            }
+            if (bookingState.court !== requestedSelection.court
+                || (bookingState.unit || '') !== requestedSelection.unit
+                || bookingState.date !== requestedSelection.date
+                || bookingState.startHour !== requestedSelection.startHour
+                || bookingState.endHour !== requestedSelection.endHour
+                || bookingState.paymentType !== requestedSelection.paymentType) {
+                bookSubmit.disabled = false;
+                bookSubmit.textContent = originalLabel;
+                window.InigoToast?.show('Your selection changed. Please review the updated time and submit again.', true);
+                refreshTimePickers();
+                return;
+            }
+            slotGridBookings = { ok: true, rows: recheck.rows.filter((row) => row.source === 'online') };
+            slotGridWalkins = { ok: true, rows: recheck.rows.filter((row) => row.source === 'walkin') };
             let conflict = false;
             if (slotGridBookings.ok && slotGridWalkins.ok) {
                 for (let h = bookingState.startHour; h <= effectiveEnd; h++) {
@@ -1667,29 +1466,22 @@ document.addEventListener('DOMContentLoaded', () => {
             //  - `courts` is what the rest of this dashboard actually
             //    reads back (getCourtRate(booking.courts), and the My
             //    Bookings table's main cell), so it still carries the
-            //    customer's exact court selection. database/schema/
-            //    012_booking_time_range.sql's booking_no_overlap EXCLUDE
-            //    constraint also matches on this exact string — this
+            //    customer's exact court selection. The shared reservation
+            //    ledger normalizes the name for cross-channel matching — this
             //    insert is the ONLY place in the whole project that writes
             //    booking.courts (confirmed by grepping every
             //    `.from('booking')` call site), and it always sends
             //    court.name verbatim (see populateBookSelect() above), so
-            //    that constraint can't be bypassed by a differently
-            //    formatted name from here. The staff walk-in flow
-            //    (includes/staff_dashboard.js) writes a DIFFERENT table,
-            //    `walk_in_booking` — not this one — so it neither
-            //    threatens nor benefits from this constraint; see that
-            //    migration's header comment on why walk-in conflicts are
-            //    out of scope entirely.
+            //    case/whitespace variations cannot bypass overlap checks.
+            //    Staff walk-ins are covered by the same ledger constraint.
             //  - court_unit (Part 3, D3) is the specific Court/Lane/Table
             //    label the Step 1 preview resolved (bookingState.unit,
             //    kept in sync by paintBookPreview() above) — null for a
             //    court with nothing to disambiguate. This is what makes
             //    availability/overlap PER UNIT instead of per sport. A
             //    legacy row from before this column existed has
-            //    court_unit = NULL, which both this feature's availability
-            //    check and the EXCLUDE constraint group under '' — i.e. it
-            //    behaves as a sport-wide block. Accepted, documented gap.
+            //    court_unit = NULL, which this feature's availability check
+            //    and the shared ledger treat as occupying every unit.
             //  - end_at / duration_minutes (Part 3) — end_at is the real
             //    exclusive end of the range picked in Step 2; duration_minutes
             //    is kept in sync (hours * 60) rather than left at the old
@@ -1723,7 +1515,7 @@ document.addEventListener('DOMContentLoaded', () => {
             // with the pre-S2 payload — same "drop the unknown columns,
             // never fake success" idiom this project already uses
             // everywhere a column might not exist yet (isOverviewSchemaMismatch()
-            // below, e.g. fetchOverviewBookings()).
+            // below, e.g. fetchOverviewOccupancy()).
             const bookingPayload = {
                 customer_id: window.inigosyncProfile.id,
                 sports: bookingState.sport || bookingState.court,
@@ -1734,7 +1526,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 duration_minutes: hours * 60,
                 status: 'pending',
                 payment_option: bookingState.paymentType,
-                amount_total: hasKnownRate() ? bookingState.rate * hours : null,
+                amount_total: hasKnownRate() && bookingState.rateUnit !== '/game' ? bookingState.rate * hours : null,
             };
             let { error } = await window.sb.from('booking').insert(bookingPayload);
             if (error && isOverviewSchemaMismatch(error)) {
@@ -1807,7 +1599,7 @@ document.addEventListener('DOMContentLoaded', () => {
             refreshTimePickers();
             // D4 (implementation_plan.md, "Revision 5") — the Overview
             // panel's peek strip reads the exact same occupancy the pickers
-            // above just refreshed for (same fetchDayBookings()-shaped
+            // above just refreshed for (same fetchDayOccupancy()-shaped
             // query, same overlap primitives); without this it would keep
             // showing the pre-submit snapshot until the customer manually
             // changed its own date/unit.
@@ -2046,7 +1838,7 @@ document.addEventListener('DOMContentLoaded', () => {
     function todayRange() {
         const now = new Date();
         const start = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-        const end = new Date(start.getTime() + 24 * 60 * 60 * 1000);
+        const end = new Date(start.getFullYear(), start.getMonth(), start.getDate() + 1);
         return { start, end };
     }
 
@@ -2061,7 +1853,7 @@ document.addEventListener('DOMContentLoaded', () => {
     function overviewSelectedDayRange() {
         const start = new Date(`${overviewDate}T00:00:00`);
         if (Number.isNaN(start.getTime())) return todayRange();
-        return { start, end: new Date(start.getTime() + 24 * 60 * 60 * 1000) };
+        return { start, end: new Date(start.getFullYear(), start.getMonth(), start.getDate() + 1) };
     }
 
     // True when overviewDate IS today — the only case where any hour can
@@ -2100,8 +1892,8 @@ document.addEventListener('DOMContentLoaded', () => {
     // missing/invalid duration_minutes falls back to
     // OVERVIEW_DEFAULT_DURATION_MINUTES, never a fabricated guess. Prefers
     // the real end_at (database/schema/012_booking_time_range.sql, Part 3)
-    // when the caller's query selected it — both Step 2's fetchDayBookings()
-    // and this widget's own fetchOverviewBookings() below now do (D4,
+    // when the caller's query selected it — both Step 2's fetchDayOccupancy()
+    // and this widget's own fetchOverviewOccupancy() below now do (D4,
     // Revision 5), so this branch engages for both.
     function overviewBookingWindow(row) {
         const start = new Date(row.time_date);
@@ -2131,7 +1923,7 @@ document.addEventListener('DOMContentLoaded', () => {
     //
     // M2 fix (post-Revision-5 review) — this used to treat "anything not
     // cancelled" (including `completed`) as occupying, while Step 2's
-    // fetchDayBookings() only ever fetches `pending`/`confirmed` rows in the
+    // fetchDayOccupancy() only ever fetches `pending`/`confirmed` rows in the
     // first place (its `.in('status', [...])` filter). A `completed`
     // booking from earlier the same day therefore still blocked THIS
     // widget's pill while Step 2 had already stopped counting it — the two
@@ -2145,22 +1937,17 @@ document.addEventListener('DOMContentLoaded', () => {
         const bookingMatch = overviewBookings.some((b) => {
             const status = String(b.status || '').toLowerCase();
             if (status !== 'pending' && status !== 'confirmed') return false;
-            if (String(b.courts || '') !== court.name) return false;
-            if ((b.court_unit || '') !== currentUnit) return false;
+            if (!sameCourtName(b.courts, court.name)) return false;
+            if (!courtUnitsOverlap(b.court_unit, currentUnit)) return false;
             return overviewWindowsOverlap(overviewBookingWindow(b), slot);
         });
         if (bookingMatch) return true;
 
-        // Walk-ins carry no court_unit at all — walk_in_booking has no such
-        // column (database/schema/012_booking_time_range.sql's own header
-        // note: its EXCLUDE constraint deliberately does not cover this
-        // table). Matched by COURT NAME ONLY, same as before this revision,
-        // so a walk-in still blocks every unit's peek strip regardless of
-        // which one is currently selected, rather than silently
-        // under-reporting a real conflict just because this table can't say
-        // which unit it was.
+        // Occupancy rows retain a walk-in unit when available. Missing
+        // unit labels remain wildcards because the physical unit is unknown.
         return overviewWalkins.some((w) => {
-            if (String(w.courts || '') !== court.name) return false;
+            if (!sameCourtName(w.courts, court.name)) return false;
+            if (!courtUnitsOverlap(w.court_unit, currentUnit)) return false;
             return overviewWindowsOverlap(overviewBookingWindow(w), slot);
         });
     }
@@ -2185,47 +1972,18 @@ document.addEventListener('DOMContentLoaded', () => {
     // applied. If it hasn't, this first attempt fails with a schema-mismatch
     // error and retries with only the columns that predate that migration —
     // same idiom (and the exact same three columns dropped) as Step 2's own
-    // fetchDayBookings() above, so the two never disagree about which
+    // fetchDayOccupancy() above, so the two never disagree about which
     // columns they can/can't rely on. Without court_unit, occupancy still
     // degrades to a sport-wide (not per-unit) block, same "approximate
-    // availability instead of nothing" fallback fetchDayBookings() uses.
-    async function fetchOverviewBookings(start, end) {
-        let res = await window.sb.from('booking')
-            .select('courts, court_unit, time_date, end_at, duration_minutes, status')
-            .gte('time_date', start.toISOString())
-            .lt('time_date', end.toISOString());
-        if (res.error && isOverviewSchemaMismatch(res.error)) {
-            res = await window.sb.from('booking')
-                .select('courts, time_date, duration_minutes, status')
-                .gte('time_date', start.toISOString())
-                .lt('time_date', end.toISOString());
+    // availability instead of nothing" fallback fetchDayOccupancy() uses.
+    async function fetchOverviewOccupancy(start, end) {
+        try {
+            return await window.sb.rpc('court_occupancy', {
+                from_at: start.toISOString(), to_at: end.toISOString(),
+            });
+        } catch (error) {
+            return { data: null, error };
         }
-        return res;
-    }
-
-    // walk_in_booking.duration_minutes is NOT confirmed to exist —
-    // database/schema/004_staff_module.sql only adds duration_minutes to
-    // `booking`; no migration in this repo adds it to walk_in_booking, and
-    // no other code reads/writes it there (includes/staff_dashboard.js's own
-    // Court Schedule selects '*' for walk-ins, which tolerates either case).
-    // Try the precise column list first — if that specific column is what's
-    // missing, retry without it rather than treating an ordinary schema
-    // mismatch the same as the RLS risk this widget otherwise guards
-    // against; overviewBookingWindow() above already treats a missing
-    // duration_minutes as 60 minutes, so the retry changes nothing about how
-    // a walk-in's window is computed.
-    async function fetchOverviewWalkins(start, end) {
-        let res = await window.sb.from('walk_in_booking')
-            .select('courts, time_date, duration_minutes')
-            .gte('time_date', start.toISOString())
-            .lt('time_date', end.toISOString());
-        if (res.error && isOverviewSchemaMismatch(res.error)) {
-            res = await window.sb.from('walk_in_booking')
-                .select('courts, time_date')
-                .gte('time_date', start.toISOString())
-                .lt('time_date', end.toISOString());
-        }
-        return res;
     }
 
     function sortOverviewCourts(courts, mode) {
@@ -2584,14 +2342,11 @@ document.addEventListener('DOMContentLoaded', () => {
         const { start, end } = overviewSelectedDayRange();
 
         const courtsPromise = window.InigoCourtsData.getCourts();
-        const bookingPromise = window.sb
-            ? fetchOverviewBookings(start, end)
-            : Promise.resolve({ data: null, error: new Error('Supabase client unavailable') });
-        const walkinPromise = window.sb
-            ? fetchOverviewWalkins(start, end)
+        const occupancyPromise = window.sb
+            ? fetchOverviewOccupancy(start, end)
             : Promise.resolve({ data: null, error: new Error('Supabase client unavailable') });
 
-        const [courts, bookingRes, walkinRes] = await Promise.all([courtsPromise, bookingPromise, walkinPromise]);
+        const [courts, occupancyRes] = await Promise.all([courtsPromise, occupancyPromise]);
 
         // M3 fix — a slower, now-superseded call (e.g. the date was changed
         // again before this one resolved) must not overwrite state a newer,
@@ -2603,17 +2358,17 @@ document.addEventListener('DOMContentLoaded', () => {
         overviewDateBase = start;
         overviewCourts = courts || [];
 
-        if (bookingRes.error) console.error('[dashboard] failed to load bookings for the court peek', bookingRes.error);
-        if (walkinRes.error) console.error('[dashboard] failed to load walk-ins for the court peek', walkinRes.error);
+        if (occupancyRes.error) console.error('[dashboard] failed to load court occupancy for the court peek', occupancyRes.error);
 
         // Fail-safe, not fabrication (see this block's header comment on the
         // RLS risk): if EITHER query errors, every court's peek renders the
         // honest "unavailable" note instead of pills. Court rows themselves
         // still render regardless, since overviewCourts came from
         // window.InigoCourtsData independently of these two queries.
-        overviewDataOk = !bookingRes.error && !walkinRes.error;
-        overviewBookings = overviewDataOk ? (bookingRes.data || []) : [];
-        overviewWalkins = overviewDataOk ? (walkinRes.data || []) : [];
+        overviewDataOk = !occupancyRes.error;
+        const occupancyRows = overviewDataOk ? (occupancyRes.data || []) : [];
+        overviewBookings = occupancyRows.filter((row) => row.source === 'online');
+        overviewWalkins = occupancyRows.filter((row) => row.source === 'walkin');
 
         renderOverviewCourtList();
     }
@@ -2817,7 +2572,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 <td><span class="dash-status ${statusClass}">${statusLabel}</span></td>
                 <td>
                     <div class="dash-table-actions">
-                        <button type="button" class="dash-mini-btn" data-dash-nav="receipts">Receipt</button>
+                        <button type="button" class="dash-mini-btn" data-dash-nav="receipts">Details</button>
                     </div>
                 </td>
             `;
@@ -2870,10 +2625,10 @@ document.addEventListener('DOMContentLoaded', () => {
     // from Phase 2 — only the empty-forever data source above it changed.
     // ------------------------------------------------------------------
     const receiptsGrid = document.querySelector('.dash-receipt-grid');
-    const RECEIPT_EMPTY_HTML = '<p style="color: var(--color-ink-faint); padding: 24px 4px;">No receipts yet — book a court to see your receipt here.</p>';
+    const RECEIPT_EMPTY_HTML = '<p style="color: var(--color-ink-faint); padding: 24px 4px;">No booking summaries yet.</p>';
 
     if (receiptsGrid) {
-        receiptsGrid.innerHTML = '<p style="color: var(--color-ink-faint); padding: 24px 4px;">Loading your receipts…</p>';
+        receiptsGrid.innerHTML = '<p style="color: var(--color-ink-faint); padding: 24px 4px;">Loading your booking summaries…</p>';
     }
 
     // booking row -> the small, honest subset of fields a receipt card can
@@ -2953,12 +2708,14 @@ document.addEventListener('DOMContentLoaded', () => {
     // an <img> could.
     function renderReceiptCard(receipt) {
         const hasRate = receipt.rate !== null;
-        const amount = hasRate ? receipt.rate * receipt.hours : null;
-        const rateLineLabel = hasRate
+        const hasHourlyEstimate = hasRate && receipt.rateUnit !== '/game';
+        const amount = hasHourlyEstimate ? receipt.rate * receipt.hours : null;
+        const rateLineLabel = hasHourlyEstimate
             ? `₱${receipt.rate.toFixed(2)}/hr × ${receipt.hours} hr${receipt.hours === 1 ? '' : 's'}`
+            : hasRate ? `₱${receipt.rate.toFixed(2)}/game`
             : 'Amount';
-        const rateLineAmount = hasRate ? `₱${amount.toFixed(2)}` : 'Rate TBA';
-        const totalAmount = hasRate ? `₱${amount.toFixed(2)}` : '—';
+        const rateLineAmount = hasHourlyEstimate ? `₱${amount.toFixed(2)}` : hasRate ? 'Games not recorded' : 'Rate TBA';
+        const totalAmount = hasHourlyEstimate ? `₱${amount.toFixed(2)}` : '—';
         const statusClass = window.escapeHtml(receipt.status);
         const statusLabel = window.escapeHtml(receipt.status ? receipt.status.charAt(0).toUpperCase() + receipt.status.slice(1) : '—');
         const idAttr = window.escapeHtml(String(receipt.id));
@@ -2974,9 +2731,9 @@ document.addEventListener('DOMContentLoaded', () => {
             <div class="dash-receipt-card" data-dash-receipt-card="${idAttr}">
                 <div class="dash-receipt-brand">
                     <span class="dash-receipt-brand-name">IñigoSync</span>
-                    <span class="dash-receipt-brand-tag">Official booking receipt</span>
+                    <span class="dash-receipt-brand-tag">Booking summary · Not proof of payment</span>
                 </div>
-                <p class="dash-receipt-no">Receipt #${idAttr}</p>
+                <p class="dash-receipt-no">Booking #${idAttr}</p>
 
                 <div class="dash-receipt-divider"></div>
 
@@ -2998,13 +2755,13 @@ document.addEventListener('DOMContentLoaded', () => {
                 </div>
 
                 <div class="dash-receipt-total">
-                    <span>Total</span>
+                    <span>Estimated total</span>
                     <span>${window.escapeHtml(totalAmount)}</span>
                 </div>
 
                 <div class="dash-receipt-divider"></div>
 
-                <p class="dash-receipt-thanks">Thank you for booking with Iñigos Sports Center!</p>
+                <p class="dash-receipt-thanks">Payment is not confirmed by this summary.</p>
 
                 <div class="dash-receipt-actions">
                     <button type="button" class="dash-btn-primary" data-dash-receipt-download="${idAttr}">Download as PNG</button>
@@ -3060,7 +2817,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const url = URL.createObjectURL(blob);
             const link = document.createElement('a');
             link.href = url;
-            link.download = `inigosync-receipt-${filenameId}.png`;
+            link.download = `inigosync-booking-${filenameId}.png`;
             document.body.appendChild(link);
             link.click();
             link.remove();
@@ -3093,7 +2850,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 const ok = await downloadReceiptAsPng(card, btn.dataset.dashReceiptDownload || 'receipt');
                 btn.disabled = false;
                 btn.textContent = originalLabel;
-                if (ok) window.InigoToast?.show('Receipt downloaded.');
+                if (ok) window.InigoToast?.show('Booking summary downloaded.');
             });
         });
     }
@@ -3549,7 +3306,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (mobileOtpOverlay) {
         // Backdrop click only — same `e.target === root` guard as the
-        // Feedback modal's own overlay listener above.
+        // This overlay has its own backdrop listener.
         mobileOtpOverlay.addEventListener('click', (e) => {
             if (e.target === mobileOtpOverlay) closeMobileOtpModal();
         });

@@ -967,6 +967,26 @@ body.auth-lock {
     transform: translateY(-1px);
 }
 
+.auth-submit:disabled {
+    opacity: 0.58;
+    cursor: not-allowed;
+    transform: none;
+}
+
+.auth-login-lockout {
+    margin: 0;
+    padding: 10px 12px;
+    border-left: 3px solid var(--color-accent-text);
+    color: var(--color-ink);
+    background: var(--color-bg-elevated);
+    font-size: var(--fs-sm);
+    line-height: 1.5;
+}
+
+.auth-login-lockout[hidden] {
+    display: none;
+}
+
 .auth-switch {
     text-align: center;
     font-size: var(--fs-md);

@@ -363,12 +363,19 @@ body.admin-sidebar-open .admin-toggle-bar:nth-child(3) {
 }
 
 .admin-notif-menu-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
     font-family: var(--font-display);
     font-weight: 600;
     font-size: var(--fs-md);
     padding: 8px 10px 10px;
     color: var(--color-ink);
 }
+.admin-notif-mark-all { border: 0; background: none; color: var(--color-primary); font: 600 var(--fs-xs) var(--font-body); cursor: pointer; }
+.admin-notif-mark-all:disabled { opacity: .5; cursor: default; }
+.admin-notif-item.is-seen .admin-notif-dot { opacity: 0; }
 
 /* .admin-notif-item renders as EITHER a <button> (a pending booking — click
    jumps to Overview) or a plain <div> (a feedback row — informational
@@ -521,6 +528,8 @@ button.admin-notif-item:focus-visible {
 }
 .admin-panel-head h2 { font-family: var(--font-display); font-weight: 600; font-size: var(--fs-2xl); }
 .admin-panel-head p { color: var(--color-ink-faint); font-size: var(--fs-md); margin-top: 4px; }
+.admin-google-reviews-card { padding: 24px; min-height: 180px; }
+.admin-google-reviews-card .google-reviews-note { color: var(--color-ink-faint); font-size: var(--fs-sm); margin-top: 12px; }
 
 /* Stat cards */
 .admin-stat-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 18px; }
@@ -754,6 +763,9 @@ button.admin-notif-item:focus-visible {
 /* Toolbar / filters / search */
 .admin-toolbar { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
 .admin-filter-row { display: flex; gap: 10px; flex-wrap: wrap; }
+.admin-court-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+.admin-court-toolbar-left { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+.admin-court-toolbar .admin-search-wrap { flex: 0 1 260px; min-width: 200px; }
 
 .admin-chip {
     padding: 8px 16px; border-radius: 999px; border: 1px solid var(--color-line);
@@ -839,6 +851,7 @@ button.admin-notif-item:focus-visible {
 .admin-staff-meta { display: block; margin-top: 2px; font-size: var(--fs-xs); font-weight: 400; color: var(--color-ink-faint); }
 
 .admin-table-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.admin-staff-action-select { min-width: 126px; max-width: 190px; }
 
 .admin-mini-btn {
     padding: 7px 13px; border-radius: 999px; border: 1px solid var(--color-line); background: transparent;
@@ -967,6 +980,15 @@ button.admin-notif-item:focus-visible {
    see includes/owner_dashboard.js's renderAdminCourtCard, same pattern as
    includes/landingPage.js's .media-slot / .media-slot-monogram. */
 .admin-court-media img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.admin-court-art { position: absolute; inset: 0; background-image: url('../assets/landing/sports-equipment.png'); background-size: 400% 200%; background-repeat: no-repeat; }
+.admin-court-art-0 { background-position: 0% 0%; }
+.admin-court-art-1 { background-position: 33.333333% 0%; }
+.admin-court-art-2 { background-position: 66.666667% 0%; }
+.admin-court-art-3 { background-position: 100% 0%; }
+.admin-court-art-4 { background-position: 0% 100%; }
+.admin-court-art-5 { background-position: 33.333333% 100%; }
+.admin-court-art-6 { background-position: 66.666667% 100%; }
+.admin-court-art-7 { background-position: 100% 100%; }
 .admin-court-monogram {
     /* Revision A2 (implementation_plan.md) — Oswald 700 steps down to
        --fw-semibold (600); Sora renders heavier at the same weight. */

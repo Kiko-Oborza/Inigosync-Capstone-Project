@@ -1,3 +1,10 @@
+model = "gpt-6-astra"
+model_reasoning_effort = "high"
+
+[agents]
+enabled = true
+max_concurrent_threads_per_session = 3
+
 [mcp_servers.playwright]
 command = "npx"
 args = ["@playwright/mcp@latest"]

@@ -19,6 +19,7 @@ function emptyRange(labels, unit) {
 let CHART_DATA = {
     week: emptyRange(['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'], 'bookings per day · last 7 days'),
     month: emptyRange(['—'], 'bookings per month'),
+    year: emptyRange(['—'], 'bookings per month · this year'),
 };
 
 function aggregateWeek(rows) {
@@ -56,14 +57,38 @@ function aggregateMonth(rows) {
     return { labels, values, total: values.reduce((a, b) => a + b, 0), unit: `bookings per month · ${now.getFullYear()}` };
 }
 
+function aggregateYear(rows) {
+    const year = new Date().getFullYear();
+    const months = Array.from({ length: 12 }, (_, i) => new Date(year, i, 1));
+    const labels = months.map((d) => d.toLocaleDateString('en-US', { month: 'short' }));
+    const values = months.map((d) => rows.filter((row) => {
+        const time = new Date(row.time_date);
+        return time.getFullYear() === year && time.getMonth() === d.getMonth();
+    }).length);
+    return { labels, values, total: values.reduce((sum, value) => sum + value, 0), unit: `bookings per month · ${year}` };
+}
+
 async function loadChartData() {
     if (!window.sb) return;
-    const { data, error } = await window.sb.from('booking').select('time_date');
-    if (error || !data) {
-        console.error('[admin-chart] failed to load bookings', error);
-        return;
+    const now = new Date();
+    const earliest = new Date(now.getFullYear(), now.getMonth() - 7, 1);
+    const yearStart = new Date(now.getFullYear(), 0, 1);
+    const from = earliest < yearStart ? earliest : yearStart;
+    const rows = [];
+    for (let offset = 0; ; offset += 1000) {
+        const { data, error } = await window.sb.from('booking')
+            .select('time_date')
+            .gte('time_date', from.toISOString())
+            .order('time_date', { ascending: true })
+            .range(offset, offset + 999);
+        if (error || !data) {
+            console.error('[admin-chart] failed to load bookings', error);
+            return;
+        }
+        rows.push(...data);
+        if (data.length < 1000) break;
     }
-    CHART_DATA = { week: aggregateWeek(data), month: aggregateMonth(data) };
+    CHART_DATA = { week: aggregateWeek(rows), month: aggregateMonth(rows), year: aggregateYear(rows) };
 }
 
 function getThemeColors() {

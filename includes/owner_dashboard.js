@@ -64,12 +64,12 @@ document.addEventListener('DOMContentLoaded', () => {
         media: { title: 'Media Manager', subtitle: "Whatever you upload here shows up on the website's home featured slideshow — both the landing page and the customer dashboard." },
         // Revision A3 (implementation_plan.md, decision C5) — new tab, after
         // Media Manager in the sidebar.
-        feedback: { title: 'Feedbacks & Reviews', subtitle: 'What customers are saying about Iñigos.' },
+        feedback: { title: 'Feedbacks & Reviews', subtitle: '' },
         settings: { title: 'Account Settings', subtitle: 'Update your personal details and manage your owner password.' },
         // Revision A2, decision B2 — not in .admin-nav, only reachable from
         // the profile dropdown's "View Profile"; setActivePanel() below
         // still works unmodified since it just looks this key up.
-        profile: { title: 'My Profile', subtitle: 'Your account, at a glance.' },
+        profile: { title: 'Profile', subtitle: '' },
     };
 
     function setActivePanel(name) {
@@ -86,7 +86,8 @@ document.addEventListener('DOMContentLoaded', () => {
         const meta = panelMeta[name];
         if (meta && titleEl && subtitleEl) {
             titleEl.textContent = meta.title;
-            subtitleEl.textContent = meta.subtitle;
+            subtitleEl.textContent = '';
+            subtitleEl.hidden = true;
         }
 
         // Revision A3, decision C5 — Feedbacks & Reviews loads its data on
@@ -95,7 +96,6 @@ document.addEventListener('DOMContentLoaded', () => {
         // later in this file; calling it here is safe regardless of source
         // order, same reasoning already documented below for
         // closeAdminNotifMenu.
-        if (name === 'feedback') loadFeedback();
 
         closeMobileSidebar();
         closeProfileMenu();
@@ -460,37 +460,58 @@ document.addEventListener('DOMContentLoaded', () => {
     // "counts still fetched for nothing else" per the plan). The derived
     // Unattended rule itself (adminDisplayStatusFor()) is unchanged; bars
     // stay proportional to the max of these 3 shown counts.
-    const ADMIN_STATUS_LABELS = { pending: 'Pending', completed: 'Completed', unattended: 'Unattended' };
+    const ADMIN_STATUS_LABELS = { pending: 'Pending', confirmed: 'Confirmed', completed: 'Completed', cancelled: 'Cancelled', no_show: 'No-show' };
+    let statusRange = 'month';
+
+    function statusDateRange(range) {
+        const now = new Date();
+        if (range === 'week') {
+            const start = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 6);
+            return { start, end: new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1) };
+        }
+        if (range === 'year') {
+            return { start: new Date(now.getFullYear(), 0, 1), end: new Date(now.getFullYear() + 1, 0, 1) };
+        }
+        return monthRange(now);
+    }
+
+    document.querySelectorAll('[data-admin-status-range]').forEach((button) => {
+        button.addEventListener('click', () => {
+            statusRange = button.dataset.adminStatusRange;
+            document.querySelectorAll('[data-admin-status-range]').forEach((item) => {
+                item.classList.toggle('is-active', item === button);
+            });
+            refreshStatusBreakdown();
+        });
+    });
 
     async function refreshStatusBreakdown() {
         const listRoot = document.querySelector('[data-admin-status-breakdown]');
         if (!listRoot || !window.sb) return;
 
-        const { start: monthStart, end: monthEnd } = monthRange();
+        const { start, end } = statusDateRange(statusRange);
 
-        let { data, error } = await window.sb
-            .from('booking')
-            .select('status, time_date, checked_in_at')
-            .gte('time_date', monthStart.toISOString())
-            .lt('time_date', monthEnd.toISOString());
-
-        if (error && isSchemaMismatchError(error)) {
-            ({ data, error } = await window.sb
+        const rows = [];
+        for (let offset = 0; ; offset += 1000) {
+            const { data, error } = await window.sb
                 .from('booking')
-                .select('status, time_date')
-                .gte('time_date', monthStart.toISOString())
-                .lt('time_date', monthEnd.toISOString()));
+                .select('status, time_date, auto_cancelled_at')
+                .gte('time_date', start.toISOString())
+                .lt('time_date', end.toISOString())
+                .order('time_date', { ascending: true })
+                .range(offset, offset + 999);
+            if (error || !data) {
+                console.error('[admin] failed to load the booking status breakdown', error);
+                listRoot.innerHTML = '<p style="color: var(--color-ink-faint);">Could not load booking status.</p>';
+                return;
+            }
+            rows.push(...data);
+            if (data.length < 1000) break;
         }
 
-        if (error) {
-            console.error('[admin] failed to load the booking status breakdown', error);
-            listRoot.innerHTML = '<p style="color: var(--color-ink-faint);">Could not load booking status this month.</p>';
-            return;
-        }
-
-        const counts = { pending: 0, completed: 0, unattended: 0 };
-        (data || []).forEach((row) => {
-            const key = adminDisplayStatusFor(row);
+        const counts = { pending: 0, confirmed: 0, completed: 0, cancelled: 0, no_show: 0 };
+        rows.forEach((row) => {
+            const key = row.auto_cancelled_at ? 'no_show' : row.status;
             if (Object.prototype.hasOwnProperty.call(counts, key)) counts[key] += 1;
         });
 
@@ -667,23 +688,20 @@ document.addEventListener('DOMContentLoaded', () => {
         const LABEL = 'Database records';
         if (!window.sb) return adminPerfUnavailableRow(LABEL, 'Not connected to the server yet.');
         try {
-            const [bookingsRes, customersRes, feedbackRes] = await Promise.all([
+            const [bookingsRes, customersRes] = await Promise.all([
                 window.sb.from('booking').select('*', { count: 'exact', head: true }),
                 window.sb.from('profiles').select('*', { count: 'exact', head: true }).eq('role', 'customer'),
-                window.sb.from('feedback').select('*', { count: 'exact', head: true }),
             ]);
             const bookings = bookingsRes.error ? null : (bookingsRes.count || 0);
             const customers = customersRes.error ? null : (customersRes.count || 0);
-            const feedbackCount = feedbackRes.error ? null : (feedbackRes.count || 0);
 
-            if (bookings === null && customers === null && feedbackCount === null) {
+            if (bookings === null && customers === null) {
                 return adminPerfUnavailableRow(LABEL, 'Could not reach the database.');
             }
 
             const value = [
                 `${bookings === null ? '—' : bookings} booking${bookings === 1 ? '' : 's'}`,
                 `${customers === null ? '—' : customers} customer${customers === 1 ? '' : 's'}`,
-                `${feedbackCount === null ? '—' : feedbackCount} feedback`,
             ].join(' · ');
             return { label: LABEL, value, status: 'good', pillText: 'Good' };
         } catch (err) {
@@ -1215,6 +1233,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 refreshStaffList();
                 resetStaffForm();
                 closeStaffModal();
+                recordOwnerActivity(`Staff account invited: ${name}`, 'staff');
             } catch (err) {
                 window.alert(err.message || 'Could not send the invite. Please try again.');
             } finally {
@@ -1412,6 +1431,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
             closeStaffEditModal();
             refreshStaffList();
+            recordOwnerActivity(`Staff account updated: ${full_name}`, 'staff');
             window.InigoToast?.show(usedReducedPayload
                 ? 'Staff updated — address/birthdate/gender/emergency contact need a database update (see database/schema/018_staff_details.sql).'
                 : 'Staff updated.');
@@ -1513,12 +1533,16 @@ document.addEventListener('DOMContentLoaded', () => {
             <td data-admin-staff-status-cell>${staffStatusBadge(profile.status)}</td>
             <td>
                 <div class="admin-table-actions">
-                    <button type="button" class="admin-mini-btn" data-admin-view-staff>View</button>
-                    <button type="button" class="admin-mini-btn" data-admin-reset-password>Reset Password</button>
-                    <button type="button" class="admin-mini-btn" data-admin-edit-staff>Edit</button>
+                    <select class="admin-select admin-staff-action-select" data-admin-staff-action-select aria-label="Actions for ${window.escapeHtml(profile.full_name || 'staff member')}">
+                        <option value="">Actions…</option><option value="view">View</option><option value="edit">Edit</option>
+                        <option value="reset">Send password reset</option><option value="toggle">${profile.status === 'disabled' ? 'Activate' : 'Deactivate'}</option>
+                    </select>
+                    <button type="button" hidden data-admin-view-staff>View</button>
+                    <button type="button" hidden data-admin-reset-password>Reset Password</button>
+                    <button type="button" hidden data-admin-edit-staff>Edit</button>
                     ${profile.status === 'disabled'
-                        ? '<button type="button" class="admin-mini-btn" data-admin-activate-staff>Activate</button>'
-                        : '<button type="button" class="admin-mini-btn is-danger" data-admin-delete-staff>Deactivate</button>'}
+                        ? '<button type="button" hidden data-admin-activate-staff>Activate</button>'
+                        : '<button type="button" hidden data-admin-delete-staff>Deactivate</button>'}
                 </div>
             </td>
         `;
@@ -1563,6 +1587,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (error) {
             console.error('[admin] failed to load staff', error);
+            staffTable.querySelector('tbody').innerHTML = '<tr><td colspan="5">Could not load staff accounts. Please refresh the page.</td></tr>';
             return;
         }
 
@@ -1573,39 +1598,50 @@ document.addEventListener('DOMContentLoaded', () => {
             tbody.appendChild(row);
             wireStaffRowActions(row);
         });
+        if (!data?.length) tbody.innerHTML = '<tr><td colspan="5">No staff accounts yet.</td></tr>';
     }
 
     function wireStaffRowActions(scope) {
-        // Revision A1, decision A4 — Reset Password now calls the
-        // SECURITY DEFINER RPC (database/schema/014_admin_reset_staff_password.sql)
-        // instead of emailing a reset link. confirm() first (this is
-        // immediate and irreversible from the target's point of view — their
-        // current password stops working the instant this runs), then a
-        // toast naming the account and the default password so the admin
-        // can pass it along right away.
+        scope.querySelectorAll('[data-admin-staff-action-select]').forEach((select) => {
+            select.addEventListener('change', () => {
+                const target = {
+                    view: '[data-admin-view-staff]',
+                    edit: '[data-admin-edit-staff]',
+                    reset: '[data-admin-reset-password]',
+                    toggle: scope.querySelector('[data-admin-activate-staff]') ? '[data-admin-activate-staff]' : '[data-admin-delete-staff]',
+                }[select.value];
+                select.value = '';
+                if (target) scope.querySelector(target)?.click();
+            });
+        });
+        // Never set a shared default password. The staff member receives a
+        // short-lived recovery link and chooses their own replacement.
         scope.querySelectorAll('[data-admin-reset-password]').forEach((btn) => {
             btn.addEventListener('click', async () => {
                 const row = btn.closest('tr');
                 if (!row || !window.sb) return;
                 const name = row.querySelector('[data-admin-staff-name-cell]')?.textContent || 'this account';
-
-                if (!window.confirm(`Reset ${name}'s password to the default (12345678)? They will need to change it after logging in.`)) return;
-
-                btn.disabled = true;
-                const { error } = await window.sb.rpc('admin_reset_staff_password', { target_id: row.dataset.id });
-                btn.disabled = false;
-
-                if (error) {
-                    window.InigoToast?.show(
-                        isSchemaMismatchError(error)
-                            ? "This needs a database update that hasn't been applied yet (see database/schema/014_admin_reset_staff_password.sql)."
-                            : (error.message || 'Could not reset this password.'),
-                        true
-                    );
+                const email = row.__staffProfile?.email || row.cells[1]?.textContent?.trim();
+                if (!email) {
+                    window.InigoToast?.show('This staff account has no email address.', true);
                     return;
                 }
 
-                window.InigoToast?.show(`Password reset to the default (12345678). Ask ${name} to change it after logging in.`);
+                if (!window.confirm(`Email a password recovery link to ${name} at ${email}?`)) return;
+
+                btn.disabled = true;
+                const { error } = await window.sb.auth.resetPasswordForEmail(email, {
+                    redirectTo: new URL('Index.html', window.location.href).href,
+                });
+                btn.disabled = false;
+
+                if (error) {
+                    window.InigoToast?.show(error.message || 'Could not send the recovery email.', true);
+                    return;
+                }
+
+                window.InigoToast?.show(`Recovery email requested for ${name}. Ask them to check their inbox.`);
+                recordOwnerActivity('Staff password recovery requested: ' + name, 'staff');
             });
         });
 
@@ -1652,6 +1688,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     return;
                 }
                 refreshStaffList();
+                recordOwnerActivity(`Staff account deactivated: ${name}`, 'staff');
             });
         });
 
@@ -1674,6 +1711,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
                 window.InigoToast?.show(`${name} reactivated.`);
                 refreshStaffList();
+                recordOwnerActivity(`Staff account activated: ${name}`, 'staff');
             });
         });
     }
@@ -1809,11 +1847,16 @@ document.addEventListener('DOMContentLoaded', () => {
     function applyCourtFilter() {
         const activeChip = document.querySelector('[data-admin-court-filter].is-active');
         const filter = activeChip ? activeChip.dataset.adminCourtFilter : 'all';
+        const search = (document.querySelector('[data-admin-court-search]')?.value || '').trim().toLocaleLowerCase();
         document.querySelectorAll('[data-admin-court-status]').forEach((card) => {
-            const match = filter === 'all' || card.dataset.adminCourtStatus === filter;
+            const matchesStatus = filter === 'all' || card.dataset.adminCourtStatus === filter;
+            const matchesSearch = !search || card.textContent.toLocaleLowerCase().includes(search);
+            const match = matchesStatus && matchesSearch;
             card.style.display = match ? '' : 'none';
         });
     }
+
+    document.querySelector('[data-admin-court-search]')?.addEventListener('input', applyCourtFilter);
 
     document.querySelectorAll('[data-admin-court-filter]').forEach((chip) => {
         chip.addEventListener('click', () => {
@@ -1835,9 +1878,7 @@ document.addEventListener('DOMContentLoaded', () => {
         courtForm.querySelectorAll('input[type="text"], input[type="number"], input[type="url"]').forEach((el) => { el.value = ''; });
         const quantityInput = courtForm.querySelector('[data-admin-court-quantity]');
         if (quantityInput) quantityInput.value = '1';
-        // Revision A2, decision B7 — data-admin-court-rate-unit no longer
-        // exists (Billing unit removed; every court now bills '/hr').
-        ['[data-admin-court-unit]', '[data-admin-court-op-status]'].forEach((selector) => {
+        ['[data-admin-court-unit]', '[data-admin-court-rate-unit]', '[data-admin-court-op-status]'].forEach((selector) => {
             const el = courtForm.querySelector(selector);
             if (el) el.selectedIndex = 0;
         });
@@ -1854,20 +1895,24 @@ document.addEventListener('DOMContentLoaded', () => {
     // ------------------------------------------------------------------
     // Court modal — Photos rendering/wiring (Revision A2, decision B6).
     // ------------------------------------------------------------------
-    function courtPhotoSlotThumbHtml(url) {
+    function courtPhotoSlotThumbHtml(url, kind) {
         const safe = url && isSafeImageUrl(url) ? url : null;
-        return safe
-            ? `<img src="${window.escapeHtml(safe)}" alt="" loading="lazy">`
-            : '<span class="admin-photo-slot-empty">No photo yet</span>';
+        if (safe) return `<img src="${window.escapeHtml(safe)}" alt="" loading="lazy">`;
+        if (kind === 'cover') {
+            const editingCourt = currentCourts.find((court) => String(court.id) === String(courtForm?.dataset.editingId));
+            const art = ['basketball', 'badminton', 'bowling', 'billiards', 'lawn-tennis', 'pickleball', 'table-tennis', 'volleyball'].indexOf(editingCourt?.sportSlug);
+            if (art >= 0) return `<span class="admin-court-art admin-court-art-${art}" aria-label="Landing illustration; no cover photo uploaded"></span>`;
+        }
+        return '<span class="admin-photo-slot-empty">No photo yet</span>';
     }
 
     function courtPhotoSlotHtml(kind, index, label, url) {
         const hasPhoto = Boolean(url && isSafeImageUrl(url));
         return `
             <div class="admin-photo-slot" data-admin-photo-slot data-slot-kind="${kind}"${index === null ? '' : ` data-slot-index="${index}"`}>
-                <div class="admin-photo-slot-thumb">${courtPhotoSlotThumbHtml(url)}</div>
+                <div class="admin-photo-slot-thumb">${courtPhotoSlotThumbHtml(url, kind)}</div>
                 <div class="admin-photo-slot-body">
-                    <span class="admin-photo-slot-label">${window.escapeHtml(label)}</span>
+                    <span class="admin-photo-slot-label">${window.escapeHtml(label)}${kind === 'cover' && !hasPhoto ? ' · Landing illustration only' : ''}</span>
                     <div class="admin-photo-slot-actions">
                         <button type="button" class="admin-btn-chip-secondary" data-admin-photo-upload>Upload</button>
                         ${hasPhoto ? '<button type="button" class="admin-btn-chip-danger" data-admin-photo-remove>Remove</button>' : ''}
@@ -1882,7 +1927,12 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!grid) return;
 
         const slots = [courtPhotoSlotHtml('cover', null, 'Cover photo', courtModalState.coverUrl)];
-        courtModalState.unitImages.forEach((unit, index) => {
+        const visibleUnits = deriveCourtPhotoUnits(
+            document.querySelector('[data-admin-court-quantity]')?.value,
+            document.querySelector('[data-admin-court-unit]')?.value,
+            courtModalState.unitImages
+        );
+        visibleUnits.forEach((unit, index) => {
             slots.push(courtPhotoSlotHtml('unit', index, unit.label, unit.imageUrl));
         });
 
@@ -1907,14 +1957,12 @@ document.addEventListener('DOMContentLoaded', () => {
             if (removeBtn) {
                 removeBtn.addEventListener('click', () => {
                     if (kind === 'cover') {
-                        removeUploadedMediaBestEffort(courtModalState.coverUrl);
                         courtModalState.coverUrl = null;
                         const urlInput = document.querySelector('[data-admin-court-image-url]');
                         if (urlInput) urlInput.value = '';
                     } else {
                         const unit = courtModalState.unitImages[index];
                         if (unit) {
-                            removeUploadedMediaBestEffort(unit.imageUrl);
                             unit.imageUrl = null;
                         }
                     }
@@ -1960,9 +2008,7 @@ document.addEventListener('DOMContentLoaded', () => {
             setValue('[data-admin-court-quantity]', court.quantity || 1);
             setValue('[data-admin-court-unit]', court.unit || 'courts');
             setValue('[data-admin-court-rate]', court.rate !== null ? court.rate : '');
-            // Revision A2, decision B7 — data-admin-court-rate-unit no
-            // longer exists; every court bills '/hr' (see courtSubmitBtn's
-            // save payload below).
+            setValue('[data-admin-court-rate-unit]', court.rateUnit || '/hr');
             setValue('[data-admin-court-description]', court.description || '');
             setValue('[data-admin-court-op-status]', court.status || 'Available');
             setValue('[data-admin-court-image-url]', court.imageUrl || '');
@@ -2058,11 +2104,16 @@ document.addEventListener('DOMContentLoaded', () => {
     const courtQuantityInput = document.querySelector('[data-admin-court-quantity]');
     const courtUnitSelect = document.querySelector('[data-admin-court-unit]');
     function handleCourtUnitFieldsChange() {
-        courtModalState.unitImages = deriveCourtPhotoUnits(
+        const visibleUnits = deriveCourtPhotoUnits(
             courtQuantityInput ? courtQuantityInput.value : 0,
             courtUnitSelect ? courtUnitSelect.value : '',
             courtModalState.unitImages
         );
+        // Keep hidden drafts while someone edits the number field. Typing "12"
+        // passes through "1"; truncating here used to destroy Court 2's photo.
+        if (visibleUnits.length > courtModalState.unitImages.length) {
+            courtModalState.unitImages = visibleUnits;
+        }
         renderCourtPhotoSlots();
     }
     if (courtQuantityInput) courtQuantityInput.addEventListener('input', handleCourtUnitFieldsChange);
@@ -2094,8 +2145,11 @@ document.addEventListener('DOMContentLoaded', () => {
         const statusLabel = isActive ? 'Active' : 'Deactivated';
         const monogram = window.InigoCourtsData ? window.InigoCourtsData.monogramFor(court.sportSlug, court.name) : '?';
         const safeImageUrl = court.imageUrl && isSafeImageUrl(court.imageUrl) ? court.imageUrl : null;
+        const artworkIndex = ['basketball', 'badminton', 'bowling', 'billiards', 'lawn-tennis', 'pickleball', 'table-tennis', 'volleyball'].indexOf(court.sportSlug);
         const media = safeImageUrl
             ? `<img src="${window.escapeHtml(safeImageUrl)}" alt="${window.escapeHtml(court.name)}" loading="lazy">`
+            : artworkIndex >= 0
+                ? `<span class="admin-court-art admin-court-art-${artworkIndex}" role="img" aria-label="${window.escapeHtml(court.name)} illustration"></span>`
             : `<span class="admin-court-monogram" aria-hidden="true">${window.escapeHtml(monogram)}</span>`;
         // Rate rendering: ₱<rate><rate_unit> when non-null, an honest "Rate
         // TBA" placeholder when null — every court's rate is NULL in the
@@ -2162,6 +2216,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const quantityInput = document.querySelector('[data-admin-court-quantity]');
             const unitSelect = document.querySelector('[data-admin-court-unit]');
             const rateInput = document.querySelector('[data-admin-court-rate]');
+            const rateUnitSelect = document.querySelector('[data-admin-court-rate-unit]');
             const descriptionInput = document.querySelector('[data-admin-court-description]');
             const opStatusSelect = document.querySelector('[data-admin-court-op-status]');
 
@@ -2220,18 +2275,23 @@ document.addEventListener('DOMContentLoaded', () => {
                 unit: unitSelect ? unitSelect.value : 'courts',
                 description: (descriptionInput && descriptionInput.value.trim()) ? descriptionInput.value.trim() : null,
                 rate,
-                // Revision A2, decision B7 — "Per game" billing is gone;
-                // every court bills per hour now, always, regardless of
-                // what (if anything) it billed before.
-                rate_unit: '/hr',
+                rate_unit: rateUnitSelect?.value === '/game' ? '/game' : '/hr',
                 status: opStatusSelect ? opStatusSelect.value : 'Available',
                 image_url: coverUrl || null,
                 // Revision A2, decision B6 — per-unit photos, bridged to
                 // the column's snake_case {label, image_url} shape.
-                unit_images: unitImagesToDbShape(courtModalState.unitImages),
+                unit_images: unitImagesToDbShape(deriveCourtPhotoUnits(
+                    quantity,
+                    unitSelect ? unitSelect.value : 'courts',
+                    courtModalState.unitImages
+                )),
             };
 
             const editingId = courtForm.dataset.editingId;
+            const originalCourt = editingId ? currentCourts.find((court) => String(court.id) === String(editingId)) : null;
+            if (!window.confirm(editingId
+                ? `Save changes to "${name}"?`
+                : `Add "${name}" as a new court?`)) return;
             const originalLabel = courtSubmitBtn.textContent;
             courtSubmitBtn.disabled = true;
             courtSubmitBtn.textContent = editingId ? 'Saving…' : 'Adding…';
@@ -2292,6 +2352,14 @@ document.addEventListener('DOMContentLoaded', () => {
                 return;
             }
 
+            // Remove superseded Storage objects only after the database save succeeds.
+            // Cancelling the editor or a failed save must leave existing photos intact.
+            if (originalCourt) {
+                const previousUrls = [originalCourt.imageUrl, ...(originalCourt.unitImages || []).map((unit) => unit.imageUrl)].filter(Boolean);
+                const retainedUrls = new Set([payload.image_url, ...(unitImagesSchemaMissing ? (originalCourt.unitImages || []).map((unit) => unit.imageUrl) : (payload.unit_images || []).map((unit) => unit.image_url))].filter(Boolean));
+                previousUrls.filter((url) => !retainedUrls.has(url)).forEach(removeUploadedMediaBestEffort);
+            }
+
             window.InigoToast?.show(
                 unitImagesSchemaMissing && courtModalState.unitImages.length
                     ? `${editingId ? 'Court updated' : 'Court added'}, but per-unit photos need a database update (see database/schema/006_court_unit_images.sql).`
@@ -2303,6 +2371,7 @@ document.addEventListener('DOMContentLoaded', () => {
             // the freshly-saved unit_images/image_url are what the
             // customer dashboard's unit picker sees on its own next load.
             loadAndRenderCourts();
+            recordOwnerActivity(`${editingId ? 'Court updated' : 'Court added'}: ${name}`, 'courts');
         });
     }
 
@@ -2350,6 +2419,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
                 window.InigoToast?.show(`Court ${currentlyActive ? 'deactivated' : 'activated'}.`);
                 loadAndRenderCourts();
+                recordOwnerActivity(`Court ${currentlyActive ? 'deactivated' : 'activated'}: ${court?.name || 'Court'}`, 'courts');
             });
         });
     }
@@ -2406,14 +2476,12 @@ document.addEventListener('DOMContentLoaded', () => {
             try {
                 const url = await uploadToMedia(path, blob);
                 if (slot.kind === 'cover') {
-                    removeUploadedMediaBestEffort(courtModalState.coverUrl);
                     courtModalState.coverUrl = url;
                     const urlInput = document.querySelector('[data-admin-court-image-url]');
                     if (urlInput) urlInput.value = url;
                 } else {
                     const unit = courtModalState.unitImages[slot.index];
                     if (unit) {
-                        removeUploadedMediaBestEffort(unit.imageUrl);
                         unit.imageUrl = url;
                     }
                 }
@@ -2448,16 +2516,8 @@ document.addEventListener('DOMContentLoaded', () => {
     // "Court photos" card (a second, redundant path to the SAME
     // court.image_url the Court Listings modal already edits) is removed
     // outright rather than ported.
-    // ------------------------------------------------------------------
-    // W2 (Revision A1 fix) — this used to be 6, but both places that
-    // actually render the hero slideshow cap themselves at 5:
-    // includes/Dashboard.js's HERO_MAX_SLIDES (.limit(HERO_MAX_SLIDES) on
-    // its `event` query) and includes/home-showcase.js's MAX_HERO_SLIDES
-    // (.slice(0, MAX_HERO_SLIDES)). A 6th staged/published slide was
-    // accepted here but silently never shown anywhere, so the cap below
-    // now matches both consumers instead of promising a slot that doesn't
-    // exist.
-    const MAX_SLIDES = 5;
+    // The landing page and customer dashboard load every published slide;
+    // the owner can stage an unlimited number of drafts and publish them as needed.
     let currentSlides = [];
 
     function slideMediaMarkup(slide) {
@@ -2468,7 +2528,7 @@ document.addEventListener('DOMContentLoaded', () => {
         return '<span class="admin-slide-photo-soon" aria-hidden="true">No photo yet</span>';
     }
 
-    function renderSlideCard(slide, index, total) {
+    function renderSlideEditor(slide, index, total) {
         const media = slideMediaMarkup(slide);
         const isFirst = index === 0;
         const isLast = index === total - 1;
@@ -2510,20 +2570,54 @@ document.addEventListener('DOMContentLoaded', () => {
         `;
     }
 
+    function renderSlideCard(slide, index) {
+        return `<div class="admin-slide-card" data-slide-id="${window.escapeHtml(slide.id)}">
+            <div class="admin-slide-thumb">${slideMediaMarkup(slide)}<span class="admin-slide-badge">Slide ${index + 1}</span></div>
+            <div class="admin-slide-body">
+                <strong>${window.escapeHtml(slide.title || 'Untitled slide')}</strong>
+                <span class="admin-slide-caption">${slide.is_published === false ? 'Draft' : 'Published'}</span>
+                <button type="button" class="admin-btn-chip-primary" data-admin-slide-edit="${window.escapeHtml(slide.id)}">Edit slide</button>
+            </div>
+        </div>`;
+    }
+
+    const slideModal = document.querySelector('[data-admin-slide-modal]');
+    const slideEditorRoot = document.querySelector('[data-admin-slide-editor]');
+    const slideDialog = document.querySelector('[data-admin-slide-dialog]');
+
+    function closeSlideEditor() {
+        if (!slideModal) return;
+        slideModal.removeAttribute('data-open');
+        slideModal.hidden = true;
+    }
+
+    function openSlideEditor(slideId) {
+        const index = currentSlides.findIndex((slide) => String(slide.id) === String(slideId));
+        if (index < 0 || !slideModal || !slideEditorRoot) return;
+        slideEditorRoot.innerHTML = renderSlideEditor(currentSlides[index], index, currentSlides.length);
+        slideModal.hidden = false;
+        slideModal.setAttribute('data-open', '');
+        wireSlideCardActions(slideEditorRoot);
+        slideDialog?.focus();
+    }
+
+    slideModal?.querySelectorAll('[data-admin-slide-modal-close]').forEach((button) => button.addEventListener('click', closeSlideEditor));
+    slideModal?.addEventListener('click', (event) => { if (event.target === slideModal) closeSlideEditor(); });
+    document.addEventListener('keydown', (event) => { if (event.key === 'Escape' && slideModal && !slideModal.hidden) closeSlideEditor(); });
+
     function renderSlides() {
         const slidesGrid = document.querySelector('[data-admin-slides]');
         if (!slidesGrid) return;
 
         slidesGrid.innerHTML = currentSlides.length
             ? currentSlides.map((slide, i) => renderSlideCard(slide, i, currentSlides.length)).join('')
-            : '<p style="color: var(--color-ink-faint); padding: 8px 4px;">No slides yet — add one below.</p>';
-        wireSlideCardActions(slidesGrid);
+            : '<p style="color: var(--color-ink-faint); padding: 8px 4px;">No slides yet — add one above.</p>';
+        slidesGrid.querySelectorAll('[data-admin-slide-edit]').forEach((button) => {
+            button.addEventListener('click', () => openSlideEditor(button.dataset.adminSlideEdit));
+        });
 
         const subEl = document.querySelector('[data-admin-slides-sub]');
-        if (subEl) subEl.textContent = `${currentSlides.length} of ${MAX_SLIDES} slots used. Recommended 1600×900 — larger photos are resized automatically.`;
-
-        const addBtn = document.querySelector('[data-admin-slide-add]');
-        if (addBtn) addBtn.disabled = currentSlides.length >= MAX_SLIDES;
+        if (subEl) subEl.textContent = `${currentSlides.length} slide${currentSlides.length === 1 ? '' : 's'}`;
     }
 
     async function loadSlides() {
@@ -2575,6 +2669,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         return;
                     }
                     slide.title = value;
+                    recordOwnerActivity(`Updated slideshow slide: ${value}`, 'media');
                 });
             }
 
@@ -2590,6 +2685,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         return;
                     }
                     slide.meta = value || null;
+                    recordOwnerActivity(`Updated slideshow caption: ${slide.title || 'Slide'}`, 'media');
                 });
             }
 
@@ -2605,6 +2701,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         return;
                     }
                     slide.tag = value || null;
+                    recordOwnerActivity(`Updated slideshow tag: ${slide.title || 'Slide'}`, 'media');
                 });
             }
 
@@ -2623,6 +2720,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     publishBtn.classList.toggle('is-on', next);
                     publishBtn.setAttribute('aria-pressed', String(next));
                     window.InigoToast?.show(next ? 'Slide published.' : 'Slide unpublished.');
+                    recordOwnerActivity(`${next ? 'Published' : 'Unpublished'} slideshow slide: ${slide.title || 'Slide'}`, 'media');
                 });
             }
 
@@ -2649,6 +2747,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         removeUploadedMediaBestEffort(oldUrl);
                         renderSlides();
                         window.InigoToast?.show('Photo updated.');
+                        recordOwnerActivity(`Updated slideshow photo: ${slide.title || 'Slide'}`, 'media');
                     } catch (err) {
                         window.InigoToast?.show(err.message || 'Could not upload that image.', true);
                         replaceBtn.disabled = false;
@@ -2670,6 +2769,8 @@ document.addEventListener('DOMContentLoaded', () => {
                     }
                     removeUploadedMediaBestEffort(slide.image_url);
                     window.InigoToast?.show('Slide removed.');
+                    recordOwnerActivity(`Removed slideshow slide: ${slide.title || 'Slide'}`, 'media');
+                    closeSlideEditor();
                     loadSlides();
                 });
             }
@@ -2739,13 +2840,15 @@ document.addEventListener('DOMContentLoaded', () => {
             window.InigoToast?.show((err1 || err2).message || 'Could not reorder slides.', true);
             return;
         }
+        closeSlideEditor();
+        recordOwnerActivity(`Reordered slideshow slide: ${a.title || 'Slide'}`, 'media');
         loadSlides();
     }
 
     const addSlideBtn = document.querySelector('[data-admin-slide-add]');
     if (addSlideBtn) {
         addSlideBtn.addEventListener('click', async () => {
-            if (!window.sb || currentSlides.length >= MAX_SLIDES) return;
+            if (!window.sb) return;
 
             const maxOrder = currentSlides.reduce((max, s) => Math.max(max, Number(s.display_order) || 0), 0);
             addSlideBtn.disabled = true;
@@ -2757,8 +2860,10 @@ document.addEventListener('DOMContentLoaded', () => {
             // staged (renderSlideCard's Published toggle already reads
             // Off for any slide whose is_published is exactly false) until
             // the admin turns it on deliberately via that same toggle.
-            const { error } = await window.sb.from('event').insert({ title: 'New slide', display_order: maxOrder + 1, is_published: false });
-            addSlideBtn.disabled = currentSlides.length >= MAX_SLIDES;
+            const { data: created, error } = await window.sb.from('event')
+                .insert({ title: 'New slide', display_order: maxOrder + 1, is_published: false })
+                .select('id').single();
+            addSlideBtn.disabled = false;
 
             if (error) {
                 window.InigoToast?.show(
@@ -2769,267 +2874,28 @@ document.addEventListener('DOMContentLoaded', () => {
                 );
                 return;
             }
-            window.InigoToast?.show('Slide added — edit its title and photo below.');
-            loadSlides();
+            window.InigoToast?.show('Slide added as a draft.');
+            recordOwnerActivity('Added a slideshow draft', 'media');
+            await loadSlides();
+            if (created?.id) openSlideEditor(created.id);
         });
     }
 
     loadSlides();
 
     // ------------------------------------------------------------------
-    // Feedbacks & Reviews (Revision A3, implementation_plan.md, decision
-    // C5) — a Google-Play-style ratings summary (average + star row + 5→1
-    // distribution, each bar doubling as a star filter) over a sortable/
-    // filterable list of `feedback` rows. Unlike every other panel on this
-    // page, this data is NOT loaded eagerly at startup — a feedback table
-    // can run into the hundreds of rows and this tab is never the default
-    // view — it loads when the tab is actually opened (setActivePanel()
-    // above calls loadFeedback() for name === 'feedback'; hoisted function,
-    // safe to call from there regardless of source order — same reasoning
-    // this file already documents for closeAdminNotifMenu) and again on
-    // 'inigosync:profile-ready'.
-    // ------------------------------------------------------------------
-    let currentFeedback = [];
-    let feedbackNameMap = new Map();
-    let feedbackSort = 'recent';
-    let feedbackFilter = 'all';
-
-    // "★★★★☆" style rating string, reused as-is by the summary's average
-    // stars and every card's own rating row — see adminStarString's own
-    // comment further below (Notifications section) for the shape; declared
-    // there first but a hoisted function declaration, so safe to use here.
-
-    function formatFeedbackRelativeDate(iso) {
-        const date = new Date(iso);
-        if (Number.isNaN(date.getTime())) return '—';
-        const diffMs = Date.now() - date.getTime();
-        const diffMin = Math.round(diffMs / 60000);
-        if (diffMin < 1) return 'Just now';
-        if (diffMin < 60) return `${diffMin} minute${diffMin === 1 ? '' : 's'} ago`;
-        const diffHour = Math.round(diffMin / 60);
-        if (diffHour < 24) return `${diffHour} hour${diffHour === 1 ? '' : 's'} ago`;
-        const diffDay = Math.round(diffHour / 24);
-        if (diffDay < 30) return `${diffDay} day${diffDay === 1 ? '' : 's'} ago`;
-        const diffMonth = Math.round(diffDay / 30);
-        if (diffMonth < 12) return `${diffMonth} month${diffMonth === 1 ? '' : 's'} ago`;
-        const diffYear = Math.round(diffMonth / 12);
-        return `${diffYear} year${diffYear === 1 ? '' : 's'} ago`;
-    }
-
-    function formatFeedbackFullDate(iso) {
-        const date = new Date(iso);
-        if (Number.isNaN(date.getTime())) return '';
-        return date.toLocaleString('en-US', { month: 'long', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' });
-    }
-
-    function feedbackHasRating(row) {
-        return typeof row.rating === 'number' && row.rating >= 1 && row.rating <= 5;
-    }
-
-    function filterFeedbackRows(rows, filter) {
-        if (filter === 'all') return rows;
-        if (filter === 'none') return rows.filter((r) => !feedbackHasRating(r));
-        const star = Number(filter);
-        return rows.filter((r) => feedbackHasRating(r) && r.rating === star);
-    }
-
-    // Ratings without a rating always sort to the end, regardless of sort
-    // mode — there's no meaningful "highest/lowest" position for a value
-    // that doesn't exist, so pushing them out of the way (rather than
-    // treating a missing rating as a 0) keeps both sort modes intuitive.
-    function sortFeedbackRows(rows, sortMode) {
-        const copy = rows.slice();
-        if (sortMode === 'highest' || sortMode === 'lowest') {
-            copy.sort((a, b) => {
-                const aHas = feedbackHasRating(a);
-                const bHas = feedbackHasRating(b);
-                if (aHas && !bHas) return -1;
-                if (!aHas && bHas) return 1;
-                if (!aHas && !bHas) return new Date(b.created_at) - new Date(a.created_at);
-                return sortMode === 'highest' ? (b.rating - a.rating) : (a.rating - b.rating);
-            });
-            return copy;
-        }
-        copy.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
-        return copy;
-    }
-
-    function computeFeedbackSummary(rows) {
-        const rated = rows.filter(feedbackHasRating);
-        const withoutRating = rows.length - rated.length;
-        const avg = rated.length ? rated.reduce((sum, r) => sum + r.rating, 0) / rated.length : 0;
-        const distribution = { 5: 0, 4: 0, 3: 0, 2: 0, 1: 0 };
-        rated.forEach((r) => { distribution[r.rating] += 1; });
-        return { avg, totalCount: rows.length, ratedCount: rated.length, withoutRating, distribution };
-    }
-
-    function wireFeedbackDistRows(scope) {
-        scope.querySelectorAll('[data-admin-feedback-dist]').forEach((btn) => {
-            btn.addEventListener('click', () => {
-                const star = btn.dataset.adminFeedbackDist;
-                // Click the already-active bar again = clear back to "All";
-                // the toolbar's own "All" chip is the equivalent affordance
-                // for the chips row, so chips themselves don't need this
-                // same toggle-off behaviour (see setFeedbackFilter's own
-                // comment).
-                setFeedbackFilter(feedbackFilter === star ? 'all' : star);
-            });
-        });
-    }
-
-    function renderFeedbackSummary(rows) {
-        const summary = computeFeedbackSummary(rows);
-
-        const avgEl = document.querySelector('[data-admin-feedback-avg]');
-        if (avgEl) avgEl.textContent = summary.ratedCount ? summary.avg.toFixed(1) : '—';
-
-        const avgStarsEl = document.querySelector('[data-admin-feedback-avg-stars]');
-        if (avgStarsEl) avgStarsEl.textContent = adminStarString(Math.round(summary.avg));
-
-        const countEl = document.querySelector('[data-admin-feedback-count]');
-        if (countEl) {
-            const reviewWord = summary.totalCount === 1 ? 'review' : 'reviews';
-            countEl.textContent = summary.totalCount === 0
-                ? 'No reviews yet'
-                : (summary.withoutRating > 0
-                    ? `${summary.totalCount} ${reviewWord} · ${summary.withoutRating} without a rating`
-                    : `based on ${summary.totalCount} ${reviewWord}`);
-        }
-
-        const distRoot = document.querySelector('[data-admin-feedback-distribution]');
-        if (distRoot) {
-            const maxCount = Math.max(1, ...Object.values(summary.distribution));
-            distRoot.innerHTML = [5, 4, 3, 2, 1].map((star) => {
-                const count = summary.distribution[star];
-                const pct = Math.round((count / maxCount) * 100);
-                const isActive = feedbackFilter === String(star);
-                return `
-                    <button type="button" class="admin-feedback-dist-row${isActive ? ' is-active' : ''}" data-admin-feedback-dist="${star}">
-                        <span class="admin-feedback-dist-label">${star}★</span>
-                        <div class="admin-progress-track admin-feedback-dist-track"><div class="admin-progress-fill" style="width: ${pct}%;"></div></div>
-                        <span class="admin-feedback-dist-count">${count}</span>
-                    </button>
-                `;
-            }).join('');
-            wireFeedbackDistRows(distRoot);
-        }
-    }
-
-    function renderFeedbackList(rows) {
-        const listRoot = document.querySelector('[data-admin-feedback-list]');
-        if (!listRoot) return;
-
-        if (!rows.length) {
-            listRoot.innerHTML = '<p class="admin-feedback-empty">No feedback yet.</p>';
-            return;
-        }
-
-        // name/message are customer-entered — escaped before touching
-        // innerHTML, same rule as every other list in this file.
-        listRoot.innerHTML = rows.map((row) => {
-            const name = window.escapeHtml(feedbackNameMap.get(String(row.profile_id)) || 'Customer');
-            const ratingHtml = feedbackHasRating(row)
-                ? `<span class="admin-feedback-card-rating">${adminStarString(row.rating)}</span>`
-                : '<span class="admin-feedback-card-rating admin-feedback-card-no-rating">No rating</span>';
-            const relative = window.escapeHtml(formatFeedbackRelativeDate(row.created_at));
-            const full = window.escapeHtml(formatFeedbackFullDate(row.created_at));
-            const message = window.escapeHtml(row.message || '');
-            return `
-                <article class="admin-feedback-card">
-                    <div class="admin-feedback-card-head">
-                        <span class="admin-feedback-card-name">${name}</span>
-                        <span class="admin-feedback-card-date" title="${full}">${relative}</span>
-                    </div>
-                    ${ratingHtml}
-                    <p class="admin-feedback-card-message">${message}</p>
-                </article>
-            `;
-        }).join('');
-    }
-
-    function renderFeedbackPanel() {
-        renderFeedbackSummary(currentFeedback);
-        const filtered = filterFeedbackRows(currentFeedback, feedbackFilter);
-        const sorted = sortFeedbackRows(filtered, feedbackSort);
-        renderFeedbackList(sorted);
-    }
-
-    function setFeedbackFilter(value) {
-        feedbackFilter = value;
-        document.querySelectorAll('[data-admin-feedback-filter]').forEach((chip) => {
-            chip.classList.toggle('is-active', chip.dataset.adminFeedbackFilter === value);
-        });
-        renderFeedbackPanel();
-    }
-
-    document.querySelectorAll('[data-admin-feedback-filter]').forEach((chip) => {
-        chip.addEventListener('click', () => setFeedbackFilter(chip.dataset.adminFeedbackFilter));
-    });
-
-    const feedbackSortSelect = document.querySelector('[data-admin-feedback-sort]');
-    if (feedbackSortSelect) {
-        feedbackSortSelect.addEventListener('change', () => {
-            feedbackSort = feedbackSortSelect.value;
-            renderFeedbackPanel();
-        });
-    }
-
-    async function loadFeedback() {
-        const listRoot = document.querySelector('[data-admin-feedback-list]');
-        if (!listRoot || !window.sb) return;
-        listRoot.innerHTML = '<p style="color: var(--color-ink-faint); padding: 8px 4px;">Loading…</p>';
-
-        const { data, error } = await window.sb
-            .from('feedback')
-            .select('id, profile_id, rating, message, created_at')
-            .order('created_at', { ascending: false })
-            .limit(500);
-
-        if (error) {
-            console.error('[admin] failed to load feedback', error);
-            listRoot.innerHTML = isSchemaMismatchError(error)
-                ? '<p style="color: var(--color-ink-faint); padding: 8px 4px;">This needs a database update that hasn\'t been applied yet (see database/schema/009_feedback.sql).</p>'
-                : '<p style="color: var(--color-ink-faint); padding: 8px 4px;">Could not load feedback. Please try again.</p>';
-            return;
-        }
-
-        currentFeedback = data || [];
-        feedbackNameMap = await fetchProfileNamesByIds(currentFeedback.map((r) => r.profile_id));
-        renderFeedbackPanel();
-    }
-
-    document.addEventListener('inigosync:profile-ready', loadFeedback);
-
-    // ------------------------------------------------------------------
-    // Notifications (Revision A1, decision A7) — ported from the customer
-    // dashboard's [data-dash-notif*] dropdown (includes/Dashboard.js) under
-    // admin-* names. Items are the latest 10 PENDING bookings + latest 5
-    // feedback rows, merged and sorted newest-first. Unread dot = the
-    // newest item is newer than localStorage's last-seen marker; opening
-    // the menu updates that marker and hides the dot. Clicking a booking
-    // item jumps to Overview; clicking a feedback item jumps to Feedbacks &
-    // Reviews (Revision A3, decision C5 — that tab didn't exist yet when
-    // this dropdown was built, so feedback items used to be informational
-    // only).
+    // Owner-only activity notifications: staff, court, slideshow, and profile changes.
     // ------------------------------------------------------------------
     const adminNotif = document.querySelector('[data-admin-notif]');
     const adminNotifTrigger = document.querySelector('[data-admin-notif-trigger]');
     const adminNotifList = document.querySelector('[data-admin-notif-list]');
     const adminNotifDot = document.querySelector('[data-admin-notif-dot]');
-    const ADMIN_NOTIF_SEEN_KEY = 'inigosync-admin-notif-seen';
-    const ADMIN_NOTIF_REFRESH_MS = 60000;
+    const adminNotifMarkAll = document.querySelector('[data-admin-notif-mark-all]');
+    const ADMIN_NOTIF_REFRESH_MS = 15000;
 
     function closeAdminNotifMenu() {
         if (adminNotif) adminNotif.removeAttribute('data-open');
         if (adminNotifTrigger) adminNotifTrigger.setAttribute('aria-expanded', 'false');
-    }
-
-    let adminNotifLatestAt = null;
-
-    function markAdminNotifSeen() {
-        if (!adminNotifLatestAt) return;
-        try { localStorage.setItem(ADMIN_NOTIF_SEEN_KEY, adminNotifLatestAt); } catch (_) { /* best-effort only */ }
-        if (adminNotifDot) adminNotifDot.hidden = true;
     }
 
     if (adminNotifTrigger && adminNotif) {
@@ -3042,7 +2908,6 @@ document.addEventListener('DOMContentLoaded', () => {
             } else {
                 adminNotif.setAttribute('data-open', '');
                 adminNotifTrigger.setAttribute('aria-expanded', 'true');
-                markAdminNotifSeen();
             }
         });
 
@@ -3055,149 +2920,70 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    // "★★★★☆" style rating string — 5 chars total, filled stars first.
-    function adminStarString(rating) {
-        const r = Math.max(0, Math.min(5, Number(rating) || 0));
-        return '★'.repeat(r) + '☆'.repeat(5 - r);
+    async function recordOwnerActivity(title, targetSection) {
+        const ownerId = window.inigosyncProfile?.id;
+        if (!ownerId || !window.sb) return;
+        const { error } = await window.sb.from('owner_activity').insert({
+            owner_id: ownerId, title, target_section: targetSection,
+        });
+        if (error) {
+            console.error('[admin] could not record owner activity', error);
+            return;
+        }
+        refreshOwnerActivityNotifications();
     }
 
-    function renderAdminNotificationItem(item) {
-        const dotClass = item.type === 'feedback' ? 'feedback' : 'pending';
-        const body = `
-            <span class="admin-notif-dot ${dotClass}"></span>
-            <span class="admin-notif-item-body">
-                <strong>${window.escapeHtml(item.title)}</strong>
-                <span>${window.escapeHtml(item.body)}</span>
-            </span>
-        `;
-        if (item.type === 'booking') {
-            return `<button type="button" class="admin-notif-item" data-admin-notif-booking="${window.escapeHtml(String(item.bookingId))}">${body}</button>`;
-        }
-        // Revision A3, decision C5 — feedback items are now clickable too
-        // (they used to render as a plain, non-interactive <div> before the
-        // Feedbacks & Reviews tab existed) — see the click handler below.
-        if (item.type === 'feedback') {
-            return `<button type="button" class="admin-notif-item" data-admin-notif-feedback>${body}</button>`;
-        }
-        return `<div class="admin-notif-item">${body}</div>`;
-    }
-
-    async function refreshAdminNotifications() {
-        if (!adminNotifList || !window.sb) return;
-
-        let bookingRows = [];
-        let feedbackRows = [];
-        // W4 (Revision A1 fix) — set when the booking half of this fetch
-        // still errors after the schema-mismatch retry below, so it can be
-        // surfaced explicitly further down instead of just quietly
-        // rendering feedback-only (or empty) notifications.
-        let bookingLoadFailed = false;
-
-        try {
-            let [bookingRes, feedbackRes] = await Promise.all([
-                window.sb.from('booking')
-                    .select('booking_id, customer_id, courts, time_date, end_at, created_at')
-                    .eq('status', 'pending')
-                    .order('created_at', { ascending: false })
-                    .limit(10),
-                window.sb.from('feedback')
-                    .select('id, profile_id, rating, message, created_at')
-                    .order('created_at', { ascending: false })
-                    .limit(5),
-            ]);
-
-            if (bookingRes.error && isSchemaMismatchError(bookingRes.error)) {
-                // Same retry shape refreshOverviewStats()'s queries use
-                // elsewhere in this file — pre-012 database, end_at doesn't
-                // exist yet.
-                bookingRes = await window.sb.from('booking')
-                    .select('booking_id, customer_id, courts, time_date, created_at')
-                    .eq('status', 'pending')
-                    .order('created_at', { ascending: false })
-                    .limit(10);
-            }
-
-            if (!bookingRes.error) {
-                bookingRows = bookingRes.data || [];
-            } else {
-                console.error('[admin] failed to load pending-booking notifications', bookingRes.error);
-                bookingLoadFailed = true;
-            }
-            if (!feedbackRes.error) feedbackRows = feedbackRes.data || [];
-            if (feedbackRes.error && !isSchemaMismatchError(feedbackRes.error)) console.error('[admin] failed to load feedback notifications', feedbackRes.error);
-        } catch (err) {
-            console.error('[admin] failed to load notifications', err);
+    async function refreshOwnerActivityNotifications() {
+        if (!adminNotifList || !window.sb || !window.inigosyncProfile?.id) return;
+        const { data, error } = await window.sb.from('owner_activity')
+            .select('id,title,target_section,created_at,seen_at')
+            .eq('owner_id', window.inigosyncProfile.id)
+            .order('created_at', { ascending: false })
+            .limit(30);
+        if (error) {
+            console.error('[admin] owner notifications unavailable', error);
             adminNotifList.innerHTML = '<p class="admin-notif-empty">Could not load notifications.</p>';
             return;
         }
-
-        const nameMap = await fetchProfileNamesByIds([
-            ...bookingRows.map((b) => b.customer_id),
-            ...feedbackRows.map((f) => f.profile_id),
-        ]);
-
-        const bookingItems = bookingRows.map((b) => ({
-            type: 'booking',
-            bookingId: b.booking_id,
-            createdAt: b.created_at || b.time_date,
-            title: `${nameMap.get(String(b.customer_id)) || 'A customer'} booked ${b.courts || 'a court'}`,
-            body: formatAdminDateTime(b.time_date, b.end_at),
-        }));
-
-        const MAX_FEEDBACK_EXCERPT = 80;
-        const feedbackItems = feedbackRows.map((f) => {
-            const name = nameMap.get(String(f.profile_id)) || 'A customer';
-            const message = String(f.message || '');
-            const excerpt = message.length > MAX_FEEDBACK_EXCERPT ? `${message.slice(0, MAX_FEEDBACK_EXCERPT).trimEnd()}…` : message;
-            return {
-                type: 'feedback',
-                createdAt: f.created_at,
-                title: f.rating ? `${adminStarString(f.rating)} ${name}` : `${name} left feedback`,
-                body: excerpt || '(no message)',
-            };
-        });
-
-        const items = [...bookingItems, ...feedbackItems].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
-
-        // W4 (Revision A1 fix) — a still-failing booking-alerts load no
-        // longer disappears silently: it gets its own line in the list,
-        // shown alongside whatever feedback items (if any) DID load, rather
-        // than only ever showing either the full list or "No notifications
-        // yet."
-        const bookingErrorHtml = bookingLoadFailed ? '<p class="admin-notif-empty">Couldn\'t load booking alerts.</p>' : '';
-        adminNotifList.innerHTML = items.length || bookingLoadFailed
-            ? `${bookingErrorHtml}${items.map(renderAdminNotificationItem).join('')}`
-            : '<p class="admin-notif-empty">No notifications yet.</p>';
-
-        adminNotifLatestAt = items.length ? items[0].createdAt : null;
-
-        let lastSeen = null;
-        try { lastSeen = localStorage.getItem(ADMIN_NOTIF_SEEN_KEY); } catch (_) { /* ignore */ }
-
-        const hasUnread = Boolean(adminNotifLatestAt) && (!lastSeen || new Date(adminNotifLatestAt) > new Date(lastSeen));
-        if (adminNotifDot) adminNotifDot.hidden = !hasUnread;
+        const items = data || [];
+        adminNotifList.innerHTML = items.length
+            ? items.map((item) => '<button type="button" class="admin-notif-item' + (item.seen_at ? ' is-seen' : '') + '" data-owner-activity-id="' + window.escapeHtml(item.id) + '" data-owner-activity-section="' + window.escapeHtml(item.target_section) + '"><span class="admin-notif-dot pending" aria-hidden="true"></span><span class="admin-notif-item-body"><strong>' + window.escapeHtml(item.title) + '</strong><span>' + window.escapeHtml(new Date(item.created_at).toLocaleString()) + (item.seen_at ? ' · Seen' : ' · New') + '</span></span></button>').join('')
+            : '<p class="admin-notif-empty">No owner activity yet.</p>';
+        const unread = items.filter((item) => !item.seen_at);
+        if (adminNotifDot) adminNotifDot.hidden = unread.length === 0;
+        if (adminNotifMarkAll) adminNotifMarkAll.disabled = unread.length === 0;
     }
 
-    if (adminNotifList) {
-        adminNotifList.addEventListener('click', (e) => {
-            if (e.target.closest('[data-admin-notif-booking]')) {
-                closeAdminNotifMenu();
-                setActivePanel('overview');
-                return;
-            }
-            // Revision A3, decision C5 — a feedback notification now jumps
-            // to the Feedbacks & Reviews tab (it had nowhere to go before
-            // that tab existed).
-            if (e.target.closest('[data-admin-notif-feedback]')) {
-                closeAdminNotifMenu();
-                setActivePanel('feedback');
-            }
-        });
-    }
+    adminNotifList?.addEventListener('click', async (event) => {
+        const item = event.target.closest('[data-owner-activity-id]');
+        if (!item || !window.sb) return;
+        const { error } = await window.sb.from('owner_activity')
+            .update({ seen_at: new Date().toISOString() })
+            .eq('id', item.dataset.ownerActivityId)
+            .eq('owner_id', window.inigosyncProfile.id);
+        if (error) {
+            window.InigoToast?.show('Could not mark this notification as seen.', true);
+            return;
+        }
+        closeAdminNotifMenu();
+        setActivePanel(item.dataset.ownerActivitySection);
+        refreshOwnerActivityNotifications();
+    });
 
-    refreshAdminNotifications();
-    document.addEventListener('inigosync:profile-ready', refreshAdminNotifications);
-    window.setInterval(refreshAdminNotifications, ADMIN_NOTIF_REFRESH_MS);
+    adminNotifMarkAll?.addEventListener('click', async () => {
+        if (!window.sb || !window.inigosyncProfile?.id) return;
+        adminNotifMarkAll.disabled = true;
+        const { error } = await window.sb.from('owner_activity')
+            .update({ seen_at: new Date().toISOString() })
+            .eq('owner_id', window.inigosyncProfile.id)
+            .is('seen_at', null);
+        if (error) window.InigoToast?.show('Could not mark notifications as seen.', true);
+        refreshOwnerActivityNotifications();
+    });
+
+    refreshOwnerActivityNotifications();
+    document.addEventListener('inigosync:profile-ready', refreshOwnerActivityNotifications);
+    window.setInterval(refreshOwnerActivityNotifications, ADMIN_NOTIF_REFRESH_MS);
 
     // ------------------------------------------------------------------
     // Account Settings — password visibility toggles
@@ -3241,6 +3027,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         window.inigosyncProfile.avatar_url = avatarUrl;
         renderAdminProfile(window.inigosyncProfile);
+        recordOwnerActivity(avatarUrl ? 'Owner profile photo updated' : 'Owner profile photo removed', 'settings');
         return true;
     }
 
@@ -3367,6 +3154,28 @@ document.addEventListener('DOMContentLoaded', () => {
         if (profileMobileEl) profileMobileEl.textContent = profile.contact_num || '—';
     }
 
+    function paintOwnerDetails(profile) {
+        const fields = [
+            ['[data-admin-settings-mobile]', profile.contact_num || ''],
+            ['[data-admin-settings-address]', profile.address || ''],
+            ['[data-admin-settings-birthdate]', profile.birthdate || ''],
+            ['[data-admin-settings-gender]', profile.gender || ''],
+        ];
+        fields.forEach(([selector, value]) => {
+            const field = document.querySelector(selector);
+            if (field) field.value = value;
+        });
+        const values = [
+            ['[data-admin-profile-address]', profile.address || '—'],
+            ['[data-admin-profile-age]', computeAdminStaffAge(profile.birthdate) === null ? '—' : `${computeAdminStaffAge(profile.birthdate)} years old`],
+            ['[data-admin-profile-gender]', profile.gender || '—'],
+        ];
+        values.forEach(([selector, value]) => {
+            const target = document.querySelector(selector);
+            if (target) target.textContent = value;
+        });
+    }
+
     document.addEventListener('inigosync:profile-ready', (e) => renderAdminProfile(e.detail));
     if (window.inigosyncProfile) renderAdminProfile(window.inigosyncProfile);
 
@@ -3384,15 +3193,22 @@ document.addEventListener('DOMContentLoaded', () => {
         return d.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
     }
 
+    let ownerDetailsLoaded = false;
     async function loadAdminProfileMemberSince() {
         const el = document.querySelector('[data-admin-profile-member-since]');
         if (!el || !window.sb || !window.inigosyncProfile) return;
         const { data, error } = await window.sb
             .from('profiles')
-            .select('created_at')
+            .select('created_at, contact_num, address, birthdate, gender')
             .eq('id', window.inigosyncProfile.id)
             .single();
         el.textContent = (!error && data) ? formatAdminMemberSince(data.created_at) : '—';
+        if (!error && data) {
+            Object.assign(window.inigosyncProfile, data);
+            ownerDetailsLoaded = true;
+            paintOwnerDetails(window.inigosyncProfile);
+            renderAdminProfile(window.inigosyncProfile);
+        }
     }
 
     document.addEventListener('inigosync:profile-ready', loadAdminProfileMemberSince);
@@ -3416,8 +3232,35 @@ document.addEventListener('DOMContentLoaded', () => {
 
             const nameInput = document.querySelector('[data-admin-settings-name]');
             const emailInput = document.querySelector('[data-admin-settings-email]');
+            const mobileInput = document.querySelector('[data-admin-settings-mobile]');
+            const addressInput = document.querySelector('[data-admin-settings-address]');
+            const birthdateInput = document.querySelector('[data-admin-settings-birthdate]');
+            const genderInput = document.querySelector('[data-admin-settings-gender]');
             const newName = nameInput ? nameInput.value.trim() : '';
             const newEmail = emailInput ? emailInput.value.trim() : '';
+            const mobileRaw = mobileInput ? mobileInput.value.trim() : '';
+            const address = addressInput ? addressInput.value.trim() : '';
+            const birthdate = birthdateInput?.value || null;
+            const gender = genderInput?.value || '';
+
+            if (!ownerDetailsLoaded) {
+                window.InigoToast?.show('Account details are still loading. Please try again.', true);
+                return;
+            }
+            const mobileCheck = mobileRaw && window.validatePhMobile
+                ? window.validatePhMobile(mobileRaw)
+                : { valid: !mobileRaw, normalized: '' };
+            if (!mobileCheck.valid) {
+                window.InigoToast?.show(mobileCheck.message || 'Enter a valid mobile number.', true);
+                mobileInput?.focus();
+                return;
+            }
+            const contact_num = mobileRaw ? mobileCheck.normalized : '';
+            if (birthdate && birthdate > todayDateInputValue()) {
+                window.InigoToast?.show('Date of birth cannot be in the future.', true);
+                birthdateInput?.focus();
+                return;
+            }
 
             if (!newName) {
                 window.InigoToast?.show('Enter your full name.', true);
@@ -3432,17 +3275,23 @@ document.addEventListener('DOMContentLoaded', () => {
 
             const nameChanged = newName !== (window.inigosyncProfile.full_name || '');
             const emailChanged = newEmail !== (window.inigosyncProfile.email || '');
-            if (!nameChanged && !emailChanged) {
+            const detailsChanged = contact_num !== (window.inigosyncProfile.contact_num || '')
+                || address !== (window.inigosyncProfile.address || '')
+                || birthdate !== (window.inigosyncProfile.birthdate || null)
+                || gender !== (window.inigosyncProfile.gender || '');
+            if (!nameChanged && !emailChanged && !detailsChanged) {
                 window.InigoToast?.show('Nothing to save.');
                 return;
             }
 
             adminProfileSaveBtn.disabled = true;
             try {
-                if (nameChanged) {
-                    const { error } = await window.sb.from('profiles').update({ full_name: newName }).eq('id', window.inigosyncProfile.id);
+                if (nameChanged || detailsChanged) {
+                    const { error } = await window.sb.from('profiles').update({
+                        full_name: newName, contact_num, address, birthdate, gender,
+                    }).eq('id', window.inigosyncProfile.id);
                     if (error) throw error;
-                    window.inigosyncProfile.full_name = newName;
+                    Object.assign(window.inigosyncProfile, { full_name: newName, contact_num, address, birthdate, gender });
                 }
 
                 if (emailChanged) {
@@ -3458,6 +3307,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 // silently swap the input back to it, looking exactly like
                 // the save had failed.
                 renderAdminProfile(window.inigosyncProfile, { skipEmailRepaint: emailChanged });
+                paintOwnerDetails(window.inigosyncProfile);
+                recordOwnerActivity(emailChanged ? 'Owner email change requested' : 'Owner profile updated', 'settings');
                 window.InigoToast?.show(
                     emailChanged
                         ? `Confirmation link sent to ${newEmail} (check the old inbox too) — the change applies after you click it.`
@@ -3472,6 +3323,39 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // ------------------------------------------------------------------
+    async function refreshLinkedGoogleEmails() {
+        const root = document.querySelector('[data-admin-linked-google-emails]');
+        if (!root || !window.sb || !window.inigosyncProfile) return;
+        const { data, error } = await window.sb.auth.getUser();
+        if (error || !data?.user) {
+            root.textContent = 'Could not load linked Google accounts.';
+            return;
+        }
+        const emails = (data.user.identities || [])
+            .filter((identity) => identity.provider === 'google')
+            .map((identity) => identity.identity_data?.email)
+            .filter(Boolean);
+        root.innerHTML = emails.length
+            ? emails.map((email) => `<p class="admin-form-hint">✓ ${window.escapeHtml(email)} · Google verified</p>`).join('')
+            : '<p class="admin-form-hint">No additional Google account linked yet.</p>';
+    }
+
+    document.querySelector('[data-admin-link-google]')?.addEventListener('click', async (event) => {
+        if (!window.sb || !window.inigosyncProfile) return;
+        const button = event.currentTarget;
+        button.disabled = true;
+        const { error } = await window.sb.auth.linkIdentity({
+            provider: 'google',
+            options: { redirectTo: new URL('owner_dashboard.html', window.location.href).href },
+        });
+        if (error) {
+            button.disabled = false;
+            window.InigoToast?.show(error.message || 'Could not start Google account verification.', true);
+        }
+    });
+    document.addEventListener('inigosync:profile-ready', refreshLinkedGoogleEmails);
+    if (window.inigosyncProfile) refreshLinkedGoogleEmails();
+
     // Email confirmation → profiles.email sync (Revision A1, decision A9).
     // profiles.email only ever follows the AUTH session's confirmed email,
     // never the other way around. Checked two ways so this is correct
@@ -3637,6 +3521,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
             resetAdminPwWizard();
             window.InigoToast?.show('Password updated.');
+            recordOwnerActivity('Owner password updated', 'settings');
         });
     }
 
@@ -3651,7 +3536,10 @@ document.addEventListener('DOMContentLoaded', () => {
         btn.addEventListener('click', () => {
             const mode = btn.dataset.adminSettingsCancel;
             if (mode === 'profile') {
-                if (window.inigosyncProfile) renderAdminProfile(window.inigosyncProfile);
+                if (window.inigosyncProfile) {
+                    renderAdminProfile(window.inigosyncProfile);
+                    paintOwnerDetails(window.inigosyncProfile);
+                }
             } else if (mode === 'password') {
                 resetAdminPwWizard();
             }

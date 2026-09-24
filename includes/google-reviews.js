@@ -10,6 +10,8 @@ document.addEventListener('DOMContentLoaded', () => {
     if (disclosure) disclosure.textContent = 'Discover what visitors are saying about Iñigos Sports Center on Google.';
     const note = document.querySelector('[data-google-reviews-note]');
     if (note) note.hidden = false;
+    const fallback = document.querySelector('[data-google-reviews-fallback]');
+    if (fallback) fallback.hidden = true;
     host.hidden = false;
     const widget = document.createElement('div');
     widget.className = 'elfsight-app-' + id;
@@ -21,7 +23,8 @@ document.addEventListener('DOMContentLoaded', () => {
     script.async = true;
     script.addEventListener('error', () => {
         host.hidden = true;
-        if (note) note.textContent = 'Google reviews are temporarily unavailable. Please try again later.';
+        if (note) note.hidden = true;
+        if (fallback) fallback.hidden = false;
     }, { once: true });
     document.head.append(script);
 });

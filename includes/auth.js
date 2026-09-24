@@ -137,6 +137,143 @@ document.addEventListener('DOMContentLoaded', () => {
     // redirects here. MUST match the identically named literal there.
     const AUTH_NOTICE_STORAGE_KEY = 'inigosync-auth-notice';
 
+    // Password-login brute-force throttle. Supabase also rate-limits the
+    // token endpoint by IP; this tighter browser-side layer implements the
+    // product rule: five consecutive invalid credential responses for one
+    // email address trigger a one-minute cooldown. localStorage keeps the
+    // cooldown in force across refreshes/tabs. The key contains only a small
+    // deterministic hash, never the visitor's email address or password.
+    const LOGIN_MAX_FAILURES = 5;
+    const LOGIN_LOCKOUT_MS = 60 * 1000;
+    const LOGIN_ATTEMPT_STORAGE_PREFIX = 'inigosync-login-attempts:';
+    const loginAttemptMemory = new Map();
+    let loginLockoutTimerId = null;
+
+    function normalizeLoginEmail(value) {
+        return String(value || '').trim().toLowerCase();
+    }
+
+    function loginIdentityHash(value) {
+        const normalized = normalizeLoginEmail(value);
+        let hash = 0x811c9dc5;
+        for (let i = 0; i < normalized.length; i += 1) {
+            hash ^= normalized.charCodeAt(i);
+            hash = Math.imul(hash, 0x01000193);
+        }
+        return (hash >>> 0).toString(36);
+    }
+
+    function loginAttemptKey(email) {
+        return LOGIN_ATTEMPT_STORAGE_PREFIX + loginIdentityHash(email);
+    }
+
+    function readLoginAttempt(email) {
+        const key = loginAttemptKey(email);
+        let raw = loginAttemptMemory.get(key) || null;
+        try {
+            raw = localStorage.getItem(key) || raw;
+        } catch (_) {
+            // Private/restricted storage still gets an in-memory cooldown.
+        }
+
+        try {
+            const parsed = raw ? JSON.parse(raw) : {};
+            const failures = Number.isInteger(parsed.failures) && parsed.failures > 0 ? parsed.failures : 0;
+            const lockedUntil = Number.isFinite(parsed.lockedUntil) && parsed.lockedUntil > 0 ? parsed.lockedUntil : 0;
+            if (lockedUntil && lockedUntil <= Date.now()) {
+                clearLoginAttempts(email);
+                return { failures: 0, lockedUntil: 0 };
+            }
+            return { failures, lockedUntil };
+        } catch (_) {
+            clearLoginAttempts(email);
+            return { failures: 0, lockedUntil: 0 };
+        }
+    }
+
+    function writeLoginAttempt(email, state) {
+        const key = loginAttemptKey(email);
+        const raw = JSON.stringify(state);
+        loginAttemptMemory.set(key, raw);
+        try {
+            localStorage.setItem(key, raw);
+        } catch (_) {
+            // The in-memory copy above remains effective for this page load.
+        }
+    }
+
+    function clearLoginAttempts(email) {
+        const key = loginAttemptKey(email);
+        loginAttemptMemory.delete(key);
+        try {
+            localStorage.removeItem(key);
+        } catch (_) {
+            // Nothing else to clear when storage is unavailable.
+        }
+    }
+
+    function recordInvalidLogin(email) {
+        const current = readLoginAttempt(email);
+        const failures = Math.min(current.failures + 1, LOGIN_MAX_FAILURES);
+        const lockedUntil = failures >= LOGIN_MAX_FAILURES ? Date.now() + LOGIN_LOCKOUT_MS : 0;
+        const next = { failures, lockedUntil };
+        writeLoginAttempt(email, next);
+        return next;
+    }
+
+    function loginLockoutSeconds(email) {
+        const { lockedUntil } = readLoginAttempt(email);
+        return lockedUntil > Date.now() ? Math.ceil((lockedUntil - Date.now()) / 1000) : 0;
+    }
+
+    function formatLockoutTime(seconds) {
+        const minutes = Math.floor(seconds / 60);
+        return `${String(minutes).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}`;
+    }
+
+    function loginEmailForForm(form) {
+        const fieldName = form.dataset.authPanel === 'admin' ? 'admin-email' : 'email';
+        return normalizeLoginEmail(form.elements[fieldName]?.value);
+    }
+
+    function refreshLoginLockout(form) {
+        if (!['login', 'admin'].includes(form.dataset.authPanel)) return false;
+        const seconds = loginLockoutSeconds(loginEmailForForm(form));
+        const status = form.querySelector('[data-login-lockout]');
+        const submit = form.querySelector('button[type="submit"].auth-submit');
+        const isLocked = seconds > 0;
+
+        if (status) {
+            status.hidden = !isLocked;
+            status.textContent = isLocked
+                ? `Too many incorrect attempts. Try again in ${formatLockoutTime(seconds)}.`
+                : '';
+        }
+        if (submit && !submit.classList.contains('is-loading')) submit.disabled = isLocked;
+        return isLocked;
+    }
+
+    function refreshAllLoginLockouts() {
+        let hasLockout = false;
+        panels.forEach((form) => { hasLockout = refreshLoginLockout(form) || hasLockout; });
+        if (!hasLockout && loginLockoutTimerId) {
+            window.clearInterval(loginLockoutTimerId);
+            loginLockoutTimerId = null;
+        }
+        return hasLockout;
+    }
+
+    function startLoginLockoutCountdown() {
+        refreshAllLoginLockouts();
+        if (!loginLockoutTimerId) {
+            loginLockoutTimerId = window.setInterval(refreshAllLoginLockouts, 1000);
+        }
+    }
+
+    function isInvalidCredentialError(err) {
+        return err?.code === 'invalid_credentials' || /invalid login credentials/i.test(err?.message || '');
+    }
+
     // ------------------------------------------------------------------
     // Password policy — CREATION TIME ONLY.
     //
@@ -1475,6 +1612,23 @@ document.addEventListener('DOMContentLoaded', () => {
         return message || 'Something went wrong. Please try again.';
     }
 
+    // Keep both password-login panels in sync with the persisted per-email
+    // cooldown. Changing the address immediately switches to that address's
+    // own state; a lockout in another tab is reflected through `storage`.
+    panels.forEach((form) => {
+        if (!['login', 'admin'].includes(form.dataset.authPanel)) return;
+        const emailFieldName = form.dataset.authPanel === 'admin' ? 'admin-email' : 'email';
+        form.elements[emailFieldName]?.addEventListener('input', () => {
+            if (refreshLoginLockout(form)) startLoginLockoutCountdown();
+        });
+    });
+    window.addEventListener('storage', (event) => {
+        if (event.key?.startsWith(LOGIN_ATTEMPT_STORAGE_PREFIX) && refreshAllLoginLockouts()) {
+            startLoginLockoutCountdown();
+        }
+    });
+    refreshAllLoginLockouts();
+
     // Wired to real Supabase Auth. Public signup always creates a customer
     // account (role is never client-settable — see the DB trigger); the
     // Admin panel logs into the same auth.users but only accepts an
@@ -1533,6 +1687,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
             const mode = form.dataset.authPanel;
             const data = Object.fromEntries(new FormData(form));
+            const loginEmail = mode === 'admin'
+                ? normalizeLoginEmail(data['admin-email'])
+                : (mode === 'login' ? normalizeLoginEmail(data.email) : '');
+            if (loginEmail && refreshLoginLockout(form)) {
+                startLoginLockoutCountdown();
+                return;
+            }
             if (mode === 'signup') {
                 // Three inputs in, one full_name out — see composeFullName().
                 // Done HERE, on the FormData snapshot, so it lands before the
@@ -1553,6 +1714,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (!submitBtn) return;
                 submitBtn.disabled = isBusy;
                 submitBtn.classList.toggle('is-loading', isBusy);
+                if (!isBusy) refreshLoginLockout(form);
             }
 
             setAuthNotice('');
@@ -1567,6 +1729,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         password: data.password
                     });
                     if (error) throw error;
+                    clearLoginAttempts(loginEmail);
                     await gateOtpThenCompleteLogin(signInData.user, ['customer'], data.email);
                     return;
                 }
@@ -1749,6 +1912,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         password: data['admin-password']
                     });
                     if (error) throw error;
+                    clearLoginAttempts(loginEmail);
                     await gateOtpThenCompleteLogin(signInData.user, ['staff', 'admin'], data['admin-email']);
                     return;
                 }
@@ -1847,7 +2011,16 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             } catch (err) {
                 if (window.InigoLoading) window.InigoLoading.hide();
-                if (err.code === 'account_role_mismatch') {
+                if (loginEmail && isInvalidCredentialError(err)) {
+                    const attempt = recordInvalidLogin(loginEmail);
+                    if (attempt.lockedUntil) {
+                        startLoginLockoutCountdown();
+                        setAuthNotice('Too many incorrect login attempts. Login is paused for 1 minute.', true);
+                    } else {
+                        const remaining = LOGIN_MAX_FAILURES - attempt.failures;
+                        setAuthNotice(`Incorrect email or password. ${remaining} ${remaining === 1 ? 'attempt' : 'attempts'} remaining before a 1-minute timeout.`, true);
+                    }
+                } else if (err.code === 'account_role_mismatch') {
                     const notice = overlay.querySelector('[data-auth-access-error]');
                     notice.textContent = friendlyAuthError(err);
                     notice.hidden = false;
