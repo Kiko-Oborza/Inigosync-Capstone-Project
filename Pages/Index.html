@@ -128,9 +128,10 @@
              both read the SAME memoized window.InigoContent.getCourts()
              promise, so merging them into one section drops a redundant
              section without ever adding a second fetch or a second price
-             list. Every court's `rate` is NULL in the database today, so
-             "Rate TBA" is the correct, honest output everywhere it appears —
-             see database/seed/002_seed_content.sql. -->
+             list. Customer-facing prices come from the verified per-unit
+             inventory schedule: cards show a starting rate, and the viewer
+             updates to the chosen court's day/night rate. Unpriced units stay
+             honestly marked Rate TBA. -->
         <section class="courts reveal" id="courts">
             <div class="section-inner">
                 <h2 class="section-title">Courts &amp; Pricing</h2>
@@ -197,8 +198,16 @@
                     </p>
 
                     <div class="testimonial-grid" data-testimonial-grid aria-live="polite" aria-busy="true"></div>
+                    <div class="onsite-reviews" aria-labelledby="onsiteReviewsHeading">
+                        <h3 id="onsiteReviewsHeading">Reviews from our customers</h3>
+                        <div class="onsite-review-grid" data-onsite-review-grid aria-live="polite" aria-busy="true"></div>
+                        <button type="button" class="btn-secondary" data-onsite-review-more hidden>Load more customer reviews</button>
+                    </div>
+                    <div class="historical-google-reviews" aria-labelledby="googleReviewsHeading">
+                        <h3 id="googleReviewsHeading">Google reviews</h3>
                     <div class="google-reviews" data-google-reviews hidden aria-label="Google reviews for Iñigos Sports Center"></div>
                     <p class="google-reviews-note" data-google-reviews-note hidden>Google reviews update periodically.</p>
+                    </div>
                 </div>
             </div>
         </section>

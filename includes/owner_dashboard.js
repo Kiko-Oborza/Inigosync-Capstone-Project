@@ -577,27 +577,7 @@ document.addEventListener('DOMContentLoaded', () => {
         return `${rounded} ${units[unitIndex]}`;
     }
 
-    // (1) API response — a timed, lightweight `head` count against
-    // `booking` (no rows returned, just the count + response headers).
-    async function checkAdminPerfApiResponse() {
-        const LABEL = 'API response';
-        if (!window.sb) return adminPerfUnavailableRow(LABEL, 'Not connected to the server yet.');
-        const startedAt = performance.now();
-        try {
-            const { error } = await window.sb.from('booking').select('*', { count: 'exact', head: true });
-            const elapsedMs = Math.round(performance.now() - startedAt);
-            if (error) {
-                return { label: LABEL, value: '—', status: 'problem', pillText: 'Failed', title: error.message || 'The request failed.' };
-            }
-            const status = elapsedMs < 400 ? 'good' : elapsedMs < 1500 ? 'warn' : 'problem';
-            const pillText = status === 'good' ? 'Good' : status === 'warn' ? 'Slow' : 'Problem';
-            return { label: LABEL, value: `${elapsedMs} ms`, status, pillText };
-        } catch (err) {
-            return { label: LABEL, value: '—', status: 'problem', pillText: 'Failed', title: (err && err.message) || 'The request failed.' };
-        }
-    }
-
-    // (2) Page load — Navigation Timing. loadEventEnd (and its domComplete
+    // (1) Website loading — Navigation Timing. loadEventEnd (and its domComplete
     // fallback) both read 0/undefined until the browser's own 'load' event
     // has actually finished dispatching, so this can legitimately be
     // "not ready yet" for a little while after DOMContentLoaded — handled
@@ -612,7 +592,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function checkAdminPerfPageLoad() {
-        const LABEL = 'Page load';
+        const LABEL = 'Website loading';
         const ms = getAdminPerfPageLoadMs();
         if (ms === null) return adminPerfUnavailableRow(LABEL, 'The page is still finishing loading — try Run check again in a moment.');
         const status = ms < 2500 ? 'good' : ms < 5000 ? 'warn' : 'problem';
@@ -620,7 +600,7 @@ document.addEventListener('DOMContentLoaded', () => {
         return { label: LABEL, value: `${(ms / 1000).toFixed(1)} s`, status, pillText };
     }
 
-    // (3) Media storage used — recursive, best-effort walk of the `media`
+    // (2) Photo and media space — recursive, best-effort walk of the `media`
     // bucket. list() entries with a `metadata` object are files (summed by
     // metadata.size); entries with no `metadata` are "folders" and are
     // descended into, up to ADMIN_PERF_MAX_STORAGE_FOLDERS list() calls
@@ -628,7 +608,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // uploadToMedia()) so a not-yet-provisioned bucket reads as "Not set up"
     // rather than an error.
     async function checkAdminPerfMediaStorage() {
-        const LABEL = 'Media storage used';
+        const LABEL = 'Photo and media space';
         if (!window.sb) return adminPerfUnavailableRow(LABEL, 'Not connected to the server yet.');
 
         let totalBytes = 0;
@@ -680,12 +660,12 @@ document.addEventListener('DOMContentLoaded', () => {
         };
     }
 
-    // (4) Database records — 3 head counts. Purely informational (always
+    // (3) Saved bookings and customers — head counts. Purely informational (always
     // "Good" once at least one count loads) — this row exists to show real
     // scale, not to flag a problem, so it deliberately never contributes a
     // warn/problem status (see worstAdminPerfStatus's own comment).
     async function checkAdminPerfDatabaseRecords() {
-        const LABEL = 'Database records';
+        const LABEL = 'Saved bookings and customers';
         if (!window.sb) return adminPerfUnavailableRow(LABEL, 'Not connected to the server yet.');
         try {
             const [bookingsRes, customersRes] = await Promise.all([
@@ -709,7 +689,8 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    // (5) Errors this session — inigosyncSessionErrorCount is a module-level
+    // (4) Website issues this visit — show the count without technical detail.
+    // inigosyncSessionErrorCount is a module-level
     // counter incremented by the window 'error'/'unhandledrejection'
     // listeners registered at the very top of this file (before this
     // DOMContentLoaded block even runs), so it also counts anything thrown
@@ -718,22 +699,19 @@ document.addEventListener('DOMContentLoaded', () => {
         const count = inigosyncSessionErrorCount;
         const status = count === 0 ? 'good' : count < 5 ? 'warn' : 'problem';
         const pillText = status === 'good' ? 'Good' : status === 'warn' ? 'Warn' : 'Problem';
-        return { label: 'Errors this session', value: String(count), status, pillText };
+        return { label: 'Website issues this visit', value: String(count), status, pillText };
     }
 
-    // (6) Connection — navigator.onLine is always available; `.connection`
-    // (Network Information API) is Chromium-only, hence the optional
-    // chaining and the "when available" fallback.
+    // (5) Internet connection — keep the owner-facing state simple.
     function checkAdminPerfConnection() {
         const online = navigator.onLine;
-        const effectiveType = navigator.connection && navigator.connection.effectiveType;
-        const value = online ? (effectiveType ? `Online · ${effectiveType}` : 'Online') : 'Offline';
-        return { label: 'Connection', value, status: online ? 'good' : 'problem', pillText: online ? 'Good' : 'Problem' };
+        const value = online ? 'Connected' : 'Not connected';
+        return { label: 'Internet connection', value, status: online ? 'good' : 'problem', pillText: online ? 'Good' : 'Check connection' };
     }
 
     const ADMIN_PERF_OVERALL_LABELS = { good: 'Good', warn: 'Slow', problem: 'Problem' };
 
-    // Worst of the six — but a 'neutral' row (Media storage's "Not set up",
+    // Worst of the five — but a 'neutral' row (media storage's "Not set up",
     // or any check's own "Unavailable") never counts toward it: a bucket
     // the owner hasn't provisioned yet, or a check that simply couldn't run
     // this time, isn't a website PERFORMANCE problem, so neither should
@@ -756,9 +734,8 @@ document.addEventListener('DOMContentLoaded', () => {
     function adminPerfPillHtml(row, extraClass) {
         const status = row.status || 'neutral';
         const text = row.pillText || 'Info';
-        const titleAttr = row.title ? ` title="${window.escapeHtml(row.title)}"` : '';
         const cls = `admin-perf-pill${extraClass ? ` ${extraClass}` : ''} admin-perf-pill-${window.escapeHtml(status)}`;
-        return `<span class="${cls}"${titleAttr}>${window.escapeHtml(text)}</span>`;
+        return `<span class="${cls}">${window.escapeHtml(text)}</span>`;
     }
 
     // Legend swatch — same "which of the 4 statuses" branch the chart slice
@@ -904,7 +881,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // Center-of-the-ring overlay — the overall word (never 'neutral', see
-    // worstAdminPerfStatus()) plus the static "6 checks" already in the
+    // worstAdminPerfStatus()) plus the static "5 checks" already in the
     // markup. Pure CSS class swap, so it stays correct across theme changes
     // on its own (no JS re-render needed, unlike the canvas ring itself).
     function updateAdminPerfChartCenter(overall) {
@@ -933,7 +910,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
         try {
             const rows = await Promise.all([
-                checkAdminPerfApiResponse(),
                 checkAdminPerfPageLoad(),
                 checkAdminPerfMediaStorage(),
                 checkAdminPerfDatabaseRecords(),
@@ -1133,6 +1109,16 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const staffTable = document.querySelector('[data-admin-staff-table]');
     const staffSubmitBtn = document.querySelector('[data-admin-staff-submit]');
+    const staffSearch = document.querySelector('[data-admin-staff-search]');
+    const staffStatusFilter = document.querySelector('[data-admin-staff-status-filter]');
+    const staffPositionFilter = document.querySelector('[data-admin-staff-position-filter]');
+    const staffPagination = document.querySelector('[data-admin-staff-pagination]');
+    const staffPageInfo = document.querySelector('[data-admin-staff-page-info]');
+    const staffPagePrev = document.querySelector('[data-admin-staff-page-prev]');
+    const staffPageNext = document.querySelector('[data-admin-staff-page-next]');
+    const STAFF_PAGE_SIZE = 10;
+    let staffProfiles = [];
+    let staffPage = 1;
 
     if (staffSubmitBtn) {
         staffSubmitBtn.addEventListener('click', async () => {
@@ -1577,6 +1563,57 @@ document.addEventListener('DOMContentLoaded', () => {
     // shouldn't also appear as a row inside it. Pages/owner_dashboard.html's
     // own static fallback rows dropped their "Rosalinda Driz" (owner) row to
     // match, so no owner row appears even before this fetch resolves.
+    function renderStaffDirectory() {
+        if (!staffTable) return;
+        const tbody = staffTable.querySelector('tbody');
+        const query = staffSearch?.value.trim().toLocaleLowerCase() || '';
+        const selectedStatus = staffStatusFilter?.value || 'all';
+        const selectedPosition = staffPositionFilter?.value || 'all';
+        const filtered = staffProfiles.filter((profile) => {
+            const searchable = [profile.full_name, profile.email, profile.position]
+                .filter(Boolean).join(' ').toLocaleLowerCase();
+            const normalizedStatus = ['active', 'pending', 'disabled'].includes(profile.status)
+                ? profile.status
+                : 'active';
+            return (!query || searchable.includes(query))
+                && (selectedStatus === 'all' || normalizedStatus === selectedStatus)
+                && (selectedPosition === 'all' || (profile.position || '') === selectedPosition);
+        });
+        const pageCount = Math.max(1, Math.ceil(filtered.length / STAFF_PAGE_SIZE));
+        staffPage = Math.min(Math.max(1, staffPage), pageCount);
+        const start = (staffPage - 1) * STAFF_PAGE_SIZE;
+        const visibleProfiles = filtered.slice(start, start + STAFF_PAGE_SIZE);
+
+        tbody.innerHTML = '';
+        visibleProfiles.forEach((profile) => {
+            const row = renderStaffRow(profile);
+            tbody.appendChild(row);
+            wireStaffRowActions(row);
+        });
+        if (!staffProfiles.length) {
+            tbody.innerHTML = '<tr><td colspan="5">No staff accounts yet.</td></tr>';
+        } else if (!filtered.length) {
+            tbody.innerHTML = '<tr><td colspan="5">No staff accounts match these filters.</td></tr>';
+        }
+
+        if (staffPagination) {
+            staffPagination.hidden = filtered.length <= STAFF_PAGE_SIZE;
+            if (staffPageInfo) staffPageInfo.textContent = `Page ${staffPage} of ${pageCount} · ${filtered.length} staff`;
+            if (staffPagePrev) staffPagePrev.disabled = staffPage <= 1;
+            if (staffPageNext) staffPageNext.disabled = staffPage >= pageCount;
+        }
+    }
+
+    function refreshStaffPositionOptions() {
+        if (!staffPositionFilter) return;
+        const previousValue = staffPositionFilter.value || 'all';
+        const positions = [...new Set(staffProfiles.map((profile) => (profile.position || '').trim()).filter(Boolean))]
+            .sort((a, b) => a.localeCompare(b));
+        staffPositionFilter.innerHTML = '<option value="all">All positions</option>'
+            + positions.map((position) => `<option value="${window.escapeHtml(position)}">${window.escapeHtml(position)}</option>`).join('');
+        staffPositionFilter.value = positions.includes(previousValue) ? previousValue : 'all';
+    }
+
     async function refreshStaffList() {
         if (!staffTable || !window.sb) return;
         const { data, error } = await window.sb
@@ -1587,18 +1624,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (error) {
             console.error('[admin] failed to load staff', error);
+            staffProfiles = [];
+            if (staffPagination) staffPagination.hidden = true;
             staffTable.querySelector('tbody').innerHTML = '<tr><td colspan="5">Could not load staff accounts. Please refresh the page.</td></tr>';
             return;
         }
-
-        const tbody = staffTable.querySelector('tbody');
-        tbody.innerHTML = '';
-        (data || []).forEach((profile) => {
-            const row = renderStaffRow(profile);
-            tbody.appendChild(row);
-            wireStaffRowActions(row);
-        });
-        if (!data?.length) tbody.innerHTML = '<tr><td colspan="5">No staff accounts yet.</td></tr>';
+        staffProfiles = data || [];
+        refreshStaffPositionOptions();
+        renderStaffDirectory();
     }
 
     function wireStaffRowActions(scope) {
@@ -1729,15 +1762,27 @@ document.addEventListener('DOMContentLoaded', () => {
     refreshStaffList();
     document.addEventListener('inigosync:profile-ready', refreshStaffList);
 
-    const staffSearch = document.querySelector('[data-admin-staff-search]');
     if (staffSearch && staffTable) {
         staffSearch.addEventListener('input', () => {
-            const query = staffSearch.value.trim().toLowerCase();
-            staffTable.querySelectorAll('tbody tr').forEach((row) => {
-                row.style.display = row.textContent.toLowerCase().includes(query) ? '' : 'none';
-            });
+            staffPage = 1;
+            renderStaffDirectory();
         });
     }
+    [staffStatusFilter, staffPositionFilter].forEach((filter) => {
+        filter?.addEventListener('change', () => {
+            staffPage = 1;
+            renderStaffDirectory();
+        });
+    });
+    staffPagePrev?.addEventListener('click', () => {
+        if (staffPage <= 1) return;
+        staffPage -= 1;
+        renderStaffDirectory();
+    });
+    staffPageNext?.addEventListener('click', () => {
+        staffPage += 1;
+        renderStaffDirectory();
+    });
 
     // ------------------------------------------------------------------
     // Payment Configuration — REMOVED (Revision A2, implementation_plan.md,
@@ -1872,18 +1917,26 @@ document.addEventListener('DOMContentLoaded', () => {
     function resetCourtForm() {
         if (!courtForm) return;
         delete courtForm.dataset.editingId;
-        if (courtModalTitle) courtModalTitle.textContent = 'New Court';
-        if (courtSubmitBtn) courtSubmitBtn.textContent = 'Add Court';
+        selectedCourtIdForUnits = null;
+        if (unitCourtSelect) unitCourtSelect.value = '';
+        if (unitLabelInput) unitLabelInput.value = '';
+        if (courtModalTitle) courtModalTitle.textContent = 'Add Sport';
+        if (courtSubmitBtn) courtSubmitBtn.textContent = 'Add Sport';
+        const archiveSportBtn = courtForm.querySelector('[data-admin-court-archive]');
+        if (archiveSportBtn) archiveSportBtn.hidden = true;
 
         courtForm.querySelectorAll('input[type="text"], input[type="number"], input[type="url"]').forEach((el) => { el.value = ''; });
         const quantityInput = courtForm.querySelector('[data-admin-court-quantity]');
-        if (quantityInput) quantityInput.value = '1';
-        ['[data-admin-court-unit]', '[data-admin-court-rate-unit]', '[data-admin-court-op-status]'].forEach((selector) => {
+        if (quantityInput) { quantityInput.value = '1'; quantityInput.readOnly = false; }
+        ['[data-admin-court-unit]', '[data-admin-court-op-status]'].forEach((selector) => {
             const el = courtForm.querySelector(selector);
             if (el) el.selectedIndex = 0;
         });
+        const unitManager = courtForm.querySelector('[data-admin-unit-manager]');
+        if (unitManager) unitManager.hidden = true;
         const sportSelect = courtForm.querySelector('[data-admin-court-sport]');
         if (sportSelect && sportSelect.options.length) sportSelect.selectedIndex = 0;
+        if (sportSelect?.closest('.admin-form-group')) sportSelect.closest('.admin-form-group').hidden = true;
 
         // Revision A2, decision B6 — a fresh Add starts with no cover and
         // no per-unit photos; openCourtModal() below overwrites this again
@@ -1991,6 +2044,8 @@ document.addEventListener('DOMContentLoaded', () => {
         resetCourtForm();
 
         if (court) {
+            const archiveSportBtn = courtForm.querySelector('[data-admin-court-archive]');
+            if (archiveSportBtn) { archiveSportBtn.hidden = false; archiveSportBtn.textContent = court.isActive ? 'Archive Sport' : 'Restore Sport'; archiveSportBtn.classList.toggle('is-danger', court.isActive); }
             courtForm.dataset.editingId = court.id;
             if (courtModalTitle) courtModalTitle.textContent = `Edit — ${court.name}`;
             if (courtSubmitBtn) courtSubmitBtn.textContent = 'Save Changes';
@@ -2005,13 +2060,25 @@ document.addEventListener('DOMContentLoaded', () => {
             };
             setValue('[data-admin-court-name]', court.name || '');
             setValue('[data-admin-court-sport]', court.sportId || '');
+            const sportSelect = courtForm.querySelector('[data-admin-court-sport]');
+            if (sportSelect?.closest('.admin-form-group')) sportSelect.closest('.admin-form-group').hidden = false;
             setValue('[data-admin-court-quantity]', court.quantity || 1);
             setValue('[data-admin-court-unit]', court.unit || 'courts');
-            setValue('[data-admin-court-rate]', court.rate !== null ? court.rate : '');
-            setValue('[data-admin-court-rate-unit]', court.rateUnit || '/hr');
             setValue('[data-admin-court-description]', court.description || '');
             setValue('[data-admin-court-op-status]', court.status || 'Available');
             setValue('[data-admin-court-image-url]', court.imageUrl || '');
+            const quantityInput = courtForm.querySelector('[data-admin-court-quantity]');
+            if (quantityInput) quantityInput.readOnly = true;
+            const unitManager = courtForm.querySelector('[data-admin-unit-manager]');
+            if (unitManager) unitManager.hidden = false;
+            selectedCourtIdForUnits = String(court.id);
+            if (unitCourtSelect) unitCourtSelect.value = String(court.id);
+            if (unitLabelInput) unitLabelInput.value = nextCourtUnitLabel(court);
+            loadPhysicalResourceSettings().then(() => {
+                if (selectedCourtIdForUnits === String(court.id) && unitLabelInput) {
+                    unitLabelInput.value = nextCourtUnitLabel(court);
+                }
+            });
 
             // Revision A2, decision B6 — Photos state/slots for Edit mode:
             // cover mirrors the URL field just set above; per-unit slots
@@ -2142,7 +2209,7 @@ document.addEventListener('DOMContentLoaded', () => {
     function renderAdminCourtCard(court) {
         const isActive = court.isActive !== false;
         const statusCls = isActive ? 'active' : 'inactive';
-        const statusLabel = isActive ? 'Active' : 'Deactivated';
+        const statusLabel = isActive ? 'Active' : 'Archived';
         const monogram = window.InigoCourtsData ? window.InigoCourtsData.monogramFor(court.sportSlug, court.name) : '?';
         const safeImageUrl = court.imageUrl && isSafeImageUrl(court.imageUrl) ? court.imageUrl : null;
         const artworkIndex = ['basketball', 'badminton', 'bowling', 'billiards', 'lawn-tennis', 'pickleball', 'table-tennis', 'volleyball'].indexOf(court.sportSlug);
@@ -2151,12 +2218,12 @@ document.addEventListener('DOMContentLoaded', () => {
             : artworkIndex >= 0
                 ? `<span class="admin-court-art admin-court-art-${artworkIndex}" role="img" aria-label="${window.escapeHtml(court.name)} illustration"></span>`
             : `<span class="admin-court-monogram" aria-hidden="true">${window.escapeHtml(monogram)}</span>`;
-        // Rate rendering: ₱<rate><rate_unit> when non-null, an honest "Rate
-        // TBA" placeholder when null — every court's rate is NULL in the
-        // live DB right now (see database/seed/002_seed_content.sql). Never
-        // invented.
-        const rateHtml = court.rate !== null
-            ? `₱${window.escapeHtml(String(court.rate))} <span>${window.escapeHtml(court.rateUnit)}</span>`
+        // Published pricing is stored per unit. Use the same unit schedule
+        // source as the customer picker instead of the legacy listing rate,
+        // which may legitimately be null for courts with different prices.
+        const rateHint = window.InigoCourtsData?.rateHint(court);
+        const rateHtml = rateHint
+            ? window.escapeHtml(rateHint)
             : '<span>Rate TBA</span>';
         // Revision A2, decision B6 — a small "N photos" chip whenever at
         // least one per-unit photo has actually been uploaded (not merely
@@ -2182,8 +2249,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     <p class="admin-court-rate">${rateHtml}</p>
                     <div class="admin-court-tags">${tagsHtml}</div>
                     <div class="admin-court-actions">
-                        <button type="button" class="admin-btn-secondary" data-admin-court-edit>Edit</button>
-                        <button type="button" class="admin-btn-secondary${isActive ? ' is-danger' : ''}" data-admin-court-toggle-status>${isActive ? 'Deactivate' : 'Activate'}</button>
+                        <button type="button" class="admin-btn-secondary" data-admin-court-edit>Edit sport</button>
                     </div>
                 </div>
             </article>
@@ -2215,8 +2281,6 @@ document.addEventListener('DOMContentLoaded', () => {
             const sportSelect = document.querySelector('[data-admin-court-sport]');
             const quantityInput = document.querySelector('[data-admin-court-quantity]');
             const unitSelect = document.querySelector('[data-admin-court-unit]');
-            const rateInput = document.querySelector('[data-admin-court-rate]');
-            const rateUnitSelect = document.querySelector('[data-admin-court-rate-unit]');
             const descriptionInput = document.querySelector('[data-admin-court-description]');
             const opStatusSelect = document.querySelector('[data-admin-court-op-status]');
 
@@ -2233,25 +2297,14 @@ document.addEventListener('DOMContentLoaded', () => {
             }
 
             const sportId = sportSelect ? sportSelect.value : '';
-            if (!sportId) {
+            const editingId = courtForm.dataset.editingId;
+            if (editingId && !sportId) {
                 window.InigoToast?.show('Select a sport.', true);
                 return;
             }
 
             let quantity = Number(quantityInput ? quantityInput.value : NaN);
             if (!Number.isFinite(quantity) || quantity < 1) quantity = 1;
-
-            // Rate is the one field allowed to stay blank — every court's
-            // rate is NULL in the live DB until Ms. Driz confirms prices
-            // (database/seed/002_seed_content.sql). Blank here always means
-            // "send NULL", including on Edit (so a rate can be cleared back
-            // to TBA), not "leave whatever was there before".
-            const rateRaw = rateInput ? rateInput.value.trim() : '';
-            if (rateRaw !== '' && (!Number.isFinite(Number(rateRaw)) || Number(rateRaw) < 0)) {
-                window.InigoToast?.show('Rate must be a positive number, or leave it blank until confirmed.', true);
-                return;
-            }
-            const rate = rateRaw === '' ? null : Number(rateRaw);
 
             // Revision A1 security requirement — courtModalState.coverUrl
             // (kept in sync with the "paste a URL" fallback field AND every
@@ -2274,9 +2327,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 quantity,
                 unit: unitSelect ? unitSelect.value : 'courts',
                 description: (descriptionInput && descriptionInput.value.trim()) ? descriptionInput.value.trim() : null,
-                rate,
-                rate_unit: rateUnitSelect?.value === '/game' ? '/game' : '/hr',
-                status: opStatusSelect ? opStatusSelect.value : 'Available',
+                status: editingId ? (currentCourts.find((court) => String(court.id) === String(editingId))?.status || 'Available') : 'Available',
                 image_url: coverUrl || null,
                 // Revision A2, decision B6 — per-unit photos, bridged to
                 // the column's snake_case {label, image_url} shape.
@@ -2287,7 +2338,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 )),
             };
 
-            const editingId = courtForm.dataset.editingId;
             const originalCourt = editingId ? currentCourts.find((court) => String(court.id) === String(editingId)) : null;
             if (!window.confirm(editingId
                 ? `Save changes to "${name}"?`
@@ -2303,6 +2353,7 @@ document.addEventListener('DOMContentLoaded', () => {
             let unitImagesSchemaMissing = false;
 
             let error;
+            let createdListingId = null;
             if (editingId) {
                 // .select() so `data` reflects the actually-updated row(s):
                 // an UPDATE that RLS's USING clause filters out (a
@@ -2325,20 +2376,24 @@ document.addEventListener('DOMContentLoaded', () => {
                     ? { message: 'Could not save changes — you may not have permission, or this court may no longer exist.' }
                     : null);
             } else {
-                const maxOrder = currentCourts.reduce((max, c) => Math.max(max, c.displayOrder || 0), 0);
-                let slug = window.InigoCourtsData.slugify(name);
-                ({ error } = await window.sb.from('court').insert({ ...payload, slug, display_order: maxOrder + 1 }));
-                if (error && error.code === '23505') {
-                    // Slug collision (unique constraint) — retried once with
-                    // a short unique suffix rather than failing outright.
-                    slug = `${slug}-${Date.now().toString(36)}`;
-                    ({ error } = await window.sb.from('court').insert({ ...payload, slug, display_order: maxOrder + 1 }));
+                const unitCount = Math.floor(quantity);
+                if (unitCount < 1 || unitCount > 50) {
+                    window.InigoToast?.show('Enter between 1 and 50 units.', true);
+                    courtSubmitBtn.disabled = false;
+                    courtSubmitBtn.textContent = originalLabel;
+                    return;
                 }
-                if (error && isSchemaMismatchError(error)) {
-                    unitImagesSchemaMissing = true;
-                    const { unit_images, ...payloadWithoutUnitImages } = payload;
-                    ({ error } = await window.sb.from('court').insert({ ...payloadWithoutUnitImages, slug, display_order: maxOrder + 1 }));
-                }
+                const { error: createError } = await window.sb.rpc('admin_create_sport_with_units', {
+                    p_name: name,
+                    p_slug: window.InigoCourtsData.slugify(name),
+                    p_unit: payload.unit,
+                    p_quantity: unitCount,
+                    p_description: payload.description,
+                    p_status: payload.status,
+                    p_image_url: payload.image_url,
+                    p_unit_images: payload.unit_images,
+                });
+                error = createError;
             }
 
             courtSubmitBtn.disabled = false;
@@ -2363,7 +2418,7 @@ document.addEventListener('DOMContentLoaded', () => {
             window.InigoToast?.show(
                 unitImagesSchemaMissing && courtModalState.unitImages.length
                     ? `${editingId ? 'Court updated' : 'Court added'}, but per-unit photos need a database update (see database/schema/006_court_unit_images.sql).`
-                    : (editingId ? 'Court updated.' : 'Court added.')
+                    : (editingId ? 'Sport updated.' : 'Sport and units added.')
             );
             closeCourtModal();
             // Revision A2, decision B6 — invalidateCourts() happens inside
@@ -2371,9 +2426,27 @@ document.addEventListener('DOMContentLoaded', () => {
             // the freshly-saved unit_images/image_url are what the
             // customer dashboard's unit picker sees on its own next load.
             loadAndRenderCourts();
-            recordOwnerActivity(`${editingId ? 'Court updated' : 'Court added'}: ${name}`, 'courts');
+            recordOwnerActivity(`${editingId ? 'Sport updated' : 'Sport added'}: ${name}`, 'courts');
         });
     }
+
+    document.querySelector('[data-admin-court-archive]')?.addEventListener('click', async (event) => {
+        const courtId = courtForm?.dataset.editingId;
+        const court = currentCourts.find((item) => String(item.id) === String(courtId));
+        const restore = court && court.isActive === false;
+        if (!court || !window.sb || !window.confirm(`${restore ? 'Restore' : 'Archive'} ${court.name}? Past reservations will remain in the system.`)) return;
+        const { data, error } = await window.sb.from('court').update({ is_active: restore }).eq('id', courtId).select('id');
+        if (error || !data?.length) { window.InigoToast?.show(error?.message || `Could not ${restore ? 'restore' : 'archive'} this sport.`, true); return; }
+        const otherActive = currentCourts.some((item) => String(item.id) !== String(courtId)
+            && String(item.sportId) === String(court.sportId) && item.isActive);
+        if (court.sportId && (restore || !otherActive)) {
+            const { error: sportError } = await window.sb.from('sport').update({ is_active: restore }).eq('id', court.sportId);
+            if (sportError) window.InigoToast?.show(`Listing changed, but its sport status needs attention: ${sportError.message}`, true);
+        }
+        window.InigoToast?.show(restore ? 'Sport restored.' : 'Sport archived. Existing reservations were preserved.');
+        closeCourtModal();
+        await loadAndRenderCourts();
+    });
 
     function wireCourtCardActions(scope) {
         scope.querySelectorAll('[data-admin-court-edit]').forEach((btn) => {
@@ -2506,6 +2579,429 @@ document.addEventListener('DOMContentLoaded', () => {
         // this file (see the <script> order in Pages/owner_dashboard.html).
         console.error('[admin] window.InigoCourtsData is missing — check that includes/courtsData.js loads before includes/owner_dashboard.js.');
     }
+
+    // Inventory and shared-availability data stay backed by the reservation
+    // ledger, but are edited in context from the selected sport's dialog.
+    const resourceRows = document.querySelector('[data-admin-resource-rows]');
+    const unitAddForm = document.querySelector('[data-admin-unit-add]');
+    const unitCourtSelect = document.querySelector('[data-admin-unit-court]');
+    const unitLabelInput = document.querySelector('[data-admin-unit-label]');
+    let selectedCourtIdForUnits = null;
+    let adminInventoryUnits = [];
+    let adminResources = [];
+    const rateCutoffForm = document.querySelector('[data-admin-rate-cutoff-form]');
+    const rateCutoffInput = document.querySelector('[data-admin-rate-cutoff]');
+    const rateCutoffSave = document.querySelector('[data-admin-rate-cutoff-save]');
+    const rateCutoffStatus = document.querySelector('[data-admin-rate-cutoff-status]');
+
+    function showRateCutoffStatus(message, isError = false) {
+        if (!rateCutoffStatus) return;
+        rateCutoffStatus.textContent = message;
+        rateCutoffStatus.classList.toggle('is-error', isError);
+        rateCutoffStatus.classList.toggle('is-success', !isError && Boolean(message));
+    }
+
+    function adminWriteError(error, action) {
+        if (error?.code === '42501') return `Admin access is required to ${action}.`;
+        return `Could not ${action}: ${error?.message || 'database request failed'}`;
+    }
+
+    async function loadRateCutoff() {
+        if (!window.sb || !rateCutoffInput) return;
+        rateCutoffInput.disabled = true;
+        if (rateCutoffSave) rateCutoffSave.disabled = true;
+        showRateCutoffStatus('Loading cutoff…');
+        let result;
+        try {
+            result = await window.sb.from('app_settings')
+                .select('night_rate_starts_at').eq('id', true).maybeSingle();
+        } catch (err) {
+            showRateCutoffStatus(adminWriteError(err, 'load the day/night cutoff'), true);
+            return;
+        }
+        const { data, error } = result;
+        if (error || !data) {
+            showRateCutoffStatus(error
+                ? adminWriteError(error, 'load the day/night cutoff')
+                : 'No app settings row was found. Check the database migration and admin access.', true);
+            return;
+        }
+        rateCutoffInput.value = data.night_rate_starts_at
+            ? String(data.night_rate_starts_at).slice(0, 5)
+            : '';
+        rateCutoffInput.disabled = false;
+        if (rateCutoffSave) rateCutoffSave.disabled = false;
+        showRateCutoffStatus(data.night_rate_starts_at
+            ? `Current cutoff: ${rateCutoffInput.value} (Asia/Manila).`
+            : 'No cutoff is configured. Different day and night rates cannot be quoted until one is saved.');
+    }
+
+    rateCutoffForm?.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        if (!window.sb || !rateCutoffInput) return;
+        const value = rateCutoffInput.value || null;
+        if (rateCutoffSave) { rateCutoffSave.disabled = true; rateCutoffSave.textContent = 'Saving…'; }
+        rateCutoffInput.disabled = true;
+        showRateCutoffStatus('Saving cutoff…');
+        let result;
+        try {
+            result = await window.sb.from('app_settings').update({ night_rate_starts_at: value }).eq('id', true)
+                .select('night_rate_starts_at').maybeSingle();
+        } catch (err) {
+            if (rateCutoffSave) { rateCutoffSave.disabled = false; rateCutoffSave.textContent = 'Save cutoff'; }
+            rateCutoffInput.disabled = false;
+            showRateCutoffStatus(adminWriteError(err, 'save the cutoff'), true);
+            return;
+        }
+        const { data, error } = result;
+        if (rateCutoffSave) { rateCutoffSave.disabled = false; rateCutoffSave.textContent = 'Save cutoff'; }
+        rateCutoffInput.disabled = false;
+        if (error || !data) {
+            showRateCutoffStatus(error
+                ? adminWriteError(error, 'save the cutoff')
+                : 'No settings row was updated. Admin access may be required.', true);
+            return;
+        }
+        rateCutoffInput.value = data.night_rate_starts_at ? String(data.night_rate_starts_at).slice(0, 5) : '';
+        showRateCutoffStatus(data.night_rate_starts_at
+            ? `Cutoff saved: ${rateCutoffInput.value} (Asia/Manila).`
+            : 'Cutoff cleared. Different day and night rates cannot be quoted until one is saved.');
+    });
+
+    function describeResourceForUnit(resource, unit) {
+        const otherUnits = adminInventoryUnits.filter((candidate) => String(candidate.id) !== String(unit.id)
+            && (candidate.court_unit_resource_map || []).some((link) => link.resource_id === resource.id));
+        const otherNames = otherUnits.map((candidate) => {
+            const linkedCourt = Array.isArray(candidate.court) ? candidate.court[0] : candidate.court;
+            return `${linkedCourt?.name || 'Court'} ${candidate.label}`;
+        });
+        return otherNames.length
+            ? `Shares availability with ${otherNames.join(', ')}`
+            : 'Dedicated space for this unit';
+    }
+
+    function renderResourceRows(units = adminInventoryUnits, resources = adminResources) {
+        if (!resourceRows) return;
+        if (!selectedCourtIdForUnits) {
+            resourceRows.innerHTML = '<p class="admin-form-hint">Open a sport’s Edit view to manage its individual units.</p>';
+            return;
+        }
+        const selectedUnits = units.filter((unit) => String(unit.court_id) === String(selectedCourtIdForUnits));
+        if (!selectedUnits.length) {
+            resourceRows.innerHTML = '<p class="admin-unit-empty">No individual units are configured yet. Add the first court, lane, or table above.</p>';
+            return;
+        }
+        resourceRows.innerHTML = selectedUnits.map((unit) => {
+            const mapped = new Set((unit.court_unit_resource_map || []).map((link) => link.resource_id));
+            const court = Array.isArray(unit.court) ? unit.court[0] : unit.court;
+            const unitDescription = `${court?.name || 'Court'} ${unit.label}`;
+            const connectedResources = resources.filter((resource) => {
+                if (mapped.has(resource.id)) return true;
+                const alreadyOwnedByCapacityCourt = adminInventoryUnits.some((candidate) => String(candidate.id) !== String(unit.id)
+                    && (candidate.court_unit_resource_map || []).length > 1
+                    && (candidate.court_unit_resource_map || []).some((link) => link.resource_id === resource.id));
+                if (alreadyOwnedByCapacityCourt) return false;
+                return adminInventoryUnits.some((candidate) => String(candidate.id) !== String(unit.id)
+                    && String(candidate.court_id) !== String(unit.court_id)
+                    && (candidate.court_unit_resource_map || []).length === 1
+                    && (candidate.court_unit_resource_map || []).some((link) => link.resource_id === resource.id));
+            });
+            const options = connectedResources.map((resource) => {
+                const capacityOwner = adminInventoryUnits.find((candidate) => String(candidate.id) !== String(unit.id)
+                    && (candidate.court_unit_resource_map || []).length > 1
+                    && (candidate.court_unit_resource_map || []).some((link) => link.resource_id === resource.id));
+                const managedElsewhere = mapped.has(resource.id) && Boolean(capacityOwner);
+                const ownerCourt = Array.isArray(capacityOwner?.court) ? capacityOwner.court[0] : capacityOwner?.court;
+                const label = managedElsewhere
+                    ? `${describeResourceForUnit(resource, unit)} · managed from ${ownerCourt?.name || 'larger court'} ${capacityOwner.label}`
+                    : describeResourceForUnit(resource, unit);
+                return `<label class="admin-unit-share-option">
+                    <input type="checkbox" data-resource-map="${window.escapeHtml(resource.id)}" aria-label="${window.escapeHtml(label)}" ${mapped.has(resource.id) ? 'checked' : ''} ${managedElsewhere ? 'disabled' : ''}>
+                    <span>${window.escapeHtml(label)}</span>
+                </label>`;
+            }).join('');
+            const peerCount = (unit.court_unit_resource_map || []).reduce((count, link) => {
+                return count + adminInventoryUnits.filter((candidate) => String(candidate.id) !== String(unit.id)
+                    && (candidate.court_unit_resource_map || []).some((candidateLink) => candidateLink.resource_id === link.resource_id)).length;
+            }, 0);
+            return `<article class="admin-unit-card" data-admin-resource-unit="${window.escapeHtml(unit.id)}">
+                <header class="admin-unit-card-head">
+                    <div><strong>${window.escapeHtml(unitDescription)}</strong><span>${unit.inventory_verified ? 'Inventory verified' : 'Needs verification'}</span></div>
+                    <label class="admin-unit-bookable"><span>Unit status</span><select data-resource-status aria-label="Status for ${window.escapeHtml(unitDescription)}"><option value="available" ${(unit.availability_status || (unit.is_active ? 'available' : 'archived')) === 'available' ? 'selected' : ''}>Available</option><option value="maintenance" ${unit.availability_status === 'maintenance' ? 'selected' : ''}>Maintenance</option><option value="archived" ${unit.availability_status === 'archived' ? 'selected' : ''}>Archived</option></select></label>
+                </header>
+                <div class="admin-unit-price-grid">
+                    <label class="admin-form-group"><span class="admin-form-label">Pricing tier</span><select class="admin-input admin-resource-tier" aria-label="Pricing tier for ${window.escapeHtml(unitDescription)}">
+                    <option value="">Unassigned</option><option value="old" ${unit.pricing_tier === 'old' ? 'selected' : ''}>Old</option>
+                    <option value="new" ${unit.pricing_tier === 'new' ? 'selected' : ''}>New</option><option value="standard" ${unit.pricing_tier === 'standard' ? 'selected' : ''}>Standard</option>
+                    </select></label>
+                    <label class="admin-form-group"><span class="admin-form-label">Day rate (₱)</span><input class="admin-input" type="number" min="0" step="0.01" inputmode="decimal" data-rate-day value="${unit.rate_day == null ? '' : window.escapeHtml(String(unit.rate_day))}" placeholder="Not set" aria-label="Day rate for ${window.escapeHtml(unitDescription)}"></label>
+                    <label class="admin-form-group"><span class="admin-form-label">Night rate (₱)</span><input class="admin-input" type="number" min="0" step="0.01" inputmode="decimal" data-rate-night value="${unit.rate_night == null ? '' : window.escapeHtml(String(unit.rate_night))}" placeholder="Not set" aria-label="Night rate for ${window.escapeHtml(unitDescription)}"></label>
+                    <label class="admin-form-group"><span class="admin-form-label">Bill by</span><select class="admin-input admin-resource-rate-basis" data-rate-unit aria-label="Rate basis for ${window.escapeHtml(unitDescription)}">
+                    <option value="/hr" ${unit.rate_unit === '/hr' ? 'selected' : ''}>Per hour</option>
+                    <option value="/set" ${unit.rate_unit === '/set' ? 'selected' : ''}>Per set</option>
+                    </select></label>
+                </div>
+                <div class="admin-unit-save-row"><button type="button" class="admin-btn-chip-secondary admin-resource-rate-save" data-rate-save aria-label="Save rates for ${window.escapeHtml(unitDescription)}">Save rates</button><span class="admin-resource-rate-status" data-rate-status role="status" aria-live="polite"></span></div>
+                <details class="admin-unit-sharing">
+                    <summary>Availability connections <span>${peerCount ? `${peerCount} shared link${peerCount === 1 ? '' : 's'}` : 'No other courts linked'}</span></summary>
+                    <p>Each choice is one shared booking space. For a larger court that covers several smaller courts, configure the larger court and select every smaller court it covers. The smaller courts then remain independently bookable.</p>
+                    <div class="admin-unit-share-list">${options || '<span>No other spaces are available to connect.</span>'}</div>
+                </details>
+            </article>`;
+        }).join('');
+
+        resourceRows.querySelectorAll('[data-admin-resource-unit]').forEach((row) => {
+            const unitId = row.dataset.adminResourceUnit;
+            const unit = adminInventoryUnits.find((item) => item.id === unitId);
+            const mapped = new Set((unit?.court_unit_resource_map || []).map((link) => link.resource_id));
+            const disabledByDesign = new Set(Array.from(row.querySelectorAll('input,select')).filter((input) => input.disabled));
+            const setBusy = (busy) => row.querySelectorAll('input,select').forEach((input) => {
+                input.disabled = busy || disabledByDesign.has(input);
+            });
+            const rateSaveButton = row.querySelector('[data-rate-save]');
+            const rateStatus = row.querySelector('[data-rate-status]');
+            rateSaveButton?.addEventListener('click', async () => {
+                const dayInput = row.querySelector('[data-rate-day]');
+                const nightInput = row.querySelector('[data-rate-night]');
+                const basisInput = row.querySelector('[data-rate-unit]');
+                const amount = (input) => {
+                    if (input.value.trim() === '') return null;
+                    const parsed = Number(input.value);
+                    return Number.isFinite(parsed) && parsed >= 0 ? parsed : NaN;
+                };
+                const rateDay = amount(dayInput);
+                const rateNight = amount(nightInput);
+                if (Number.isNaN(rateDay) || Number.isNaN(rateNight)) {
+                    if (rateStatus) { rateStatus.textContent = 'Enter a non-negative amount or leave blank.'; rateStatus.classList.add('is-error'); }
+                    return;
+                }
+                setBusy(true);
+                rateSaveButton.disabled = true;
+                rateSaveButton.textContent = 'Saving…';
+                if (rateStatus) { rateStatus.textContent = 'Saving…'; rateStatus.classList.remove('is-error', 'is-success'); }
+                let updateResult;
+                try {
+                    updateResult = await window.sb.from('court_unit_inventory').update({
+                        rate_day: rateDay,
+                        rate_night: rateNight,
+                        rate_unit: basisInput.value,
+                    }).eq('id', unitId).select('id,rate_day,rate_night,rate_unit').single();
+                } catch (err) {
+                    setBusy(false);
+                    rateSaveButton.disabled = false;
+                    rateSaveButton.textContent = 'Save rates';
+                    if (rateStatus) { rateStatus.textContent = adminWriteError(err, 'save rates'); rateStatus.classList.add('is-error'); }
+                    return;
+                }
+                const { data, error } = updateResult;
+                setBusy(false);
+                rateSaveButton.disabled = false;
+                rateSaveButton.textContent = 'Save rates';
+                if (error) {
+                    const message = error.code === '23514'
+                        ? 'Unsupported rate. Use a non-negative amount and a valid basis.'
+                        : error.code === 'PGRST116'
+                            ? 'No unit was updated. Check that this unit still exists and that you have admin access.'
+                            : adminWriteError(error, 'save rates');
+                    if (rateStatus) { rateStatus.textContent = message; rateStatus.classList.add('is-error'); }
+                    console.error('[admin] could not save unit rates', error);
+                    return;
+                }
+                if (!data) {
+                    if (rateStatus) { rateStatus.textContent = 'No unit was updated. Check admin access and reload the table.'; rateStatus.classList.add('is-error'); }
+                    return;
+                }
+                if (rateStatus) { rateStatus.textContent = 'Saved'; rateStatus.classList.remove('is-error'); rateStatus.classList.add('is-success'); }
+                if (unit) Object.assign(unit, { rate_day: rateDay, rate_night: rateNight, rate_unit: basisInput.value });
+                window.InigoCourtsData?.invalidateCourts();
+                loadAndRenderCourts();
+            });
+            const save = async (promise, successMessage) => {
+                setBusy(true);
+                let result;
+                try {
+                    result = await promise;
+                } catch (error) {
+                    setBusy(false);
+                    window.InigoToast?.show(adminWriteError(error, 'update court availability'), true);
+                    await loadPhysicalResourceSettings();
+                    return false;
+                }
+                const { data, error } = result;
+                setBusy(false);
+                if (error) {
+                    window.InigoToast?.show(error.code === '23P01'
+                        ? 'That change conflicts with an active reservation. It was not saved.'
+                        : error.code === '23503'
+                            ? 'This unit has an active booking. Wait for it to finish or expire before changing its status.'
+                        : (error.message || 'Could not update court availability.'), true);
+                    await loadPhysicalResourceSettings();
+                    return false;
+                }
+                if (!data) {
+                    window.InigoToast?.show('No change was saved. Check your admin access, then reload the court.', true);
+                    await loadPhysicalResourceSettings();
+                    return false;
+                }
+                if (successMessage) window.InigoToast?.show(successMessage);
+                return true;
+            };
+
+            const tierSelect = row.querySelector('.admin-resource-tier');
+            tierSelect?.addEventListener('change', async () => {
+                if (await save(window.sb.from('court_unit_inventory').update({ pricing_tier: tierSelect.value || null }).eq('id', unitId).select('id').maybeSingle(), 'Pricing tier saved.')) {
+                    await loadPhysicalResourceSettings();
+                }
+            });
+            row.querySelector('[data-resource-status]')?.addEventListener('change', async (event) => {
+                const select = event.currentTarget;
+                const previous = unit?.availability_status || (unit?.is_active ? 'available' : 'archived');
+                const nextStatus = select.value;
+                if (nextStatus !== 'available' && !window.confirm(`${nextStatus === 'archived' ? 'Archive' : 'Set to maintenance'} for ${unit?.label || 'this court'}? Existing reservations remain saved.`)) {
+                    select.value = previous;
+                    return;
+                }
+                if (await save(window.sb.from('court_unit_inventory').update({ availability_status: nextStatus }).eq('id', unitId).select('id').maybeSingle(), 'Court availability updated.')) {
+                    if (unit) { unit.availability_status = nextStatus; unit.is_active = nextStatus === 'available'; }
+                    await loadPhysicalResourceSettings();
+                    window.InigoCourtsData?.invalidateCourts();
+                    await loadAndRenderCourts();
+                } else {
+                    select.value = previous;
+                }
+            });
+
+            row.querySelectorAll('[data-resource-map]').forEach((input) => {
+                input.addEventListener('change', async () => {
+                    const resourceId = input.dataset.resourceMap;
+                    if (!input.checked && mapped.size <= 1) {
+                        input.checked = true;
+                        window.InigoToast?.show('Keep at least one availability space linked to each court.', true);
+                        return;
+                    }
+                    const request = input.checked
+                        ? window.sb.from('court_unit_resource_map').upsert(
+                            { court_unit_id: unitId, resource_id: resourceId },
+                            { onConflict: 'court_unit_id,resource_id', ignoreDuplicates: true }).select('court_unit_id').maybeSingle()
+                        : window.sb.from('court_unit_resource_map').delete()
+                            .eq('court_unit_id', unitId).eq('resource_id', resourceId).select('court_unit_id').maybeSingle();
+                    if (await save(request, 'Availability connection saved.')) {
+                        await loadPhysicalResourceSettings();
+                    } else {
+                        input.checked = !input.checked;
+                    }
+                });
+            });
+        });
+    }
+
+    async function loadPhysicalResourceSettings() {
+        if (!window.sb || !resourceRows) return;
+        const [unitsRes, resourcesRes] = await Promise.all([
+            window.sb.from('court_unit_inventory')
+                .select('id,court_id,label,pricing_tier,rate_day,rate_night,rate_unit,is_active,availability_status,inventory_verified,court(id,name,unit),court_unit_resource_map(resource_id)')
+                .order('court_id').order('label'),
+            window.sb.from('physical_court_resource').select('id,name,is_active').order('name'),
+        ]);
+        if (unitsRes.error || resourcesRes.error) {
+            resourceRows.innerHTML = '<p class="admin-unit-empty">Court settings could not be loaded. Refresh and check your admin access.</p>';
+            console.error('[admin] could not load physical court settings', unitsRes.error || resourcesRes.error);
+            return;
+        }
+        adminInventoryUnits = (unitsRes.data || []).sort((a, b) => {
+            const courtOrder = String(a.court_id).localeCompare(String(b.court_id));
+            if (courtOrder) return courtOrder;
+            return String(a.label || '').localeCompare(String(b.label || ''), undefined, { numeric: true, sensitivity: 'base' });
+        });
+        adminResources = (resourcesRes.data || []).filter((resource) => resource.is_active);
+        renderResourceRows();
+    }
+
+    function nextCourtUnitLabel(court) {
+        const noun = String(court.unit || 'courts').replace(/s$/i, '');
+        const titleNoun = noun.charAt(0).toUpperCase() + noun.slice(1);
+        const used = new Set(adminInventoryUnits.filter((unit) => String(unit.court_id) === String(court.id))
+            .map((unit) => String(unit.label || '').toLowerCase()));
+        let index = 1;
+        while (used.has(`${titleNoun} ${index}`.toLowerCase())) index += 1;
+        return `${titleNoun} ${index}`;
+    }
+
+    async function createCourtUnitWithSpace(courtId, label) {
+        const courtResult = await window.sb.from('court').select('id,name,quantity').eq('id', courtId).single();
+        if (courtResult.error || !courtResult.data) return { error: courtResult.error || new Error('Sport listing not found.') };
+
+        const unitResult = await window.sb.from('court_unit_inventory')
+            .insert({ court_id: courtId, label, inventory_verified: true, is_active: true })
+            .select('id').single();
+        if (unitResult.error || !unitResult.data) return { error: unitResult.error || new Error('Could not create the court unit.') };
+
+        const unitId = unitResult.data.id;
+        const resourceResult = await window.sb.from('physical_court_resource')
+            .insert({ name: `${courtResult.data.name} · ${label} · ${unitId}` }).select('id').single();
+        if (resourceResult.error || !resourceResult.data) {
+            await window.sb.from('court_unit_inventory').delete().eq('id', unitId);
+            return { error: resourceResult.error || new Error('Could not initialize availability for this court.') };
+        }
+
+        const mapResult = await window.sb.from('court_unit_resource_map')
+            .insert({ court_unit_id: unitId, resource_id: resourceResult.data.id });
+        if (mapResult.error) {
+            await window.sb.from('physical_court_resource').delete().eq('id', resourceResult.data.id);
+            await window.sb.from('court_unit_inventory').delete().eq('id', unitId);
+            return { error: mapResult.error };
+        }
+
+        const countResult = await window.sb.from('court_unit_inventory').select('id', { count: 'exact', head: true }).eq('court_id', courtId);
+        const nextQuantity = countResult.count || Number(courtResult.data.quantity) + 1;
+        const listingUpdate = await window.sb.from('court').update({ quantity: nextQuantity }).eq('id', courtId).select('id').maybeSingle();
+        if (listingUpdate.error || !listingUpdate.data) {
+            await window.sb.from('court_unit_resource_map').delete().eq('court_unit_id', unitId);
+            await window.sb.from('physical_court_resource').delete().eq('id', resourceResult.data.id);
+            await window.sb.from('court_unit_inventory').delete().eq('id', unitId);
+            return { error: listingUpdate.error || new Error('Unit was added, but the sport listing count could not be refreshed. Reload the page.') };
+        }
+        return { data: { id: unitId, resourceId: resourceResult.data.id, quantity: nextQuantity } };
+    }
+
+    unitAddForm?.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        const courtId = unitCourtSelect?.value;
+        const label = unitLabelInput?.value.trim();
+        const submit = unitAddForm.querySelector('button[type="submit"]');
+        if (!courtId || !label || !window.sb) return;
+        if (adminInventoryUnits.some((unit) => String(unit.court_id) === String(courtId)
+            && String(unit.label).toLocaleLowerCase() === label.toLocaleLowerCase())) {
+            window.InigoToast?.show('A court with that label already exists in this sport.', true);
+            unitLabelInput?.focus();
+            return;
+        }
+        if (submit) { submit.disabled = true; submit.textContent = 'Adding…'; }
+        const { data, error } = await createCourtUnitWithSpace(courtId, label);
+        if (submit) { submit.disabled = false; submit.textContent = 'Add unit'; }
+        if (error) {
+            window.InigoToast?.show(error.message || 'Could not add this unit and set up its availability.', true);
+            return;
+        }
+        await loadPhysicalResourceSettings();
+        const court = currentCourts.find((item) => String(item.id) === String(courtId));
+        if (court && data?.quantity) {
+            court.quantity = data.quantity;
+            const quantityInput = courtForm?.querySelector('[data-admin-court-quantity]');
+            if (quantityInput) quantityInput.value = String(data.quantity);
+            courtModalState.unitImages = deriveCourtPhotoUnits(data.quantity, court.unit, courtModalState.unitImages);
+            renderCourtPhotoSlots();
+            if (unitLabelInput) unitLabelInput.value = nextCourtUnitLabel(court);
+        }
+        window.InigoCourtsData?.invalidateCourts();
+        await loadAndRenderCourts();
+        window.InigoToast?.show('Court added and ready for bookings. Add its rate before accepting paid reservations.');
+    });
+
+    loadPhysicalResourceSettings();
+    loadRateCutoff();
+    document.addEventListener('inigosync:profile-ready', loadPhysicalResourceSettings);
+    document.addEventListener('inigosync:profile-ready', loadRateCutoff);
 
     // ------------------------------------------------------------------
     // Media Manager — real slideshow against `public.event` (Revision A1,
@@ -3013,6 +3509,29 @@ document.addEventListener('DOMContentLoaded', () => {
     const adminAvatarFileInput = document.querySelector('[data-admin-avatar-file]');
     const adminAvatarUploadBtn = document.querySelector('[data-admin-avatar-upload-trigger]');
     const adminAvatarRemoveBtn = document.querySelector('[data-admin-avatar-remove]');
+    const adminAvatarSaveBtn = document.querySelector('[data-admin-avatar-save]');
+    const adminAvatarModal = document.querySelector('[data-admin-avatar-modal]');
+    let stagedAvatarUrl;
+
+    document.querySelector('[data-admin-profile-edit]')?.addEventListener('click', () => {
+        paintOwnerDetails(window.inigosyncProfile || {});
+        const modal = document.querySelector('[data-admin-settings-profile-modal]');
+        if (modal) modal.hidden = false;
+        refreshLinkedGoogleEmails();
+    });
+    document.querySelector('[data-admin-avatar-edit]')?.addEventListener('click', () => {
+        stagedAvatarUrl = window.inigosyncProfile?.avatar_url || null;
+        renderAdminProfile(window.inigosyncProfile || {});
+        if (adminAvatarRemoveBtn) adminAvatarRemoveBtn.hidden = !stagedAvatarUrl;
+        if (adminAvatarModal) adminAvatarModal.hidden = false;
+    });
+    document.querySelectorAll('[data-admin-settings-cancel="profile"], [data-admin-avatar-cancel]').forEach((button) => {
+        button.addEventListener('click', () => {
+            const modal = button.closest('.admin-modal-overlay');
+            if (modal) modal.hidden = true;
+            if (button.hasAttribute('data-admin-avatar-cancel')) renderAdminProfile(window.inigosyncProfile || {});
+        });
+    });
 
     async function saveAdminAvatarUrl(avatarUrl) {
         if (!window.sb || !window.inigosyncProfile) {
@@ -3057,8 +3576,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
             try {
                 const dataUrl = await window.InigoImageTools.downscaleImageToDataUrl(file, { size: AVATAR_OUTPUT_SIZE, quality: AVATAR_JPEG_QUALITY });
-                const ok = await saveAdminAvatarUrl(dataUrl);
-                if (ok) window.InigoToast?.show('Profile photo updated.');
+                stagedAvatarUrl = dataUrl;
+                const preview = document.querySelector('.admin-avatar-upload-preview');
+                if (preview) preview.innerHTML = `<img class="admin-avatar-img" src="${window.escapeHtml(dataUrl)}" alt="Profile photo preview">`;
+                if (adminAvatarRemoveBtn) adminAvatarRemoveBtn.hidden = false;
             } catch (err) {
                 console.error('[admin] avatar downscale failed', err);
                 window.InigoToast?.show('Could not process that image. Please try a different file.', true);
@@ -3069,14 +3590,21 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    if (adminAvatarRemoveBtn) {
-        adminAvatarRemoveBtn.addEventListener('click', async () => {
-            adminAvatarRemoveBtn.disabled = true;
-            const ok = await saveAdminAvatarUrl(null);
-            adminAvatarRemoveBtn.disabled = false;
-            if (ok) window.InigoToast?.show('Profile photo removed.');
-        });
-    }
+    adminAvatarRemoveBtn?.addEventListener('click', () => {
+        stagedAvatarUrl = null;
+        const preview = document.querySelector('.admin-avatar-upload-preview');
+        if (preview) preview.textContent = (window.inigosyncProfile?.full_name || 'Owner').split(/\s+/).map((part) => part[0]).slice(0, 2).join('').toUpperCase();
+        adminAvatarRemoveBtn.hidden = true;
+    });
+    adminAvatarSaveBtn?.addEventListener('click', async () => {
+        adminAvatarSaveBtn.disabled = true;
+        const ok = await saveAdminAvatarUrl(stagedAvatarUrl);
+        adminAvatarSaveBtn.disabled = false;
+        if (ok) {
+            if (adminAvatarModal) adminAvatarModal.hidden = true;
+            window.InigoToast?.show(stagedAvatarUrl ? 'Profile photo updated.' : 'Profile photo removed.');
+        }
+    });
 
     // Owner Profile — prefill from the real signed-in profile. Revision A1,
     // decision A8 — the ONE place that paints every .admin-avatar (topbar,
@@ -3091,19 +3619,6 @@ document.addEventListener('DOMContentLoaded', () => {
     // than in Pages/owner_dashboard.html — this fix pass is scoped to this
     // file. Reuses the already-styled .admin-form-hint class instead of a
     // new one this pass has no matching CSS change for.
-    function getAdminEmailPendingHint(emailInput) {
-        let hint = document.querySelector('[data-admin-settings-email-pending]');
-        if (!hint && emailInput) {
-            hint = document.createElement('p');
-            hint.className = 'admin-form-hint';
-            hint.setAttribute('data-admin-settings-email-pending', '');
-            hint.textContent = 'Pending confirmation — check your inbox.';
-            hint.hidden = true;
-            emailInput.insertAdjacentElement('afterend', hint);
-        }
-        return hint;
-    }
-
     // `options.skipEmailRepaint` — S2 (Revision A1 fix). A successful
     // sb.auth.updateUser({ email }) does NOT change window.inigosyncProfile
     // (see the Personal Information save handler below — profiles.email
@@ -3114,8 +3629,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // typed value in place and show the pending-confirmation hint instead;
     // every other call site (initial load, Cancel, a real profile change)
     // omits it, so those still correctly repaint/revert the field.
-    function renderAdminProfile(profile, options) {
-        const skipEmailRepaint = Boolean(options && options.skipEmailRepaint);
+    function renderAdminProfile(profile) {
         const initials = (profile.full_name || profile.email || '?')
             .split(' ').map((p) => p[0]).slice(0, 2).join('').toUpperCase();
 
@@ -3137,11 +3651,9 @@ document.addEventListener('DOMContentLoaded', () => {
         const nameInput = document.querySelector('[data-admin-settings-name]');
         const emailInput = document.querySelector('[data-admin-settings-email]');
         if (nameInput) nameInput.value = profile.full_name || '';
-        if (emailInput) {
-            if (!skipEmailRepaint) emailInput.value = profile.email || '';
-            const hint = getAdminEmailPendingHint(emailInput);
-            if (hint) hint.hidden = !skipEmailRepaint;
-        }
+        if (emailInput) emailInput.textContent = profile.email || '—';
+        const fullNameEl = document.querySelector('[data-admin-profile-full-name]');
+        if (fullNameEl) fullNameEl.textContent = profile.full_name || '—';
 
         // Revision A2, decision B2 — the Profile panel's Email/Mobile
         // definition-list rows. authGuard.js's own profiles select already
@@ -3152,6 +3664,8 @@ document.addEventListener('DOMContentLoaded', () => {
         if (profileEmailEl) profileEmailEl.textContent = profile.email || '—';
         const profileMobileEl = document.querySelector('[data-admin-profile-mobile]');
         if (profileMobileEl) profileMobileEl.textContent = profile.contact_num || '—';
+        const birthdateEl = document.querySelector('[data-admin-profile-birthdate]');
+        if (birthdateEl) birthdateEl.textContent = profile.birthdate || '—';
     }
 
     function paintOwnerDetails(profile) {
@@ -3169,6 +3683,7 @@ document.addEventListener('DOMContentLoaded', () => {
             ['[data-admin-profile-address]', profile.address || '—'],
             ['[data-admin-profile-age]', computeAdminStaffAge(profile.birthdate) === null ? '—' : `${computeAdminStaffAge(profile.birthdate)} years old`],
             ['[data-admin-profile-gender]', profile.gender || '—'],
+            ['[data-admin-profile-birthdate]', profile.birthdate || '—'],
         ];
         values.forEach(([selector, value]) => {
             const target = document.querySelector(selector);
@@ -3231,13 +3746,11 @@ document.addEventListener('DOMContentLoaded', () => {
             if (!window.sb || !window.inigosyncProfile) return;
 
             const nameInput = document.querySelector('[data-admin-settings-name]');
-            const emailInput = document.querySelector('[data-admin-settings-email]');
             const mobileInput = document.querySelector('[data-admin-settings-mobile]');
             const addressInput = document.querySelector('[data-admin-settings-address]');
             const birthdateInput = document.querySelector('[data-admin-settings-birthdate]');
             const genderInput = document.querySelector('[data-admin-settings-gender]');
             const newName = nameInput ? nameInput.value.trim() : '';
-            const newEmail = emailInput ? emailInput.value.trim() : '';
             const mobileRaw = mobileInput ? mobileInput.value.trim() : '';
             const address = addressInput ? addressInput.value.trim() : '';
             const birthdate = birthdateInput?.value || null;
@@ -3267,19 +3780,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 nameInput?.focus();
                 return;
             }
-            if (!EMAIL_RE.test(newEmail)) {
-                window.InigoToast?.show('Enter a valid email address.', true);
-                emailInput?.focus();
-                return;
-            }
-
             const nameChanged = newName !== (window.inigosyncProfile.full_name || '');
-            const emailChanged = newEmail !== (window.inigosyncProfile.email || '');
             const detailsChanged = contact_num !== (window.inigosyncProfile.contact_num || '')
                 || address !== (window.inigosyncProfile.address || '')
                 || birthdate !== (window.inigosyncProfile.birthdate || null)
                 || gender !== (window.inigosyncProfile.gender || '');
-            if (!nameChanged && !emailChanged && !detailsChanged) {
+            if (!nameChanged && !detailsChanged) {
                 window.InigoToast?.show('Nothing to save.');
                 return;
             }
@@ -3294,26 +3800,11 @@ document.addEventListener('DOMContentLoaded', () => {
                     Object.assign(window.inigosyncProfile, { full_name: newName, contact_num, address, birthdate, gender });
                 }
 
-                if (emailChanged) {
-                    const { error } = await window.sb.auth.updateUser({ email: newEmail });
-                    if (error) throw error;
-                }
-
-                // S2 (Revision A1 fix) — skip the email repaint on THIS
-                // specific call only, when a new address was just
-                // submitted: window.inigosyncProfile.email is still the
-                // OLD (confirmed) address at this point (see this
-                // function's own comment above), so a normal repaint would
-                // silently swap the input back to it, looking exactly like
-                // the save had failed.
-                renderAdminProfile(window.inigosyncProfile, { skipEmailRepaint: emailChanged });
+                renderAdminProfile(window.inigosyncProfile);
                 paintOwnerDetails(window.inigosyncProfile);
-                recordOwnerActivity(emailChanged ? 'Owner email change requested' : 'Owner profile updated', 'settings');
-                window.InigoToast?.show(
-                    emailChanged
-                        ? `Confirmation link sent to ${newEmail} (check the old inbox too) — the change applies after you click it.`
-                        : 'Profile updated.'
-                );
+                recordOwnerActivity('Owner profile updated', 'settings');
+                window.InigoToast?.show('Profile updated.');
+                document.querySelector('[data-admin-settings-profile-modal]')?.setAttribute('hidden', '');
             } catch (err) {
                 window.InigoToast?.show(err.message || 'Could not save your changes.', true);
             } finally {
@@ -3545,4 +4036,49 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         });
     });
+
+    // Owner review inbox reads only the privacy-safe view. Rating filters
+    // and paging are server-side so every published booking review is
+    // reachable without loading the entire table into the browser.
+    const reviewList = document.querySelector('[data-admin-review-list]');
+    const reviewSummary = document.querySelector('[data-admin-review-summary]');
+    const reviewPager = document.querySelector('[data-admin-review-pagination]');
+    let reviewRatingFilter = 'all';
+    let reviewPage = 0;
+    const REVIEW_PAGE_SIZE = 10;
+    async function loadOwnerReviews() {
+        if (!reviewList || !window.sb) return;
+        reviewList.setAttribute('aria-busy', 'true');
+        let query = window.sb.from('public_booking_reviews').select('id,display_name,rating,comment,created_at', { count: 'exact' })
+            .order('created_at', { ascending: false }).range(reviewPage * REVIEW_PAGE_SIZE, (reviewPage + 1) * REVIEW_PAGE_SIZE - 1);
+        if (reviewRatingFilter !== 'all') query = query.eq('rating', Number(reviewRatingFilter));
+        const { data, count, error } = await query;
+        reviewList.setAttribute('aria-busy', 'false');
+        if (error) {
+            reviewList.innerHTML = '<p class="admin-form-hint">Reviews could not be loaded. Check your owner access and try again.</p>';
+            if (reviewSummary) reviewSummary.textContent = 'Review list unavailable';
+            console.error('[admin] owner reviews query failed', error);
+            return;
+        }
+        const total = count || 0;
+        if (reviewSummary) reviewSummary.textContent = `${total} customer review${total === 1 ? '' : 's'}${reviewRatingFilter === 'all' ? '' : ` rated ${reviewRatingFilter} star${reviewRatingFilter === '1' ? '' : 's'}`}`;
+        reviewList.innerHTML = data?.length ? data.map((review) => `<article class="admin-review-item"><div class="admin-review-item-head"><strong>${window.escapeHtml(review.display_name || 'Customer')}</strong><span aria-label="${Number(review.rating)} out of 5 stars">${'★'.repeat(Number(review.rating))}${'☆'.repeat(5 - Number(review.rating))}</span></div><p>${window.escapeHtml(review.comment || 'No written comment.')}</p><time datetime="${window.escapeHtml(review.created_at)}">${window.escapeHtml(new Date(review.created_at).toLocaleDateString())}</time></article>`).join('') : '<p class="admin-form-hint">No reviews for this rating yet.</p>';
+        const pages = Math.max(1, Math.ceil(total / REVIEW_PAGE_SIZE));
+        if (reviewPager) reviewPager.hidden = total <= REVIEW_PAGE_SIZE;
+        const info = document.querySelector('[data-admin-review-page-info]');
+        const prev = document.querySelector('[data-admin-review-prev]');
+        const next = document.querySelector('[data-admin-review-next]');
+        if (info) info.textContent = `Page ${reviewPage + 1} of ${pages}`;
+        if (prev) prev.disabled = reviewPage <= 0;
+        if (next) next.disabled = reviewPage + 1 >= pages;
+    }
+    document.querySelectorAll('[data-admin-review-rating]').forEach((button) => button.addEventListener('click', () => {
+        reviewRatingFilter = button.dataset.adminReviewRating || 'all'; reviewPage = 0;
+        document.querySelectorAll('[data-admin-review-rating]').forEach((item) => { item.classList.toggle('is-active', item === button); item.setAttribute('aria-pressed', String(item === button)); });
+        loadOwnerReviews();
+    }));
+    document.querySelector('[data-admin-review-prev]')?.addEventListener('click', () => { if (reviewPage > 0) { reviewPage -= 1; loadOwnerReviews(); } });
+    document.querySelector('[data-admin-review-next]')?.addEventListener('click', () => { reviewPage += 1; loadOwnerReviews(); });
+    document.addEventListener('inigosync:profile-ready', loadOwnerReviews);
+    if (window.inigosyncProfile) loadOwnerReviews();
 });

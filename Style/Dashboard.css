@@ -1302,7 +1302,7 @@ body.dash-body {
 .dash-btn-primary,
 .dash-btn-secondary {
     flex: 1;
-    padding: 11px 0;
+    padding: 11px 16px;
     border-radius: 999px;
     font-family: var(--font-body);
     font-weight: 700;
@@ -1310,6 +1310,15 @@ body.dash-body {
     cursor: pointer;
     text-align: center;
     transition: background 0.2s, transform 0.2s, border-color 0.2s, color 0.2s;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 44px;
+    max-width: 100%;
+    min-width: 0;
+    line-height: 1.2;
+    white-space: normal;
+    overflow-wrap: anywhere;
 }
 
 .dash-btn-primary {
@@ -1770,8 +1779,11 @@ body.dash-body {
 
 .dash-wizard-nav {
     display: flex;
+    align-items: center;
     justify-content: flex-end;
     gap: 12px;
+    flex-wrap: wrap;
+    min-width: 0;
     margin-top: 24px;
     padding-top: 20px;
     border-top: 1px solid var(--color-line);
@@ -1882,6 +1894,39 @@ body.dash-body {
     padding-top: 20px;
     border-top: 1px solid var(--color-line);
 }
+
+.dash-book-cart {
+    border: 1px solid var(--color-border, #d8ded9);
+    border-radius: 12px;
+    padding: 12px;
+    background: var(--color-bg-card, #fff);
+}
+
+.dash-book-cart-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+.dash-book-cart ul {
+    list-style: none;
+    margin: 8px 0;
+    padding: 0;
+}
+
+.dash-book-cart li {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 8px 0;
+    border-top: 1px solid var(--color-border, #d8ded9);
+}
+
+.dash-book-cart li span { min-width: 0; overflow-wrap: anywhere; }
+.dash-book-cart [data-dash-book-cart-remove] { flex: 0 0 auto; }
 
 /* ==========================================================================
    Table / list panels (Bookings, Receipts)
@@ -2381,8 +2426,11 @@ body.dash-body {
 
 .dash-form-actions {
     display: flex;
+    align-items: center;
     justify-content: flex-end;
     gap: 12px;
+    flex-wrap: wrap;
+    min-width: 0;
     margin-top: 6px;
 }
 
@@ -2396,6 +2444,16 @@ body.dash-body {
     font-weight: 700;
     font-size: var(--fs-md);
     cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 44px;
+    max-width: 100%;
+    min-width: 0;
+    line-height: 1.2;
+    text-align: center;
+    white-space: normal;
+    overflow-wrap: anywhere;
 }
 
 .dash-btn-ghost:hover {
@@ -2414,6 +2472,16 @@ body.dash-body {
     font-size: var(--fs-md);
     cursor: pointer;
     transition: background 0.2s, transform 0.2s;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 44px;
+    max-width: 100%;
+    min-width: 0;
+    line-height: 1.2;
+    text-align: center;
+    white-space: normal;
+    overflow-wrap: anywhere;
 }
 
 .dash-btn-save:hover {

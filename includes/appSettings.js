@@ -27,6 +27,7 @@
         gcashEnabled: true,
         cashEnabled: true,
         downpaymentPct: 50,
+        nightRateStartsAt: null,
     });
 
     function withTimeout(promise, ms) {
@@ -48,6 +49,7 @@
             gcashEnabled: row.gcash_enabled !== false,
             cashEnabled: row.cash_enabled !== false,
             downpaymentPct: Number.isFinite(pct) ? pct : DEFAULT_SETTINGS.downpaymentPct,
+            nightRateStartsAt: row.night_rate_starts_at || null,
         };
     }
 

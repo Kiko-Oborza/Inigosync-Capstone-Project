@@ -119,7 +119,8 @@ as $$
     );
 $$;
 
-grant execute on function public.inigosync_is_staff_or_admin() to anon, authenticated;
+revoke all on function public.inigosync_is_staff_or_admin() from public, anon;
+grant execute on function public.inigosync_is_staff_or_admin() to authenticated;
 
 -- Table-level grants. RLS policies only ever *narrow* access that the
 -- underlying GRANT already allows — without these, anon/authenticated would

@@ -828,6 +828,57 @@ button.admin-notif-item:focus-visible {
 .admin-table-wrap { overflow-x: auto; }
 .admin-table { width: 100%; border-collapse: collapse; min-width: 680px; }
 
+/* Compact pricing rule; detailed prices live beside each individual court. */
+.admin-pricing-rules { margin-top: 16px; }
+.admin-pricing-rules > summary { cursor: pointer; color: var(--color-ink-dim); font-weight: 700; }
+.admin-pricing-rules[open] > summary { margin-bottom: 10px; }
+.admin-pricing-rules > .admin-card-sub { margin-top: 8px; }
+.admin-resource-cutoff { display: flex; align-items: end; gap: 14px; flex-wrap: wrap; margin: 18px 0 10px; padding: 16px; border: 1px solid var(--color-line); border-radius: 12px; background: var(--color-bg-elevated); }
+.admin-resource-cutoff .admin-form-group { flex: 0 1 220px; margin: 0; }
+.admin-resource-cutoff .admin-form-hint { flex: 1 1 100%; margin: 0; }
+.admin-resource-cutoff [data-admin-rate-cutoff-status] { flex: 1 1 220px; }
+.admin-unit-manager { border-top: 1px solid var(--color-line); margin-top: 22px; padding-top: 20px; }
+.admin-unit-manager[hidden] { display: none; }
+.admin-unit-manager-head h4 { font-family: var(--font-display); font-size: var(--fs-md); font-weight: 700; }
+.admin-unit-manager-head .admin-form-hint { margin-top: 5px; max-width: 68ch; }
+.admin-unit-add { display: flex; align-items: end; gap: 12px; margin: 14px 0; }
+.admin-unit-add .admin-form-group { flex: 1 1 220px; margin: 0; }
+.admin-unit-card-list { display: grid; gap: 12px; }
+.admin-unit-empty { padding: 14px; border: 1px dashed var(--color-line); border-radius: 12px; color: var(--color-ink-faint); }
+.admin-unit-card { min-width: 0; padding: 14px; border: 1px solid var(--color-line); border-radius: 12px; background: var(--color-bg-elevated); }
+.admin-unit-card-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
+.admin-unit-card-head > div { display: grid; gap: 3px; min-width: 0; }
+.admin-unit-card-head strong { color: var(--color-ink); overflow-wrap: anywhere; }
+.admin-unit-card-head > div > span { color: var(--color-ink-faint); font-size: var(--fs-xs); }
+.admin-unit-bookable { display: inline-flex; align-items: center; gap: 8px; min-height: 42px; white-space: nowrap; font-size: var(--fs-sm); }
+.admin-unit-bookable input,
+.admin-unit-share-option input { accent-color: var(--color-primary); width: 18px; height: 18px; flex: 0 0 auto; }
+.admin-unit-price-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+.admin-unit-price-grid .admin-form-group { min-width: 0; margin: 0; }
+.admin-unit-price-grid .admin-input { min-width: 0; }
+.admin-unit-save-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 10px; }
+.admin-resource-rate-save { min-height: 40px; white-space: nowrap; }
+.admin-resource-rate-status { display: block; max-width: 210px; margin-top: 6px; color: var(--color-ink-faint); font-size: var(--fs-xs); line-height: var(--lh-normal); overflow-wrap: anywhere; }
+.admin-resource-rate-status.is-error { color: var(--color-alert); }
+.admin-resource-rate-status.is-success { color: var(--color-success, #4b9b69); }
+.admin-unit-sharing { border-top: 1px solid var(--color-line); margin-top: 12px; padding-top: 10px; }
+.admin-unit-sharing > summary { display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap; cursor: pointer; color: var(--color-ink-dim); font-size: var(--fs-sm); font-weight: 700; }
+.admin-unit-sharing > summary span { color: var(--color-ink-faint); font-weight: 500; }
+.admin-unit-sharing > p { margin: 8px 0; color: var(--color-ink-faint); font-size: var(--fs-xs); line-height: var(--lh-normal); }
+.admin-unit-share-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px 12px; max-height: 220px; overflow: auto; padding: 8px; border: 1px solid var(--color-line); border-radius: 10px; }
+.admin-unit-share-option { display: flex; align-items: start; gap: 8px; min-width: 0; padding: 6px 2px; color: var(--color-ink-dim); font-size: var(--fs-xs); line-height: var(--lh-normal); }
+.admin-unit-share-option span { overflow-wrap: anywhere; }
+
+@media (max-width: 640px) {
+    .admin-resource-cutoff { align-items: stretch; padding: 14px; }
+    .admin-resource-cutoff .admin-form-group,
+    .admin-resource-cutoff > button,
+    .admin-resource-cutoff [data-admin-rate-cutoff-status] { flex: 1 1 100%; }
+    .admin-unit-add { align-items: stretch; flex-direction: column; }
+    .admin-unit-price-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .admin-unit-share-list { grid-template-columns: 1fr; }
+}
+
 .admin-table th {
     /* Revision A2 (implementation_plan.md) — column header label, so it
        moves to --font-display, not --font-numeric. */
@@ -850,8 +901,36 @@ button.admin-notif-item:focus-visible {
    instead of forcing the table wider at 360px. */
 .admin-staff-meta { display: block; margin-top: 2px; font-size: var(--fs-xs); font-weight: 400; color: var(--color-ink-faint); }
 
+.admin-staff-filters {
+    display: flex;
+    align-items: end;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin: -4px 0 18px;
+}
+.admin-staff-filter { display: grid; gap: 6px; min-width: 190px; color: var(--color-ink-faint); font-size: var(--fs-xs); font-weight: 600; }
+.admin-staff-filter .admin-select { width: 100%; }
+.admin-staff-pagination {
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    gap: 12px;
+    margin-top: 18px;
+    color: var(--color-ink-faint);
+    font-size: var(--fs-sm);
+}
+.admin-staff-pagination[hidden] { display: none; }
+.admin-staff-pagination button { min-height: 38px; }
+.admin-staff-pagination button:disabled { opacity: 0.45; cursor: not-allowed; }
+
 .admin-table-actions { display: flex; gap: 8px; flex-wrap: wrap; }
 .admin-staff-action-select { min-width: 126px; max-width: 190px; }
+
+@media (max-width: 600px) {
+    .admin-staff-filter { flex: 1 1 100%; min-width: 0; }
+    .admin-staff-pagination { justify-content: space-between; gap: 8px; }
+    .admin-staff-pagination button { padding-inline: 12px; }
+}
 
 .admin-mini-btn {
     padding: 7px 13px; border-radius: 999px; border: 1px solid var(--color-line); background: transparent;
@@ -1012,6 +1091,26 @@ button.admin-notif-item:focus-visible {
 }
 
 .admin-court-actions { display: flex; gap: 10px; margin-top: 6px; }
+.admin-court-media { height: auto; aspect-ratio: 16 / 9; min-height: 170px; }
+.admin-court-body h3 { min-height: 1.4em; overflow-wrap: anywhere; }
+.admin-court-tags { max-height: 3.6em; overflow: hidden; }
+.admin-court-actions { margin-top: auto; padding-top: 8px; }
+.admin-slide-thumb img { height: auto; aspect-ratio: 16 / 9; object-fit: cover; }
+.admin-unit-bookable { flex-wrap: wrap; white-space: normal; }
+.admin-unit-bookable select { min-width: 135px; min-height: 38px; padding: 6px 10px; border: 1px solid var(--color-line); border-radius: 9px; color: var(--color-ink); background: var(--color-bg-card); }
+.admin-review-list { display: grid; gap: 12px; }
+.admin-review-item { padding: 16px; border: 1px solid var(--color-line); border-radius: 12px; background: var(--color-bg-elevated); }
+.admin-review-item-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.admin-review-item-head span { color: var(--color-primary); letter-spacing: .08em; }
+.admin-review-item p { margin: 10px 0 6px; color: var(--color-ink-dim); overflow-wrap: anywhere; }
+.admin-review-item time { color: var(--color-ink-faint); font-size: var(--fs-xs); }
+.admin-review-pagination { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding-top: 14px; }
+.admin-settings-readonly { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 20px; }
+.admin-settings-readonly > div { min-width: 0; padding: 12px; border: 1px solid var(--color-line); border-radius: 10px; }
+.admin-settings-readonly dt { color: var(--color-ink-faint); font-size: var(--fs-xs); }
+.admin-settings-readonly dd { margin: 4px 0 0; overflow-wrap: anywhere; }
+.admin-modal-google-accounts { margin: 16px 0; }
+@media (max-width: 640px) { .admin-settings-readonly { grid-template-columns: 1fr; } .admin-court-media { min-height: 150px; } }
 .admin-btn-secondary {
     flex: 1; padding: 10px 0; border-radius: 999px; border: 1px solid var(--color-line);
     background: transparent; color: var(--color-ink-dim); font-family: var(--font-body); font-weight: 700;

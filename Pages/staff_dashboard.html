@@ -394,6 +394,7 @@
 
                                 <div class="staff-summary-divider"></div>
 
+                                <label class="staff-summary-row" data-staff-rate-quantity-wrap hidden><span>Number of sets</span><input type="number" min="1" max="100" step="1" value="1" data-staff-rate-quantity aria-label="Number of sets"></label>
                                 <div class="staff-summary-row"><span data-staff-walkin-summary-rate-label>Rate</span><strong data-staff-walkin-summary-rate>—</strong></div>
                                 <div class="staff-summary-row"><span>Payment method</span><strong data-staff-walkin-summary-payment>Cash</strong></div>
 
@@ -859,6 +860,8 @@
      walk-in wizard's mobile field. -->
 <script src="../includes/escape.js"></script>
 <script src="../includes/phoneValidation.js"></script>
+<!-- Shared owner-configured day/night cutoff for staff walk-in estimates. -->
+<script src="../includes/appSettings.js"></script>
 <!-- Court/sport data layer — one source of truth for courts. courts-data.js
      is the same static fallback array the landing page/customer dashboard
      use; courtsData.js wraps it with the real `court`/`sport` Supabase

@@ -818,11 +818,29 @@ body.staff-sidebar-open .staff-toggle-bar:nth-child(3) {
     color: var(--color-ink-dim); font-family: var(--font-body); font-weight: 700; font-size: var(--fs-md); cursor: pointer;
 }
 
+/* Keep staff actions aligned with the owner's button shape while allowing
+   long labels to wrap inside their own control instead of widening the row.
+   Wrapping action groups then place whole buttons predictably on the next
+   line at narrow widths. */
+.staff-btn-primary,
+.staff-btn-ghost {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 44px;
+    max-width: 100%;
+    min-width: 0;
+    line-height: 1.2;
+    text-align: center;
+    white-space: normal;
+    overflow-wrap: anywhere;
+}
+
 .staff-btn-ghost:hover { border-color: var(--color-primary); color: var(--color-ink); }
 
 .staff-btn-ghost:disabled { opacity: 0.5; cursor: not-allowed; }
 
-.staff-form-actions { display: flex; justify-content: flex-end; gap: 12px; margin-top: 6px; flex-wrap: wrap; }
+.staff-form-actions { display: flex; align-items: center; justify-content: flex-end; gap: 12px; margin-top: 6px; flex-wrap: wrap; min-width: 0; }
 
 /* Revision S1 — .staff-btn-primary's own base rule above is `width: 100%`
    (built for the old single-column walk-in form's full-width "Record
@@ -957,6 +975,7 @@ body.staff-sidebar-open .staff-toggle-bar:nth-child(3) {
 
 .staff-wizard-nav {
     display: flex;
+    align-items: center;
     justify-content: flex-end;
     gap: 12px;
     margin-top: 24px;
@@ -1101,9 +1120,11 @@ body.staff-sidebar-open .staff-toggle-bar:nth-child(3) {
 
 .staff-receipt-actions {
     display: flex;
+    align-items: center;
     gap: 10px;
     margin-top: 4px;
     flex-wrap: wrap;
+    min-width: 0;
 }
 
 /* While downloadReceiptAsPng() rasterizes the card, its own action buttons

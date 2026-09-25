@@ -52,9 +52,7 @@
 // failing honestly with a toast if that migration hasn't been applied yet.
 // Receipts (Revision 2, R5) render one card per booking, reusing
 // refreshMyBookings()'s own fetch rather than a second query — rate/amount
-// shows "Rate TBA" whenever a court's rate is unknown (every court today),
-// exactly like the rest of this page's honesty convention; no payment
-// table/method exists anywhere in this project yet. Account Settings' three
+// shows "Rate TBA" whenever a unit's price is genuinely unknown. Account Settings' three
 // name boxes read/write profiles.first_name/middle_name/last_name
 // (database/schema/008_profile_name_parts.sql) while keeping full_name — the
 // column the owner/staff dashboards still read — in sync (D3). Everything
@@ -619,7 +617,16 @@ document.addEventListener('DOMContentLoaded', () => {
     const bookToSelect = document.querySelector('[data-dash-book-to]');
     const bookOpenWindowsEl = document.querySelector('[data-dash-book-open-windows]');
     const paymentOptions = document.querySelectorAll('[data-dash-payment-option]');
+    const paymentModeOptions = document.querySelectorAll('[data-dash-pay-mode-option]');
+    const paymentModeRadios = document.querySelectorAll('[data-dash-pay-mode]');
+    const paymentModeHint = document.querySelector('[data-dash-pay-mode-hint]');
+    const onlineModeLabel = document.querySelector('[data-dash-online-mode-label]');
     const bookSubmit = document.querySelector('[data-dash-book-submit]');
+    const bookAddButton = document.querySelector('[data-dash-book-add]');
+    const bookCartPanel = document.querySelector('[data-dash-book-cart]');
+    const bookCartItemsEl = document.querySelector('[data-dash-book-cart-items]');
+    const bookCartCountEl = document.querySelector('[data-dash-book-cart-count]');
+    const bookCartSubmit = document.querySelector('[data-dash-book-cart-submit]');
 
     // Defaults the date input to TODAY and floors it there (Part 3 — this
     // input used to carry a hardcoded value="2026-07-14" with no `min`,
@@ -647,6 +654,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const summaryRate = document.querySelector('[data-dash-summary-rate]');
     const summaryPayment = document.querySelector('[data-dash-summary-payment]');
     const summaryTotal = document.querySelector('[data-dash-summary-total]');
+    const rateQuantityWrap = document.querySelector('[data-dash-rate-quantity-wrap]');
+    const rateQuantityInput = document.querySelector('[data-dash-rate-quantity]');
 
     // Wizard chrome (§5, D5) — step panels, the step indicator, and the
     // Back/Next nav row. See renderBookWizard()/goToBookStep() below for the
@@ -691,17 +700,27 @@ document.addEventListener('DOMContentLoaded', () => {
         sport: '',
         rate: null,
         rateUnit: '/hr',
+        rateDay: null,
+        rateNight: null,
+        rateQuantity: 1,
+        nightRateStartsAt: null,
         date: bookDate ? bookDate.value : '',
         unit: null,
+        unitId: null,
         startHour: null,
         endHour: null,
         paymentType: 'downpayment',
+        paymentMode: 'venue',
+        gcashEnabled: true,
         // Overwritten once window.InigoAppSettings.getSettings() resolves
         // below — 50 is the same fallback that module itself uses when
         // `app_settings` doesn't exist yet, so this default is never
         // visibly wrong, just possibly stale for a moment on first load.
         downpaymentPct: window.InigoAppSettings ? window.InigoAppSettings.DEFAULT_SETTINGS.downpaymentPct : 50,
     };
+    const bookingCart = [];
+    let bookingCartSeq = 0;
+    let bookingCartSaving = false;
 
     const downpaymentDesc = document.querySelector('[data-dash-payment-desc="downpayment"]');
 
@@ -744,6 +763,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (bookUnitWrap) bookUnitWrap.hidden = true;
             if (bookUnitSelect) bookUnitSelect.innerHTML = '';
             bookingState.unit = null;
+            bookingState.unitId = null;
             return;
         }
 
@@ -762,6 +782,11 @@ document.addEventListener('DOMContentLoaded', () => {
         // unit as "nothing to disambiguate", same as a legacy pre-Part-3
         // booking.
         bookingState.unit = unit.label;
+        bookingState.unitId = unit.id || null;
+        bookingState.rateDay = unit.rateDay ?? null;
+        bookingState.rateNight = unit.rateNight ?? null;
+        bookingState.rateUnit = (typeof unit.rateDay === 'number' || typeof unit.rateNight === 'number') ? (unit.rateUnit || court.rateUnit || '/hr') : (court.rateUnit || '/hr');
+        bookingState.rate = unit.rate ?? court.rate ?? null;
 
         const monogram = window.InigoCourtsData ? window.InigoCourtsData.monogramFor(court.sportSlug, court.name) : '?';
         const alt = unit.label ? `${court.name} — ${unit.label}` : court.name;
@@ -811,6 +836,12 @@ document.addEventListener('DOMContentLoaded', () => {
             updateSummary();
         });
     }
+    if (rateQuantityInput) rateQuantityInput.addEventListener('input', () => {
+        const n = Math.max(1, Math.min(100, Number.parseInt(rateQuantityInput.value, 10) || 1));
+        bookingState.rateQuantity = n;
+        rateQuantityInput.value = String(n);
+        updateSummary();
+    });
 
     // ------------------------------------------------------------------
     // Wizard step machine (§5, D5) — one step visible at a time, a step
@@ -855,6 +886,8 @@ document.addEventListener('DOMContentLoaded', () => {
     function goToBookStep(step) {
         bookWizardStep = Math.min(Math.max(1, step), BOOK_STEP_COUNT);
         renderBookWizard();
+        updateSummary();
+        if (bookAddButton) bookAddButton.hidden = bookWizardStep !== BOOK_STEP_COUNT || !bookStepIsReady(2) || bookingCart.length >= 7;
     }
 
     if (bookNextBtn) {
@@ -875,7 +908,30 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function hasKnownRate() {
-        return typeof bookingState.rate === 'number' && !Number.isNaN(bookingState.rate);
+        return (typeof bookingState.rateDay === 'number' && Number.isFinite(bookingState.rateDay))
+            || (typeof bookingState.rate === 'number' && Number.isFinite(bookingState.rate));
+    }
+
+    function bookingHourlyAmount(hours) {
+        if (!hasKnownRate() || hours <= 0 || bookingState.rateUnit !== '/hr') return null;
+        const cutoff = bookingState.nightRateStartsAt;
+        if (typeof bookingState.rateDay !== 'number' || typeof bookingState.rateNight !== 'number'
+            || bookingState.rateDay === bookingState.rateNight) {
+            const rate = typeof bookingState.rateDay === 'number' ? bookingState.rateDay : bookingState.rate;
+            return typeof rate === 'number' ? rate * hours : null;
+        }
+        if (!cutoff || bookingState.startHour === null) return null;
+        const match = /^(\d{2}):(\d{2})/.exec(String(cutoff));
+        if (!match || Number(match[1]) > 23 || Number(match[2]) > 59) return null;
+        const cutoffMinutes = Number(match[1]) * 60 + Number(match[2]);
+        let total = 0;
+        for (let hour = bookingState.startHour; hour < bookingState.startHour + hours; hour += 1) {
+            const start = hour * 60;
+            const end = start + 60;
+            const nightMinutes = Math.max(0, end - Math.max(start, cutoffMinutes));
+            total += (60 - nightMinutes) / 60 * bookingState.rateDay + nightMinutes / 60 * bookingState.rateNight;
+        }
+        return total;
     }
 
     // Number of whole hours in the currently chosen From/To range, or 0
@@ -915,13 +971,19 @@ document.addEventListener('DOMContentLoaded', () => {
         // only one slot was ever selectable). Still null whenever the rate
         // itself is unknown (every court today — see hasKnownRate() above)
         // so this never invents a peso figure.
-        const amount = (hasKnownRate() && bookingState.rateUnit !== '/game' && hours > 0)
-            ? (bookingState.rate * hours * (isFull ? 1 : pct / 100)) : null;
+        const baseAmount = bookingState.rateUnit === '/set'
+            ? (typeof bookingState.rateDay === 'number' ? bookingState.rateDay * bookingState.rateQuantity : null)
+            : bookingHourlyAmount(hours);
+        const amount = baseAmount !== null ? baseAmount * (isFull ? 1 : pct / 100) : null;
 
         if (summaryCourt) summaryCourt.textContent = bookingState.court || '—';
+        if (rateQuantityWrap) rateQuantityWrap.hidden = bookingState.rateUnit !== '/set';
         if (summaryDate) summaryDate.textContent = formatDate(bookingState.date);
         if (summaryTime) summaryTime.textContent = bookingTimeRangeLabel() || '— Select a time —';
-        if (summaryRate) summaryRate.textContent = hasKnownRate() ? `₱${bookingState.rate}${bookingState.rateUnit}` : 'Rate TBA';
+        if (summaryRate) summaryRate.textContent = bookingState.rateUnit === '/set' && typeof bookingState.rateDay === 'number'
+            ? `₱${bookingState.rateDay}/set × ${bookingState.rateQuantity}`
+            : (hasKnownRate() ? (typeof bookingState.rateDay === 'number' && typeof bookingState.rateNight === 'number' && bookingState.rateDay !== bookingState.rateNight
+                ? `₱${bookingState.rateDay} day / ₱${bookingState.rateNight} night per hr` : `₱${bookingState.rateDay ?? bookingState.rate}${bookingState.rateUnit}`) : 'Rate TBA');
         if (summaryPayment) summaryPayment.textContent = isFull ? 'Full payment preference' : `Downpayment preference (${pct}%)`;
         if (summaryTotal) summaryTotal.textContent = amount !== null ? `₱${amount.toFixed(2)}` : '—';
         // Downpayment option's own description line ("Pay N% now, balance
@@ -939,7 +1001,26 @@ document.addEventListener('DOMContentLoaded', () => {
             // reachable branch.
             const ready = bookingState.startHour !== null && bookingState.endHour !== null && Boolean(bookingState.court);
             bookSubmit.disabled = !ready;
-            bookSubmit.textContent = ready ? 'Request Booking' : 'Select a time range to continue';
+            bookSubmit.textContent = ready
+                ? (bookingCart.length ? `Save ${bookingCart.length + 1} bookings` : (bookingState.paymentMode === 'online' ? 'Continue to secure checkout' : 'Request Booking'))
+                : 'Select a time range to continue';
+        }
+        const onlineCharge = baseAmount === null ? null : baseAmount * (isFull ? 1 : pct / 100);
+        const onlineAllowed = hasKnownRate() && bookingState.rateUnit === '/hr' && onlineCharge !== null && onlineCharge > 0;
+        paymentModeRadios.forEach((radio) => {
+            if (radio.dataset.dashPayMode !== 'online') return;
+            radio.disabled = !onlineAllowed;
+            if (!onlineAllowed && radio.checked) {
+                const venueRadio = document.querySelector('[data-dash-pay-mode="venue"]');
+                if (venueRadio) venueRadio.checked = true;
+                bookingState.paymentMode = 'venue';
+                paymentModeOptions.forEach((option) => option.classList.toggle('is-selected', option.contains(venueRadio)));
+            }
+        });
+        if (paymentModeHint && !onlineAllowed) {
+            paymentModeHint.textContent = bookingState.rateUnit === '/game'
+                ? 'Online checkout is available for hourly court reservations only.'
+                : 'Online checkout is unavailable until this court has an hourly rate.';
         }
 
         // Re-gates the wizard's Next button and refreshes the step
@@ -996,6 +1077,20 @@ document.addEventListener('DOMContentLoaded', () => {
                 radio.checked = true;
                 bookingState.paymentType = radio.dataset.dashPayment;
             }
+            updateSummary();
+        });
+    });
+
+    paymentModeRadios.forEach((radio) => {
+        radio.addEventListener('change', () => {
+            if (!radio.checked) return;
+            if (radio.dataset.dashPayMode === 'online' && (!hasKnownRate() || bookingState.rateUnit !== '/hr')) {
+                radio.checked = false;
+                window.InigoToast?.show('Online checkout is unavailable until this court has an hourly rate.', true);
+                return;
+            }
+            bookingState.paymentMode = radio.dataset.dashPayMode === 'online' ? 'online' : 'venue';
+            paymentModeOptions.forEach((option) => option.classList.toggle('is-selected', option.contains(radio)));
             updateSummary();
         });
     });
@@ -1361,6 +1456,205 @@ document.addEventListener('DOMContentLoaded', () => {
         refreshTimePickers();
     }
 
+    function selectedBookingCartItem() {
+        const court = findBookCourt(bookingState.court);
+        const units = court && window.InigoCourtsData ? window.InigoCourtsData.resolveCourtUnits(court).units : [];
+        const selectedUnit = units.find((unit) => bookingState.unitId && String(unit.id) === String(bookingState.unitId));
+        const endHour = bookingState.endHour;
+        const hours = endHour - bookingState.startHour + 1;
+        const startIso = new Date(`${bookingState.date}T${String(bookingState.startHour).padStart(2, '0')}:00:00`).toISOString();
+        const endIso = new Date(`${bookingState.date}T${String(endHour + 1).padStart(2, '0')}:00:00`).toISOString();
+        const total = bookingState.rateUnit === '/set'
+            ? (typeof bookingState.rateDay === 'number' ? bookingState.rateDay * bookingState.rateQuantity : null)
+            : bookingHourlyAmount(hours);
+        return {
+            key: `item-${++bookingCartSeq}`,
+            court: bookingState.court,
+            sport: bookingState.sport || bookingState.court,
+            listingId: (court || {}).id || null,
+            unit: bookingState.unit || null,
+            unitId: bookingState.unitId || null,
+            resourceIds: selectedUnit?.resourceIds || [],
+            date: bookingState.date,
+            startHour: bookingState.startHour,
+            endHour,
+            startIso,
+            endIso,
+            hours,
+            rateUnit: bookingState.rateUnit,
+            rateQuantity: bookingState.rateUnit === '/set' ? bookingState.rateQuantity : 1,
+            paymentType: bookingState.paymentType,
+            paymentMode: bookingState.paymentMode,
+            estimatedTotal: total,
+        };
+    }
+
+    function bookingCartItemsConflict(a, b) {
+        const aStart = new Date(a.startIso), aEnd = new Date(a.endIso);
+        const bStart = new Date(b.startIso), bEnd = new Date(b.endIso);
+        if (!(aStart < bEnd && bStart < aEnd)) return false;
+        const aResources = new Set(a.resourceIds || []);
+        if (aResources.size && (b.resourceIds || []).some((id) => aResources.has(id))) return true;
+        if (aResources.size && (b.resourceIds || []).length) return false;
+        return String(a.listingId || '').toLowerCase() === String(b.listingId || '').toLowerCase()
+            && courtUnitsOverlap(a.unit, b.unit);
+    }
+
+    function renderBookingCart() {
+        if (!bookCartPanel || !bookCartItemsEl) return;
+        bookCartPanel.hidden = bookingCart.length === 0;
+        if (bookCartCountEl) bookCartCountEl.textContent = `${bookingCart.length} item${bookingCart.length === 1 ? '' : 's'}`;
+        if (bookCartSubmit) bookCartSubmit.disabled = bookingCartSaving || bookingCart.length === 0;
+        if (onlineModeLabel) onlineModeLabel.textContent = bookingCart.length ? 'Pay online separately after saving' : 'Pay online now';
+        if (paymentModeHint) paymentModeHint.textContent = bookingCart.length
+            ? 'Each online item will use its own checkout from My Bookings after the list is saved.'
+            : (bookingState.gcashEnabled ? 'Pay securely with GCash or card on PayMongo.' : 'Pay securely by card on PayMongo.');
+        bookCartItemsEl.innerHTML = bookingCart.map((item) => {
+            const unit = item.unit ? ` · ${item.unit}` : '';
+            const time = `${window.InigoBusinessHours.formatHourLabel(item.startHour)} – ${window.InigoBusinessHours.formatHourLabel(item.endHour + 1)}`;
+            const estimate = Number.isFinite(item.estimatedTotal) ? ` · ₱${item.estimatedTotal.toFixed(2)}` : ' · Rate TBA';
+            const payType = item.paymentType === 'full' ? 'Full payment preference' : 'Downpayment preference';
+            const payMode = item.paymentMode === 'online' ? 'Pay online separately' : 'Pay at venue';
+            return `<li><span><strong>${window.escapeHtml(item.court + unit)}</strong><br>${window.escapeHtml(formatDate(item.date))} · ${window.escapeHtml(time)}${estimate}<br>${window.escapeHtml(payType)} · ${window.escapeHtml(payMode)}</span><button type="button" class="dash-btn-ghost" data-dash-book-cart-remove="${window.escapeHtml(item.key)}" aria-label="Remove booking item"${bookingCartSaving ? ' disabled' : ''}>Remove</button></li>`;
+        }).join('');
+    }
+
+    function resetCurrentBookingDraft() {
+        bookingState.startHour = null;
+        bookingState.endHour = null;
+        bookingState.date = todayDateInputValue();
+        bookingState.rateQuantity = 1;
+        bookingState.paymentType = 'downpayment';
+        bookingState.paymentMode = 'venue';
+        if (bookDate) bookDate.value = bookingState.date;
+        if (rateQuantityInput) rateQuantityInput.value = '1';
+        document.querySelector('[data-dash-payment="downpayment"]')?.click();
+        const venueRadio = document.querySelector('[data-dash-pay-mode="venue"]');
+        if (venueRadio) {
+            venueRadio.checked = true;
+            paymentModeOptions.forEach((option) => option.classList.toggle('is-selected', option.contains(venueRadio)));
+        }
+        refreshTimePickers();
+        updateSummary();
+        goToBookStep(1);
+    }
+
+    async function submitBookingCart(includeCurrent) {
+        if (bookingCartSaving) return;
+        const current = includeCurrent ? selectedBookingCartItem() : null;
+        const queuedCount = bookingCart.length;
+        const items = bookingCart.slice().concat(current ? [current] : []);
+        if (!items.length) return;
+        if (current && bookingCart.some((saved) => bookingCartItemsConflict(current, saved))) {
+            window.InigoToast?.show('Two items in your list use the same physical court at overlapping times. Change one date or time first.', true);
+            return;
+        }
+        bookingCartSaving = true;
+        if (bookAddButton) bookAddButton.disabled = true;
+        renderBookingCart();
+        const originalLabel = bookSubmit ? bookSubmit.textContent : '';
+        if (bookSubmit) { bookSubmit.disabled = true; bookSubmit.textContent = 'Saving bookings…'; }
+        if (bookCartSubmit) bookCartSubmit.disabled = true;
+        let savedCount = 0;
+        let hasOnlinePreference = false;
+        let totalAdjusted = false;
+        let failure = null;
+
+        try {
+          for (let index = 0; index < items.length; index += 1) {
+            const item = items[index];
+            const live = await fetchDayOccupancy(item.court, item.date);
+            if (!live.ok) { failure = 'Could not verify live availability. Your remaining list is still saved here.'; break; }
+            const windowRange = { start: new Date(item.startIso), end: new Date(item.endIso) };
+            const conflict = live.rows.some((row) => ['pending', 'confirmed'].includes(String(row.status || '').toLowerCase())
+                && courtUnitsOverlap(row.court_unit, item.unit)
+                && overviewWindowsOverlap(overviewBookingWindow(row), windowRange));
+            if (conflict) { failure = `${item.court} at ${formatDate(item.date)} ${window.InigoBusinessHours.formatHourLabel(item.startHour)} is no longer available. The remaining list is still available to edit.`; break; }
+
+            const payload = {
+                customer_id: window.inigosyncProfile.id,
+                sports: item.sport,
+                courts: item.court,
+                court_listing_id: item.listingId,
+                court_unit: item.unit,
+                court_unit_inventory_id: item.unitId,
+                time_date: item.startIso,
+                end_at: item.endIso,
+                duration_minutes: item.hours * 60,
+                status: 'pending',
+                payment_option: item.paymentType,
+                rate_quantity: item.rateQuantity,
+                amount_total: item.estimatedTotal,
+            };
+            const { data: saved, error } = await window.sb.from('booking').insert(payload).select('booking_id,amount_total').single();
+            if (error) {
+                failure = error.code === '23P01'
+                    ? `${item.court} at ${formatDate(item.date)} was just taken. The database protected the court; review your remaining list.`
+                    : `Could not save ${item.court}. Review the remaining list and try again.`;
+                break;
+            }
+            const savedTotal = saved?.amount_total === null || saved?.amount_total === undefined ? null : Number(saved.amount_total);
+            if (Number.isFinite(savedTotal) && Number.isFinite(item.estimatedTotal) && Math.abs(savedTotal - item.estimatedTotal) > 0.009) totalAdjusted = true;
+            if (item.paymentMode === 'online') hasOnlinePreference = true;
+            savedCount += 1;
+            if (index < queuedCount) {
+                bookingCart.shift();
+                renderBookingCart();
+            }
+          }
+        } catch (error) {
+            console.error('[dashboard] multi-item booking save failed', error);
+            failure = 'The save response was interrupted. Check My Bookings before retrying; unsaved items remain available.';
+        } finally {
+            bookingCartSaving = false;
+        }
+        if (bookSubmit) { bookSubmit.disabled = false; bookSubmit.textContent = originalLabel; }
+        if (bookAddButton) bookAddButton.disabled = false;
+        renderBookingCart();
+        refreshMyBookings();
+        if (failure) {
+            updateSummary();
+            window.InigoToast?.show(`${savedCount ? `${savedCount} booking${savedCount === 1 ? '' : 's'} saved. ` : ''}${failure}`, true);
+            return;
+        }
+
+        bookingCart.length = 0;
+        renderBookingCart();
+        if (includeCurrent) resetCurrentBookingDraft();
+        const totalNote = totalAdjusted ? ' The saved total uses the current court rate; review My Bookings before paying.' : '';
+        window.InigoToast?.show(hasOnlinePreference
+            ? `${savedCount} booking${savedCount === 1 ? '' : 's'} saved. Start each online payment separately from My Bookings.${totalNote}`
+            : `${savedCount} booking${savedCount === 1 ? '' : 's'} saved — we’ll confirm them shortly.${totalNote}`);
+    }
+
+    if (bookAddButton) {
+        bookAddButton.addEventListener('click', () => {
+            if (bookingCartSaving || bookingCart.length >= 7) return;
+            const item = selectedBookingCartItem();
+            if (bookingCart.some((saved) => bookingCartItemsConflict(item, saved))) {
+                window.InigoToast?.show('Two items in your list use the same physical court at overlapping times. Change one date or time first.', true);
+                return;
+            }
+            bookingCart.push(item);
+            renderBookingCart();
+            resetCurrentBookingDraft();
+            window.InigoToast?.show('Booking added. Choose another court or save the list above.');
+        });
+    }
+    if (bookCartItemsEl) {
+        bookCartItemsEl.addEventListener('click', (event) => {
+            if (bookingCartSaving) return;
+            const button = event.target.closest('[data-dash-book-cart-remove]');
+            if (!button) return;
+            const index = bookingCart.findIndex((item) => item.key === button.dataset.dashBookCartRemove);
+            if (index >= 0) bookingCart.splice(index, 1);
+            renderBookingCart();
+            updateSummary();
+            if (bookAddButton) bookAddButton.hidden = bookingCart.length >= 7;
+        });
+    }
+    if (bookCartSubmit) bookCartSubmit.addEventListener('click', () => submitBookingCart(false));
+
     if (bookSubmit) {
         bookSubmit.addEventListener('click', async () => {
             if (bookSubmit.disabled) return;
@@ -1377,6 +1671,10 @@ document.addEventListener('DOMContentLoaded', () => {
             // branch.
             if (!bookingState.date || bookingState.startHour === null || bookingState.endHour === null) {
                 window.InigoToast?.show('Please select a date and time range.', true);
+                return;
+            }
+            if (bookingCart.length) {
+                await submitBookingCart(true);
                 return;
             }
 
@@ -1516,31 +1814,26 @@ document.addEventListener('DOMContentLoaded', () => {
             // never fake success" idiom this project already uses
             // everywhere a column might not exist yet (isOverviewSchemaMismatch()
             // below, e.g. fetchOverviewOccupancy()).
+            const displayedQuote = bookingState.rateUnit === '/set'
+                ? (typeof bookingState.rateDay === 'number' ? bookingState.rateDay * bookingState.rateQuantity : null)
+                : bookingHourlyAmount(hours);
             const bookingPayload = {
                 customer_id: window.inigosyncProfile.id,
                 sports: bookingState.sport || bookingState.court,
                 courts: bookingState.court,
+                court_listing_id: (findBookCourt(bookingState.court) || {}).id || null,
                 court_unit: bookingState.unit || null,
+                court_unit_inventory_id: bookingState.unitId || null,
                 time_date: startIso,
                 end_at: endIso,
                 duration_minutes: hours * 60,
                 status: 'pending',
                 payment_option: bookingState.paymentType,
-                amount_total: hasKnownRate() && bookingState.rateUnit !== '/game' ? bookingState.rate * hours : null,
+                rate_quantity: bookingState.rateUnit === '/set' ? bookingState.rateQuantity : 1,
+                amount_total: displayedQuote,
             };
-            let { error } = await window.sb.from('booking').insert(bookingPayload);
-            if (error && isOverviewSchemaMismatch(error)) {
-                ({ error } = await window.sb.from('booking').insert({
-                    customer_id: bookingPayload.customer_id,
-                    sports: bookingPayload.sports,
-                    courts: bookingPayload.courts,
-                    court_unit: bookingPayload.court_unit,
-                    time_date: bookingPayload.time_date,
-                    end_at: bookingPayload.end_at,
-                    duration_minutes: bookingPayload.duration_minutes,
-                    status: bookingPayload.status,
-                }));
-            }
+            const { data: createdBooking, error } = await window.sb.from('booking')
+                .insert(bookingPayload).select('booking_id,amount_total,rate_unit_snapshot,rate_quantity').single();
 
             if (error) {
                 // Always log the full error (code/message/details) for
@@ -1587,6 +1880,42 @@ document.addEventListener('DOMContentLoaded', () => {
                 return;
             }
 
+            if (bookingState.paymentMode === 'online') {
+                const savedTotal = createdBooking && createdBooking.amount_total !== null && createdBooking.amount_total !== undefined
+                    ? Number(createdBooking.amount_total) : null;
+                if (!Number.isFinite(savedTotal) || savedTotal <= 0) {
+                    window.InigoToast?.show('Your booking was saved, but its rate is not ready for online payment. Please contact staff before paying.', true);
+                    refreshMyBookings();
+                    bookSubmit.disabled = false;
+                    bookSubmit.textContent = originalLabel;
+                    return;
+                }
+                if (Number.isFinite(displayedQuote) && Math.abs(savedTotal - displayedQuote) > 0.009) {
+                    const continueToPayment = window.confirm(`The saved reservation total is ₱${savedTotal.toFixed(2)} because the court rate changed while you were booking. Continue to secure checkout at this saved amount?`);
+                    if (!continueToPayment) {
+                        window.InigoToast?.show(`Booking saved at ₱${savedTotal.toFixed(2)}. No payment was started.`);
+                        refreshMyBookings();
+                        bookSubmit.disabled = false;
+                        bookSubmit.textContent = originalLabel;
+                        return;
+                    }
+                }
+                const { data: checkout, error: checkoutError } = await window.sb.functions.invoke('paymongo-checkout', {
+                    body: { booking_id: createdBooking.booking_id },
+                });
+                const checkoutUrl = checkout?.checkout_url;
+                if (checkoutError || typeof checkoutUrl !== 'string' || !checkoutUrl.startsWith('https://checkout.paymongo.com/')) {
+                    console.error('[dashboard] PayMongo checkout creation failed', checkoutError || checkout);
+                    window.InigoToast?.show(checkout?.message || 'The booking was saved, but secure checkout could not start. Please contact staff before booking again.', true);
+                    refreshMyBookings();
+                    bookSubmit.disabled = false;
+                    bookSubmit.textContent = originalLabel;
+                    return;
+                }
+                window.location.assign(checkoutUrl);
+                return;
+            }
+
             window.InigoToast?.show('Booking request submitted — we\'ll confirm it shortly.');
             bookingState.startHour = null;
             bookingState.endHour = null;
@@ -1630,7 +1959,13 @@ document.addEventListener('DOMContentLoaded', () => {
     if (window.InigoAppSettings) {
         window.InigoAppSettings.getSettings().then((settings) => {
             bookingState.downpaymentPct = settings.downpaymentPct;
+            bookingState.gcashEnabled = settings.gcashEnabled;
+            bookingState.nightRateStartsAt = settings.nightRateStartsAt || null;
+            if (paymentModeHint) paymentModeHint.textContent = settings.gcashEnabled
+                ? 'Pay securely with GCash or card on PayMongo.'
+                : 'Pay securely by card on PayMongo.';
             updateSummary();
+            refreshMyBookings();
         });
     }
 
@@ -1662,14 +1997,22 @@ document.addEventListener('DOMContentLoaded', () => {
     // ends up selected (the first, by default) instead of the placeholder.
     function populateBookSelect(courts) {
         if (!bookSelect) return;
+        // Empty authoritative inventory means the listing is not configured
+        // for safe booking yet (for example Pickleball until its renovated
+        // court count and shared space are verified by an admin).
+        if (courts.some((court) => Array.isArray(court.bookableUnits) || court.inventoryLoadFailed)) {
+            courts = courts.filter((court) => !court.inventoryLoadFailed
+                && (!Array.isArray(court.bookableUnits) || court.bookableUnits.length > 0));
+        }
         // Cached for findBookCourt() (§5, D5) — the <option>s built below
         // only carry rate/rateUnit/sport, not the full normalized court
         // object (quantity/unit/unitImages) the Step 1 preview needs.
         bookCourtsCache = courts;
         bookSelect.innerHTML = courts.map((court) => {
             const rateAttr = court.rate !== null ? window.escapeHtml(String(court.rate)) : '';
-            const label = court.rate !== null
-                ? `${court.name} — ₱${court.rate}${court.rateUnit}`
+            const rateHint = window.InigoCourtsData.rateHint?.(court);
+            const label = rateHint
+                ? `${court.name} — ${rateHint}`
                 : `${court.name} — Rate TBA`;
             // data-sport carries the court's REAL related sport (e.g.
             // "Bowling" for the "Bowling — Duckpin" court, not a copy of
@@ -1694,6 +2037,7 @@ document.addEventListener('DOMContentLoaded', () => {
         // refreshTimePickers() showed at setup time above.
         refreshTimePickers();
         updateSummary();
+        refreshMyBookings();
     }
 
     if (window.InigoCourtsData) {
@@ -2163,12 +2507,12 @@ document.addEventListener('DOMContentLoaded', () => {
         const initialAlt = selectedUnit.label ? `${court.name} — ${selectedUnit.label}` : court.name;
         const media = courtPhotoMarkup(selectedUnit, monogram, initialAlt);
 
-        // Rate rendering: ₱<rate><rate_unit> when non-null, an honest "Rate
-        // TBA" placeholder when null (every court's rate is NULL in the
-        // live DB right now — see database/seed/002_seed_content.sql).
-        // Never invented.
-        const rateHtml = court.rate !== null
-            ? `₱${window.escapeHtml(String(court.rate))}<span>${window.escapeHtml(court.rateUnit)}</span>`
+        // Prefer the lowest server-configured unit rate when the listing has
+        // per-court schedules; the selected unit and time still determine the
+        // actual quote in the booking summary.
+        const rateHint = window.InigoCourtsData.rateHint?.(court);
+        const rateHtml = rateHint
+            ? `<span>${window.escapeHtml(rateHint)}</span>`
             : '<span>Rate TBA</span>';
         // Rating: `court.rating` only exists once the owner runs
         // database/schema/003_court_rating.sql, and only renders when a
@@ -2410,6 +2754,42 @@ document.addEventListener('DOMContentLoaded', () => {
         return (opt && opt.dataset.rateUnit) || '/hr';
     }
 
+    function getBookingUnitPricing(booking) {
+        const court = bookCourtsCache.find((item) => (booking.court_listing_id && String(item.id) === String(booking.court_listing_id))
+            || item.name === booking.courts);
+        if (!court || !window.InigoCourtsData) return { rateUnit: getCourtRateUnit(booking.courts), rateDay: null, rateNight: null };
+        const units = window.InigoCourtsData.resolveCourtUnits(court).units;
+        const unit = units.find((item) => booking.court_unit_inventory_id && String(item.id) === String(booking.court_unit_inventory_id));
+        return {
+            rateUnit: unit && (typeof unit.rateDay === 'number' || typeof unit.rateNight === 'number') ? (unit.rateUnit || court.rateUnit || '/hr') : (court.rateUnit || getCourtRateUnit(booking.courts)),
+            rateDay: typeof unit?.rateDay === 'number' ? unit.rateDay : null,
+            rateNight: typeof unit?.rateNight === 'number' ? unit.rateNight : null,
+        };
+    }
+
+    function quoteExistingBookingTotal(booking, pricing) {
+        const start = new Date(booking.time_date).getTime();
+        const end = booking.end_at ? new Date(booking.end_at).getTime() : start + Math.max(1, Number(booking.duration_minutes) || 60) * 60000;
+        if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) return null;
+        if (pricing.rateUnit === '/set') {
+            return typeof pricing.rateDay === 'number' ? pricing.rateDay * Math.max(1, Number(booking.rate_quantity) || 1) : null;
+        }
+        if (pricing.rateUnit !== '/hr' || typeof pricing.rateDay !== 'number') return null;
+        if (typeof pricing.rateNight !== 'number' || pricing.rateNight === pricing.rateDay) {
+            return pricing.rateDay * ((end - start) / 3600000);
+        }
+        const match = /^(\d{2}):(\d{2})/.exec(String(bookingState.nightRateStartsAt || ''));
+        if (!match) return null;
+        const cutoff = Number(match[1]) * 60 + Number(match[2]);
+        let total = 0;
+        for (let t = start; t < end; t += 60000) {
+            const local = new Date(t).toLocaleTimeString('en-GB', { timeZone: 'Asia/Manila', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
+            const [hour, minute] = local.split(':').map(Number);
+            total += (hour * 60 + minute >= cutoff ? pricing.rateNight : pricing.rateDay) / 60;
+        }
+        return Math.round(total * 100) / 100;
+    }
+
     function formatBookingDate(iso) {
         const d = new Date(iso);
         return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
@@ -2500,6 +2880,8 @@ document.addEventListener('DOMContentLoaded', () => {
         if (metaItems[5]) metaItems[5].querySelector('span:last-child').textContent = String(cancelled);
     }
 
+    let activeReviewBookingId = null;
+    const bookingReviewModal = document.querySelector('[data-booking-review-modal]');
     async function refreshMyBookings() {
         if (!bookingsTableBody || !window.sb || !window.inigosyncProfile) return;
 
@@ -2539,9 +2921,16 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
+        // The safe per-customer view reveals only reviewed booking IDs.
+        // Fail closed if it is unavailable: don't invite duplicate submits.
+        const reviewResult = await window.sb.from('my_booking_reviews').select('booking_id');
+        const reviewedBookings = new Set((reviewResult.error ? [] : reviewResult.data || []).map((review) => String(review.booking_id)));
+
         data.forEach((booking) => {
-            const rate = getCourtRate(booking.courts);
-            const amount = rate !== null ? `₱${rate.toFixed(2)}` : '—';
+            const savedTotal = booking.amount_total === null || booking.amount_total === undefined ? null : Number(booking.amount_total);
+            const bookingPricing = getBookingUnitPricing(booking);
+            const displayedTotal = Number.isFinite(savedTotal) ? savedTotal : quoteExistingBookingTotal(booking, bookingPricing);
+            const amount = Number.isFinite(displayedTotal) ? `₱${displayedTotal.toFixed(2)}` : '—';
             const row = document.createElement('tr');
             // courts is DB content (free text on the booking row) — escaped
             // before touching innerHTML so this renders as literal text in
@@ -2555,6 +2944,16 @@ document.addEventListener('DOMContentLoaded', () => {
             const courtLabel = window.escapeHtml(booking.courts || '');
             const statusClass = window.escapeHtml(displayStatus);
             const statusLabel = window.escapeHtml(displayStatus ? displayStatus.charAt(0).toUpperCase() + displayStatus.slice(1) : '—');
+            const canQuoteOnline = Number.isFinite(displayedTotal) && displayedTotal > 0;
+            const canRetryOnline = !booking.payment_id && ['pending', 'confirmed'].includes(booking.status)
+                && new Date(booking.time_date).getTime() > Date.now()
+                && canQuoteOnline && bookingPricing.rateUnit === '/hr';
+            const retryPaymentButton = canRetryOnline
+                ? `<button type="button" class="dash-mini-btn" data-dash-retry-checkout="${window.escapeHtml(String(booking.booking_id))}">Pay online</button>`
+                : '';
+            const fullyPaid = Number(booking.amount_total) > 0 && Number(booking.amount_paid || 0) >= Number(booking.amount_total);
+            const canReview = booking.status === 'completed' && fullyPaid && !reviewResult.error && !reviewedBookings.has(String(booking.booking_id));
+            const reviewButton = canReview ? `<button type="button" class="dash-mini-btn" data-dash-review-booking="${window.escapeHtml(String(booking.booking_id))}">Write a review</button>` : '';
             // R3/Revision 2 — no Cancel control anywhere (see the policy
             // notices in Pages/user_dashboard.html): the real rule is no
             // cancellation, no refunds/cashback, and 30+ minutes late
@@ -2572,6 +2971,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 <td><span class="dash-status ${statusClass}">${statusLabel}</span></td>
                 <td>
                     <div class="dash-table-actions">
+                        ${retryPaymentButton}
+                        ${reviewButton}
                         <button type="button" class="dash-mini-btn" data-dash-nav="receipts">Details</button>
                     </div>
                 </td>
@@ -2589,7 +2990,53 @@ document.addEventListener('DOMContentLoaded', () => {
         bookingsTableBody.querySelectorAll('[data-dash-nav="receipts"]').forEach((btn) => {
             btn.addEventListener('click', () => setActivePanel('receipts'));
         });
+        bookingsTableBody.querySelectorAll('[data-dash-retry-checkout]').forEach((btn) => {
+            btn.addEventListener('click', async () => {
+                btn.disabled = true;
+                btn.textContent = 'Opening…';
+                const { data, error } = await window.sb.functions.invoke('paymongo-checkout', {
+                    body: { booking_id: Number(btn.dataset.dashRetryCheckout) },
+                });
+                if (!error && typeof data?.checkout_url === 'string'
+                    && data.checkout_url.startsWith('https://checkout.paymongo.com/')) {
+                    window.location.assign(data.checkout_url);
+                    return;
+                }
+                console.error('[dashboard] PayMongo retry failed', error || data);
+                window.InigoToast?.show(data?.message || 'Could not reopen online checkout. Please try again.', true);
+                btn.disabled = false;
+                btn.textContent = 'Pay online';
+            });
+        });
+        bookingsTableBody.querySelectorAll('[data-dash-review-booking]').forEach((btn) => btn.addEventListener('click', () => {
+            activeReviewBookingId = btn.dataset.dashReviewBooking;
+            if (!bookingReviewModal) return;
+            bookingReviewModal.hidden = false;
+            bookingReviewModal.querySelector('[data-booking-review-comment]').value = '';
+            bookingReviewModal.querySelector('[data-booking-review-rating]').value = '5';
+        }));
     }
+
+    document.querySelectorAll('[data-booking-review-close]').forEach((button) => button.addEventListener('click', () => { if (bookingReviewModal) bookingReviewModal.hidden = true; activeReviewBookingId = null; }));
+    document.querySelector('[data-booking-review-submit]')?.addEventListener('click', async (event) => {
+        const button = event.currentTarget;
+        if (!activeReviewBookingId || !window.sb) return;
+        const rating = Number(document.querySelector('[data-booking-review-rating]')?.value);
+        const comment = document.querySelector('[data-booking-review-comment]')?.value?.trim() || null;
+        if (!Number.isInteger(rating) || rating < 1 || rating > 5 || (comment && comment.length > 2000)) return;
+        button.disabled = true;
+        const { error } = await window.sb.from('booking_review').insert({ booking_id: Number(activeReviewBookingId), rating, comment });
+        button.disabled = false;
+        if (error) {
+            console.error('[dashboard] review submit failed', error);
+            window.InigoToast?.show(error.code === '23505' ? 'A review has already been submitted for this booking.' : (error.message || 'Could not publish your review.'), true);
+            return;
+        }
+        bookingReviewModal.hidden = true;
+        activeReviewBookingId = null;
+        window.InigoToast?.show('Your review is published. Thank you!');
+        refreshMyBookings();
+    });
 
     // ------------------------------------------------------------------
     // Receipts (Revision 2, R5 — implementation_plan.md). Renders one
@@ -2640,6 +3087,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // above, `hours` from receiptHours() below, and `status` is the DERIVED
     // display status (R4), not the raw stored one.
     function normalizeReceipt(booking) {
+        const pricing = getBookingUnitPricing(booking);
         return {
             id: booking.booking_id,
             court: booking.courts || 'Booking',
@@ -2653,9 +3101,13 @@ document.addEventListener('DOMContentLoaded', () => {
             until: booking.end_at,
             status: displayStatusFor(booking),
             rate: getCourtRate(booking.courts),
+            total: booking.amount_total === null || booking.amount_total === undefined ? null : Number(booking.amount_total),
+            rateDay: pricing.rateDay,
+            rateNight: pricing.rateNight,
+            rateQuantity: Number(booking.rate_quantity) || 1,
             // L2 fix — carried alongside `rate` so renderReceiptCard() below
             // never has to assume "/hr".
-            rateUnit: getCourtRateUnit(booking.courts),
+            rateUnit: pricing.rateUnit,
             hours: receiptHours(booking),
         };
     }
@@ -2708,10 +3160,14 @@ document.addEventListener('DOMContentLoaded', () => {
     // an <img> could.
     function renderReceiptCard(receipt) {
         const hasRate = receipt.rate !== null;
-        const hasHourlyEstimate = hasRate && receipt.rateUnit !== '/game';
-        const amount = hasHourlyEstimate ? receipt.rate * receipt.hours : null;
-        const rateLineLabel = hasHourlyEstimate
-            ? `₱${receipt.rate.toFixed(2)}/hr × ${receipt.hours} hr${receipt.hours === 1 ? '' : 's'}`
+        const hasSavedTotal = Number.isFinite(receipt.total);
+        const hasHourlyEstimate = hasSavedTotal || (hasRate && receipt.rateUnit === '/hr');
+        const amount = hasSavedTotal ? receipt.total : (hasHourlyEstimate ? receipt.rate * receipt.hours : null);
+        const rateLineLabel = hasSavedTotal
+            ? 'Saved reservation total'
+            : hasHourlyEstimate
+                ? (receipt.rateUnit === '/set' && typeof receipt.rateDay === 'number' ? `₱${receipt.rateDay.toFixed(2)}/set × ${receipt.rateQuantity} set${receipt.rateQuantity === 1 ? '' : 's'}`
+                    : (hasRate ? `₱${receipt.rate.toFixed(2)}/hr × ${receipt.hours} hr${receipt.hours === 1 ? '' : 's'}` : 'Saved reservation total'))
             : hasRate ? `₱${receipt.rate.toFixed(2)}/game`
             : 'Amount';
         const rateLineAmount = hasHourlyEstimate ? `₱${amount.toFixed(2)}` : hasRate ? 'Games not recorded' : 'Rate TBA';
@@ -3660,6 +4116,29 @@ document.addEventListener('DOMContentLoaded', () => {
     if (window.inigosyncProfile) {
         renderProfile(window.inigosyncProfile);
         refreshMyBookings();
+    }
+
+    // PayMongo redirects back to the dashboard, but the redirect itself is
+    // never treated as proof of payment. The signed webhook is authoritative;
+    // this owner-scoped status check only tells the customer what the server
+    // has recorded so far.
+    const paymentReturn = new URLSearchParams(window.location.search);
+    const paymentReturnKind = paymentReturn.get('paymongo');
+    const paymentReturnAttempt = paymentReturn.get('attempt');
+    if (paymentReturnKind && paymentReturnAttempt && window.sb) {
+        window.history.replaceState({}, document.title, `${window.location.pathname}${window.location.hash}`);
+        window.sb.functions.invoke('paymongo-checkout', {
+            body: { action: 'status', attempt_id: paymentReturnAttempt },
+        }).then(({ data, error }) => {
+            if (error || !data) {
+                window.InigoToast?.show('We could not confirm checkout yet. Refresh My Bookings shortly.', true);
+                return;
+            }
+            if (data.status === 'paid') window.InigoToast?.show('Payment received. Your booking is confirmed.');
+            else if (paymentReturnKind === 'cancelled') window.InigoToast?.show('Checkout was not completed. Your booking request is still saved.', true);
+            else window.InigoToast?.show('Payment is still processing. We will update your booking when PayMongo confirms it.');
+            refreshMyBookings();
+        }).catch(() => window.InigoToast?.show('We could not confirm checkout yet. Refresh My Bookings shortly.', true));
     }
 
     // ------------------------------------------------------------------

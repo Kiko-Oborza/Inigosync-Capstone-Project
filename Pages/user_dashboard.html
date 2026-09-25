@@ -448,6 +448,13 @@
                         </div>
                     </div>
 
+                    <div class="dash-book-cart" data-dash-book-cart hidden>
+                        <div class="dash-book-cart-head"><strong>Booking list</strong><span data-dash-book-cart-count>0 items</span></div>
+                        <ul data-dash-book-cart-items></ul>
+                        <p class="dash-form-hint">Each booking has its own court, date, and time. Online payments are handled separately from My Bookings.</p>
+                        <button type="button" class="dash-btn-save" data-dash-book-cart-submit>Save listed bookings</button>
+                    </div>
+
                     <div class="dash-card dash-wizard-card">
                         <!-- STEP 1 — Select Sport & Court -->
                         <div class="dash-wizard-panel is-active" data-dash-book-step="1">
@@ -581,6 +588,26 @@
                                 </div>
                             </div>
 
+                            <div class="dash-form-group">
+                                <span class="dash-form-label">When to pay</span>
+                                <div class="dash-payment-options">
+                                    <label class="dash-payment-option is-selected" data-dash-pay-mode-option>
+                                        <span class="dash-payment-option-head">
+                                            <input type="radio" name="booking-pay-mode" checked data-dash-pay-mode="venue">
+                                            Pay at the venue
+                                        </span>
+                                        <p>Submit your booking request without collecting payment online.</p>
+                                    </label>
+                                    <label class="dash-payment-option" data-dash-pay-mode-option>
+                                        <span class="dash-payment-option-head">
+                                            <input type="radio" name="booking-pay-mode" data-dash-pay-mode="online">
+                                            <span data-dash-online-mode-label>Pay online now</span>
+                                        </span>
+                                        <p data-dash-pay-mode-hint>Checkout by GCash or card when the court rate is available.</p>
+                                    </label>
+                                </div>
+                            </div>
+
                             <!-- Revision 2, R3 (implementation_plan.md) — the
                                  real policy: no cancellation, no refunds or
                                  cashback, and arriving more than 30 minutes
@@ -603,6 +630,7 @@
                                 <div class="dash-summary-row"><span>Date</span><strong data-dash-summary-date>Loading…</strong></div>
                                 <div class="dash-summary-row"><span>Time</span><strong data-dash-summary-time>— Select a time —</strong></div>
                                 <div class="dash-summary-row"><span>Rate</span><strong data-dash-summary-rate>—</strong></div>
+                                <label class="dash-summary-row" data-dash-rate-quantity-wrap hidden><span>Number of sets</span><input type="number" min="1" max="100" step="1" value="1" data-dash-rate-quantity aria-label="Number of sets"></label>
 
                                 <div class="dash-summary-divider"></div>
 
@@ -614,9 +642,9 @@
                                     <span>Estimated payment</span>
                                     <span data-dash-summary-total>—</span>
                                 </div>
-                                <p class="dash-form-hint">Online checkout is not enabled yet. Requesting a booking does not charge you.</p>
-
+                                <p class="dash-form-hint">Online checkout is available for courts with a confirmed hourly rate. You can also pay at the venue.</p>
                                 <button type="button" class="dash-btn-primary" data-dash-book-submit disabled>Select a time range to continue</button>
+                                <button type="button" class="dash-btn-ghost" data-dash-book-add hidden>Add this booking and choose another</button>
                             </div>
                         </div>
 
@@ -774,12 +802,9 @@
                          ones that carry a payment_id (Phase 2's rule, which
                          meant this panel could only ever show "No receipts
                          yet", since nothing in this project sets payment_id
-                         yet — no PayMongo integration exists). Amount reads
-                         "Rate TBA" rather than an invented peso figure
-                         whenever a court's rate isn't known (every court
-                         today) — no `payment` table exists anywhere in this
-                         repo either, so there's no payment method/reference
-                         to show. renderReceipts() reuses the exact fetch
+                         yet). Amount reads "Rate TBA" rather than an
+                         invented peso figure whenever a court unit's price
+                         isn't configured. renderReceipts() reuses the exact fetch
                          refreshMyBookings() already makes — no second query
                          against `booking`. The empty state above only
                          appears for a customer with genuinely zero
@@ -1227,6 +1252,18 @@
          is now a thin wrapper around window.InigoImageTools. Must load before
          Dashboard.js. -->
     <script src="../includes/imageTools.js"></script>
+    <div class="dash-modal-overlay" data-booking-review-modal hidden>
+        <div class="dash-modal" role="dialog" aria-modal="true" aria-labelledby="bookingReviewTitle" tabindex="-1">
+            <button type="button" class="dash-modal-close" data-booking-review-close aria-label="Close">×</button>
+            <h2 id="bookingReviewTitle">Review your visit</h2>
+            <p>Your review is published for other customers. Your email and contact details are never shown.</p>
+            <label class="dash-form-label" for="bookingReviewRating">Rating</label>
+            <select id="bookingReviewRating" class="dash-input" data-booking-review-rating><option value="5">5 stars</option><option value="4">4 stars</option><option value="3">3 stars</option><option value="2">2 stars</option><option value="1">1 star</option></select>
+            <label class="dash-form-label" for="bookingReviewComment">Comment (optional)</label>
+            <textarea id="bookingReviewComment" class="dash-input" maxlength="2000" rows="5" data-booking-review-comment></textarea>
+            <div class="dash-form-actions"><button type="button" class="dash-btn-ghost" data-booking-review-close>Cancel</button><button type="button" class="dash-btn-primary" data-booking-review-submit>Publish review</button></div>
+        </div>
+    </div>
     <script src="../includes/Dashboard.js"></script>
 </body>
 </html>

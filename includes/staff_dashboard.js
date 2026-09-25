@@ -432,6 +432,34 @@ document.addEventListener('DOMContentLoaded', () => {
         return timeInCourtsCache.find((c) => c.name === name) || null;
     }
 
+    function quoteStaffUnitRate(row, start, end) {
+        const court = findStaffCourtByName(row.courts);
+        if (!court || !window.InigoCourtsData) return null;
+        const units = window.InigoCourtsData.resolveCourtUnits(court).units;
+        const unit = units.find((item) => row.raw.court_unit_inventory_id && String(item.id) === String(row.raw.court_unit_inventory_id));
+        const quantity = Math.max(1, Math.min(100, Number(row.raw.rate_quantity) || 1));
+        if (unit?.rateUnit === '/set' && typeof unit.rateDay === 'number') return unit.rateDay * quantity;
+        if (typeof unit?.rateDay === 'number') {
+            if (typeof unit.rateNight !== 'number' || unit.rateNight === unit.rateDay) {
+                return unit.rateDay * Math.max(0, (end.getTime() - start.getTime()) / 3600000);
+            }
+            const match = /^(\d{2}):(\d{2})/.exec(String(walkinState.nightRateStartsAt || ''));
+            if (!match) return null;
+            const cutoff = Number(match[1]) * 60 + Number(match[2]);
+            let total = 0;
+            for (let t = start.getTime(); t < end.getTime(); t += 60000) {
+                const local = new Date(t).toLocaleTimeString('en-GB', { timeZone: 'Asia/Manila', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
+                const [hour, minute] = local.split(':').map(Number);
+                total += (hour * 60 + minute >= cutoff ? unit.rateNight : unit.rateDay) / 60;
+            }
+            return Math.round(total * 100) / 100;
+        }
+        if (court.rate !== null && court.rate !== undefined && court.rateUnit === '/hr') {
+            return Number(court.rate) * Math.max(0, (end.getTime() - start.getTime()) / 3600000);
+        }
+        return null;
+    }
+
     // { start, end, hours, total, paid, balance } for a merged Overview/
     // Transactions row (mergeBookingRows() above). row.raw.amount_total/
     // amount_paid only exist once 017_booking_payment.sql is applied —
@@ -445,16 +473,13 @@ document.addEventListener('DOMContentLoaded', () => {
         const { start, end } = rowWindow(row);
         const hours = Math.max(1, Math.round((end.getTime() - start.getTime()) / 3600000));
 
-        const rawTotal = row.raw.amount_total;
-        let total = (rawTotal === null || rawTotal === undefined || rawTotal === '') ? null : Number(rawTotal);
-        if (total === null || Number.isNaN(total)) {
-            const court = findStaffCourtByName(row.courts);
-            const hasRate = Boolean(court && court.rate !== null && court.rate !== undefined);
-            total = hasRate ? court.rate * hours : null;
-        }
-
         const rawPaid = row.raw.amount_paid;
         const paid = (rawPaid === null || rawPaid === undefined || Number.isNaN(Number(rawPaid))) ? 0 : Number(rawPaid);
+        const rawTotal = row.raw.amount_total;
+        const parsedTotal = (rawTotal === null || rawTotal === undefined || rawTotal === '') ? null : Number(rawTotal);
+        const totalIsTrusted = Boolean(row.raw.rate_unit_snapshot || row.raw.payment_id || paid > 0);
+        let total = parsedTotal !== null && Number.isFinite(parsedTotal) && totalIsTrusted ? parsedTotal : null;
+        if (total === null) total = quoteStaffUnitRate(row, start, end);
 
         const balance = total === null ? null : Math.max(0, total - paid);
         return { start, end, hours, total, paid, balance };
@@ -726,6 +751,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const walkinSummaryRate = document.querySelector('[data-staff-walkin-summary-rate]');
     const walkinSummaryPayment = document.querySelector('[data-staff-walkin-summary-payment]');
     const walkinSummaryTotal = document.querySelector('[data-staff-walkin-summary-total]');
+    const walkinRateQuantityWrap = document.querySelector('[data-staff-rate-quantity-wrap]');
+    const walkinRateQuantityInput = document.querySelector('[data-staff-rate-quantity]');
 
     const WALKIN_STEP_COUNT = 5;
     let walkinWizardStep = 1;
@@ -737,6 +764,12 @@ document.addEventListener('DOMContentLoaded', () => {
         courts: [],
         court: null,
         unit: null,
+        unitId: null,
+        rateDay: null,
+        rateNight: null,
+        rateUnit: '/hr',
+        rateQuantity: 1,
+        nightRateStartsAt: null,
         startHour: null,
         endHour: null,
         payment: 'cash',
@@ -840,14 +873,18 @@ document.addEventListener('DOMContentLoaded', () => {
             if (walkinUnitSelect) {
                 walkinUnitSelect.innerHTML = units.map((u, i) => {
                     const label = u.label || `Unit ${i + 1}`;
-                    return `<option value="${window.escapeHtml(label)}">${window.escapeHtml(label)}</option>`;
+                    return `<option value="${window.escapeHtml(label)}" data-unit-id="${window.escapeHtml(u.id || '')}">${window.escapeHtml(label)}</option>`;
                 }).join('');
                 walkinState.unit = units[0].label || 'Unit 1';
+                walkinState.unitId = units[0].id || null;
+                setWalkinUnitRate(units[0], court);
                 walkinUnitSelect.value = walkinState.unit;
             }
         } else {
             if (walkinUnitWrap) walkinUnitWrap.hidden = true;
             walkinState.unit = (units[0] && units[0].label) || null;
+            walkinState.unitId = (units[0] && units[0].id) || null;
+            setWalkinUnitRate(units[0], court);
         }
 
         renderWalkinSportChips();
@@ -855,9 +892,19 @@ document.addEventListener('DOMContentLoaded', () => {
         renderWalkinWizard();
     }
 
+    function setWalkinUnitRate(unit, court) {
+        walkinState.rateDay = unit?.rateDay ?? null;
+        walkinState.rateNight = unit?.rateNight ?? null;
+        walkinState.rateUnit = unit && (typeof unit.rateDay === 'number' || typeof unit.rateNight === 'number') ? (unit.rateUnit || court?.rateUnit || '/hr') : (court?.rateUnit || '/hr');
+        walkinState.rate = unit?.rate ?? court?.rate ?? null;
+    }
+
     if (walkinUnitSelect) {
         walkinUnitSelect.addEventListener('change', () => {
             walkinState.unit = walkinUnitSelect.value || null;
+            walkinState.unitId = walkinUnitSelect.selectedOptions[0]?.dataset.unitId || null;
+            const units = window.InigoCourtsData.resolveCourtUnits(walkinState.court).units;
+            setWalkinUnitRate(units.find((u) => String(u.id || '') === String(walkinState.unitId || '')) || units[0], walkinState.court);
             resetWalkinTimeSelectionAndRefresh();
             renderWalkinWizard();
         });
@@ -866,10 +913,18 @@ document.addEventListener('DOMContentLoaded', () => {
     async function loadWalkinCourts() {
         if (!window.InigoCourtsData) return;
         const courts = await window.InigoCourtsData.getCourts();
-        walkinState.courts = courts;
+        const hasInventory = courts.some((court) => Array.isArray(court.bookableUnits) || court.inventoryLoadFailed);
+        walkinState.courts = hasInventory
+            ? courts.filter((court) => !court.inventoryLoadFailed
+                && (!Array.isArray(court.bookableUnits) || court.bookableUnits.length > 0))
+            : courts;
         renderWalkinSportChips();
     }
     loadWalkinCourts();
+    if (window.InigoAppSettings) window.InigoAppSettings.getSettings().then((settings) => {
+        walkinState.nightRateStartsAt = settings.nightRateStartsAt || null;
+        updateWalkinSummary();
+    });
 
     // ---- Step 3 — Time (today only) ----
     // Ported from includes/Dashboard.js's fetchDayOccupancy()/
@@ -1098,8 +1153,17 @@ document.addEventListener('DOMContentLoaded', () => {
     function updateWalkinSummary() {
         const hours = walkinHoursSelected();
         const court = walkinState.court;
-        const hasRate = Boolean(court && court.rate !== null && court.rate !== undefined);
-        const amount = hasRate && hours > 0 ? court.rate * hours : null;
+        const hasRate = typeof walkinState.rateDay === 'number' || (court && walkinState.rate !== null && walkinState.rate !== undefined);
+        if (walkinRateQuantityWrap) walkinRateQuantityWrap.hidden = walkinState.rateUnit !== '/set';
+        let amount = null;
+        if (walkinState.rateUnit === '/set' && typeof walkinState.rateDay === 'number') amount = walkinState.rateDay * walkinState.rateQuantity;
+        else if (hours > 0 && hasRate) {
+            if (typeof walkinState.rateDay === 'number' && (typeof walkinState.rateNight !== 'number' || walkinState.rateDay === walkinState.rateNight)) {
+                amount = walkinState.rateDay * hours;
+            } else if (typeof walkinState.rateDay !== 'number' && typeof walkinState.rate === 'number') {
+                amount = walkinState.rate * hours;
+            } else amount = walkinHourlyAmount(hours);
+        }
 
         if (walkinSummaryName) walkinSummaryName.textContent = walkinState.name || '—';
         if (walkinSummaryMobile) walkinSummaryMobile.textContent = walkinState.mobile || 'Not provided';
@@ -1108,10 +1172,29 @@ document.addEventListener('DOMContentLoaded', () => {
             walkinSummaryCourt.textContent = court ? `${court.name}${unitPart}` : '—';
         }
         if (walkinSummaryTime) walkinSummaryTime.textContent = walkinTimeRangeLabel() || '— Select a time —';
-        if (walkinSummaryRateLabel) walkinSummaryRateLabel.textContent = hasRate ? `₱${court.rate}${court.rateUnit || '/hr'} × ${hours} hr${hours === 1 ? '' : 's'}` : 'Rate';
-        if (walkinSummaryRate) walkinSummaryRate.textContent = hasRate ? `₱${court.rate}${court.rateUnit || '/hr'}` : 'Rate TBA';
+        if (walkinSummaryRateLabel) walkinSummaryRateLabel.textContent = amount !== null ? 'Estimated total' : 'Rate';
+        if (walkinSummaryRate) walkinSummaryRate.textContent = hasRate ? (walkinState.rateUnit === '/set' ? `₱${walkinState.rateDay}/set × ${walkinState.rateQuantity}` : `₱${walkinState.rateDay ?? walkinState.rate}${walkinState.rateUnit} · ${hours} hr${hours === 1 ? '' : 's'}`) : 'Rate TBA';
         if (walkinSummaryPayment) walkinSummaryPayment.textContent = walkinState.payment === 'online' ? 'Online payment' : 'Cash';
         if (walkinSummaryTotal) walkinSummaryTotal.textContent = amount !== null ? `₱${amount.toFixed(2)}` : 'Rate TBA';
+    }
+
+    if (walkinRateQuantityInput) walkinRateQuantityInput.addEventListener('input', () => {
+        walkinState.rateQuantity = Math.max(1, Math.min(100, Number.parseInt(walkinRateQuantityInput.value, 10) || 1));
+        walkinRateQuantityInput.value = String(walkinState.rateQuantity);
+        updateWalkinSummary();
+    });
+
+    function walkinHourlyAmount(hours) {
+        const match = /^(\d{2}):(\d{2})/.exec(String(walkinState.nightRateStartsAt || ''));
+        if (!match || Number(match[1]) > 23 || Number(match[2]) > 59 || walkinState.startHour === null) return null;
+        const cutoffMinutes = Number(match[1]) * 60 + Number(match[2]);
+        let total = 0;
+        for (let h = walkinState.startHour; h < walkinState.startHour + hours; h += 1) {
+            const start = h * 60;
+            const nightMinutes = Math.max(0, start + 60 - Math.max(start, cutoffMinutes));
+            total += (60 - nightMinutes) / 60 * walkinState.rateDay + nightMinutes / 60 * walkinState.rateNight;
+        }
+        return total;
     }
 
     // ---- Receipt (S4) — same store-receipt/ticket look as the customer
@@ -1126,13 +1209,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function renderStaffReceipt(receipt) {
         if (!walkinReceiptEl) return;
-        const hasRate = receipt.rate !== null && receipt.rate !== undefined;
-        const amount = hasRate ? receipt.rate * receipt.hours : null;
-        const rateLineLabel = hasRate
-            ? `₱${Number(receipt.rate).toFixed(2)}${receipt.rateUnit || '/hr'} × ${receipt.hours} hr${receipt.hours === 1 ? '' : 's'}`
-            : 'Amount';
-        const rateLineAmount = hasRate ? `₱${amount.toFixed(2)}` : 'Rate TBA';
-        const totalAmount = hasRate ? `₱${amount.toFixed(2)}` : '—';
+        const amount = receipt.amountTotal !== undefined && receipt.amountTotal !== null ? Number(receipt.amountTotal) : null;
+        const hasAmount = typeof amount === 'number' && Number.isFinite(amount);
+        const rateLineLabel = hasAmount ? 'Saved reservation total' : 'Amount';
+        const rateLineAmount = hasAmount ? `₱${amount.toFixed(2)}` : 'Rate TBA';
+        const totalAmount = hasAmount ? `₱${amount.toFixed(2)}` : 'Rate TBA';
         const idAttr = window.escapeHtml(String(receipt.id));
         const courtLabel = receipt.unit ? `${receipt.courtName} · ${receipt.unit}` : receipt.courtName;
 
@@ -1224,7 +1305,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function resetWalkinWizard() {
         const courts = walkinState.courts;
-        walkinState = { name: '', mobile: '', mobileError: false, courts, court: null, unit: null, startHour: null, endHour: null, payment: 'cash' };
+        const nightRateStartsAt = walkinState.nightRateStartsAt || null;
+        walkinState = { name: '', mobile: '', mobileError: false, courts, court: null, unit: null, unitId: null, rateDay: null, rateNight: null, rateUnit: '/hr', rateQuantity: 1, nightRateStartsAt, startHour: null, endHour: null, payment: 'cash' };
+        if (walkinRateQuantityInput) walkinRateQuantityInput.value = '1';
         if (walkinNameInput) walkinNameInput.value = '';
         if (walkinMobileInput) walkinMobileInput.value = '';
         if (walkinUnitWrap) walkinUnitWrap.hidden = true;
@@ -1322,15 +1405,20 @@ document.addEventListener('DOMContentLoaded', () => {
             // desk, so it equals amount_total the moment the rate is known;
             // zero otherwise) only exist once database/schema/
             // 017_booking_payment.sql is applied.
-            const hasRate = walkinState.court.rate !== null && walkinState.court.rate !== undefined;
-            const amountTotal = hasRate ? walkinState.court.rate * hours : null;
+            let amountTotal = null;
+            if (walkinState.rateUnit === '/set' && typeof walkinState.rateDay === 'number') amountTotal = walkinState.rateDay * walkinState.rateQuantity;
+            else if (typeof walkinState.rateDay === 'number' && (typeof walkinState.rateNight !== 'number' || walkinState.rateDay === walkinState.rateNight)) amountTotal = walkinState.rateDay * hours;
+            else if (typeof walkinState.rateDay !== 'number' && typeof walkinState.rate === 'number') amountTotal = walkinState.rate * hours;
+            else if (typeof walkinState.rateDay === 'number' && typeof walkinState.rateNight === 'number') amountTotal = walkinHourlyAmount(hours);
             const amountPaid = amountTotal !== null ? amountTotal : 0;
 
             const fullPayload = {
                 staff_id: window.inigosyncProfile.id,
                 sports: walkinState.court.sportName || walkinState.court.name,
                 courts: walkinState.court.name,
+                court_listing_id: walkinState.court.id || null,
                 court_unit: walkinState.unit || null,
+                court_unit_inventory_id: walkinState.unitId || null,
                 customer_name: walkinState.name,
                 customer_mobile: walkinState.mobile || null,
                 time_date: startIso,
@@ -1341,6 +1429,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 payment_id: null,
                 amount_total: amountTotal,
                 amount_paid: amountPaid,
+                rate_quantity: walkinState.rateUnit === '/set' ? walkinState.rateQuantity : 1,
             };
 
             walkinSaveBtn.disabled = true;
@@ -1367,6 +1456,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     sports: fullPayload.sports,
                     courts: fullPayload.courts,
                     court_unit: fullPayload.court_unit,
+                    court_unit_inventory_id: fullPayload.court_unit_inventory_id,
                     customer_name: fullPayload.customer_name,
                     customer_mobile: fullPayload.customer_mobile,
                     time_date: fullPayload.time_date,
@@ -1405,6 +1495,8 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             window.InigoToast?.show(saveNote);
 
+            const savedAmountTotal = savedRow && savedRow.amount_total !== null && savedRow.amount_total !== undefined
+                ? Number(savedRow.amount_total) : null;
             renderStaffReceipt({
                 id: receiptId,
                 customerName: walkinState.name,
@@ -1414,8 +1506,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 startIso,
                 endIso,
                 hours,
-                rate: (walkinState.court.rate !== null && walkinState.court.rate !== undefined) ? walkinState.court.rate : null,
-                rateUnit: walkinState.court.rateUnit || '/hr',
+                amountTotal: Number.isFinite(savedAmountTotal) ? savedAmountTotal : null,
                 paymentLabel,
             });
 

@@ -103,6 +103,7 @@ as $$
     );
 $$;
 
+revoke all on function public.inigosync_is_admin() from public, anon;
 grant execute on function public.inigosync_is_admin() to authenticated;
 
 alter table public.app_settings enable row level security;

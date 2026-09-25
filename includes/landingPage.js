@@ -138,6 +138,7 @@ function normalizeUnitImages(value, contextLabel) {
 
 function normalizeCourtFromDb(row) {
     return {
+        id: row.id,
         // The embedded sport(slug) is the real grouping key. If that embed
         // is ever missing for some reason, fall back to the court's own
         // slug with the duckpin/ten-pin suffix stripped — same trick
@@ -159,6 +160,7 @@ function normalizeCourtFromDb(row) {
         // Same "column may not exist yet" story as `rating` — see
         // normalizeUnitImages and database/schema/006_court_unit_images.sql.
         unitImages: normalizeUnitImages(row.unit_images, row.slug || row.name),
+        unitRates: [],
     };
 }
 
@@ -213,6 +215,56 @@ function mergeCourtsBySport(items) {
             unitImages: group.reduce((all, c) => all.concat(c.unitImages || []), []),
         };
     });
+}
+
+function formatUnitRate(amount, rateUnit) {
+    return `₱${Number(amount).toLocaleString('en-PH', { maximumFractionDigits: 2 })}${rateUnit || '/hr'}`;
+}
+
+function unitRateText(unit) {
+    const day = typeof unit?.rateDay === 'number' ? unit.rateDay : null;
+    const night = typeof unit?.rateNight === 'number' ? unit.rateNight : null;
+    const rateUnit = unit?.rateUnit || '/hr';
+    if (day !== null && night !== null && day !== night) {
+        const period = rateUnit === '/hr' ? ' per hour' : '';
+        return `₱${day.toLocaleString('en-PH', { maximumFractionDigits: 2 })} day / ₱${night.toLocaleString('en-PH', { maximumFractionDigits: 2 })} night${period}`;
+    }
+    if (day !== null) return formatUnitRate(day, rateUnit);
+    if (night !== null) return formatUnitRate(night, rateUnit);
+    return null;
+}
+
+function applyCourtUnitRates(courts, rateRows) {
+    const byCourt = new Map();
+    (rateRows || []).forEach((row) => {
+        const list = byCourt.get(row.court_id) || [];
+        list.push({
+            label: row.label,
+            rateDay: row.rate_day === null ? null : Number(row.rate_day),
+            rateNight: row.rate_night === null ? null : Number(row.rate_night),
+            rateUnit: row.rate_unit || '/hr',
+        });
+        byCourt.set(row.court_id, list);
+    });
+
+    courts.forEach((court) => {
+        const variants = court.variants?.length ? court.variants : [court];
+        variants.forEach((variant) => { variant.unitRates = byCourt.get(variant.id) || []; });
+        const rates = variants.flatMap((variant) => variant.unitRates.flatMap((unit) => [
+            ...(typeof unit.rateDay === 'number' ? [{ value: unit.rateDay, unit: unit.rateUnit }] : []),
+            ...(typeof unit.rateNight === 'number' ? [{ value: unit.rateNight, unit: unit.rateUnit }] : []),
+        ]));
+        if (rates.length) {
+            const rateUnit = rates[0].unit;
+            const lowest = Math.min(...rates.map((rate) => rate.value));
+            court.rateLabel = rates.some((rate) => rate.unit !== rateUnit)
+                ? 'See rates by type'
+                : `From ${formatUnitRate(lowest, rateUnit)}`;
+        } else {
+            court.rateLabel = court.rate === null ? null : formatUnitRate(court.rate, court.rateUnit);
+        }
+    });
+    return courts;
 }
 
 // ============================================================================
@@ -308,9 +360,17 @@ function requestContent(key, force, fetchRows, normalize) {
     return entry.promise;
 }
 function getCourts({ force = false } = {}) {
-    return requestContent('courts', force, () => window.sb.from('court')
+    const courts = requestContent('courts', force, () => window.sb.from('court')
         .select('*, sport(slug, name)').eq('is_active', true).order('display_order'),
         rows => mergeCourtsBySport(rows.map(normalizeCourtFromDb)));
+    const rates = requestContent('courtUnitRates', force, () => window.sb.from('court_unit_inventory')
+        .select('court_id,label,rate_day,rate_night,rate_unit')
+        .eq('is_active', true).eq('inventory_verified', true), rows => rows)
+        .catch((error) => {
+            console.warn('[IñigoSync] Unit rates could not be loaded for the public court list; showing TBA until they can be refreshed.', error);
+            return [];
+        });
+    return Promise.all([courts, rates]).then(([courtRows, rateRows]) => applyCourtUnitRates(courtRows, rateRows));
 }
 function getEvents({ force = false } = {}) {
     return requestContent('events', force, () => window.sb.from('event')
@@ -349,16 +409,15 @@ function renderCourtCard(court) {
             ? `<div class="court-art" aria-hidden="true"><div class="court-art-image sport-art-${artIndex}"></div></div>`
             : renderMediaSlot({ imageUrl: null, alt: court.name, monogram });
 
-    // Rate: ₱<rate><rate_unit> when non-null, an honest "Rate TBA"
-    // placeholder when null — every court's rate is NULL in the live DB
-    // right now (database/seed/002_seed_content.sql leaves it unconfirmed
-    // on purpose). Never invented; this starts showing real numbers the
-    // moment the owner sets them via the admin Court Listings CRUD.
-    const rateHtml = court.hasVariantRates
-        ? '<p class="court-rate">See rates by type</p>'
-        : court.rate !== null
-        ? `<p class="court-rate">₱${escapeHtml(String(court.rate))}<span>${escapeHtml(court.rateUnit)}</span></p>`
-        : `<p class="court-rate is-tba">Rate TBA</p>`;
+    // Prefer the verified per-unit rate schedule; listing-level legacy rates
+    // remain a fallback for sports without a configured unit schedule.
+    const rateHtml = court.rateLabel
+        ? `<p class="court-rate">${escapeHtml(court.rateLabel)}</p>`
+        : court.hasVariantRates
+            ? '<p class="court-rate">See rates by type</p>'
+            : court.rate !== null
+                ? `<p class="court-rate">₱${escapeHtml(String(court.rate))}<span>${escapeHtml(court.rateUnit)}</span></p>`
+                : `<p class="court-rate is-tba">Rate TBA</p>`;
 
     // Rating: `court.rating` only exists once the owner runs
     // database/schema/003_court_rating.sql, and only renders when a court
@@ -526,6 +585,12 @@ function createCourtViewer() {
         // "What you book" row already say everything a lone "Court 1"
         // eyebrow would.
         unitEl.hidden = !unit.label || units.length < 2;
+        const scheduledUnit = activeVariant.unitRates?.find((rate) => String(rate.label || '').trim().toLowerCase() === String(unit.label || '').trim().toLowerCase());
+        const scheduledText = unitRateText(scheduledUnit);
+        rateEl.className = 'court-viewer-rate' + (scheduledText ? '' : ' is-tba');
+        rateEl.textContent = scheduledText || (activeVariant.rate == null
+            ? 'Rate TBA — please check with the front desk.'
+            : formatUnitRate(activeVariant.rate, activeVariant.rateUnit));
     }
 
     function chooseType(index) {
@@ -541,8 +606,8 @@ function createCourtViewer() {
         selectEl.disabled = !hasChoice;
         noteEl.textContent = activeVariant.note || '';
         noteEl.hidden = !activeVariant.note;
-        rateEl.className = 'court-viewer-rate' + (activeVariant.rate == null ? ' is-tba' : '');
-        rateEl.textContent = activeVariant.rate == null ? 'Rate TBA — please check with the front desk.' : '₱' + activeVariant.rate + activeVariant.rateUnit;
+        rateEl.className = 'court-viewer-rate is-tba';
+        rateEl.textContent = 'Rate TBA — please check with the front desk.';
         selectUnit(0);
     }
 
@@ -681,6 +746,10 @@ document.addEventListener('DOMContentLoaded', () => {
     const courtGrid = document.querySelector('[data-court-grid]');
     const status = document.querySelector('[data-courts-status]');
     const testimonialGrid = document.querySelector('[data-testimonial-grid]');
+    const onsiteReviewGrid = document.querySelector('[data-onsite-review-grid]');
+    const onsiteReviewMore = document.querySelector('[data-onsite-review-more]');
+    let onsiteReviewPage = 0;
+    const ONSITE_REVIEW_PAGE_SIZE = 6;
     let clickSequence = 0;
     const retryMarkup = (text, target) => '<p class="content-state" role="status">' + text + ' <button type="button" data-content-retry="' + target + '">Try again</button></p>';
 
@@ -710,6 +779,26 @@ document.addEventListener('DOMContentLoaded', () => {
         } catch { testimonialGrid.innerHTML = retryMarkup('Feedback could not be loaded.', 'feedback'); }
         finally { testimonialGrid.setAttribute('aria-busy', 'false'); }
     }
+    async function loadOnsiteReviews(reset = false) {
+        if (!onsiteReviewGrid || !window.sb) return;
+        if (reset) { onsiteReviewPage = 0; onsiteReviewGrid.innerHTML = ''; }
+        onsiteReviewGrid.setAttribute('aria-busy', 'true');
+        const start = onsiteReviewPage * ONSITE_REVIEW_PAGE_SIZE;
+        const { data, count, error } = await window.sb.from('public_booking_reviews')
+            .select('id,display_name,rating,comment,created_at', { count: 'exact' })
+            .order('created_at', { ascending: false }).range(start, start + ONSITE_REVIEW_PAGE_SIZE - 1);
+        onsiteReviewGrid.setAttribute('aria-busy', 'false');
+        if (error) {
+            onsiteReviewGrid.innerHTML = '<p class="content-state">Customer reviews are temporarily unavailable.</p>';
+            console.error('[landing] customer review feed unavailable', error);
+            return;
+        }
+        const cards = (data || []).map((review) => `<article class="onsite-review-card"><div class="onsite-review-card-head"><strong>${escapeHtml(review.display_name || 'Verified customer')}</strong><span aria-label="${Number(review.rating)} out of 5 stars">${'★'.repeat(Number(review.rating))}${'☆'.repeat(5 - Number(review.rating))}</span></div><p>${escapeHtml(review.comment || 'No written comment.')}</p><time datetime="${escapeHtml(review.created_at)}">${escapeHtml(new Date(review.created_at).toLocaleDateString())}</time></article>`).join('');
+        if (start === 0 && !cards) onsiteReviewGrid.innerHTML = '<p class="content-state">Customer reviews will appear here after a completed paid booking.</p>';
+        else onsiteReviewGrid.insertAdjacentHTML('beforeend', cards);
+        onsiteReviewMore.hidden = start + (data || []).length >= (count || 0);
+    }
+    onsiteReviewMore?.addEventListener('click', () => { onsiteReviewPage += 1; loadOnsiteReviews(); });
     courtGrid?.addEventListener('click', async event => {
         const card = event.target.closest('.court-card');
         if (!card || !courtGrid.contains(card) || !courtViewer) return;
@@ -733,10 +822,11 @@ document.addEventListener('DOMContentLoaded', () => {
         if (target === 'feedback') loadTestimonials(true);
     });
     document.addEventListener('visibilitychange', () => {
-        if (!document.hidden) { loadCourts(true); loadTestimonials(true); }
+        if (!document.hidden) { loadCourts(true); loadTestimonials(true); loadOnsiteReviews(true); }
     });
     loadCourts();
     loadTestimonials();
+    loadOnsiteReviews();
 
     // ------------------------------------------------------------------
     // Theme toggle — includes/theme.js manages the data-theme attribute

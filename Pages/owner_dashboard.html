@@ -279,17 +279,7 @@
                      Website performance runs on its own schedule, see
                      refreshWebsitePerformance()'s own comment. -->
                 <div class="admin-grid-2">
-                    <!-- Revision A3, decision C4 — Website performance.
-                         Six honest, client-measurable checks (never a
-                         fabricated number — see refreshWebsitePerformance()
-                         in includes/owner_dashboard.js): API response time,
-                         page load time, Media storage bucket usage,
-                         database record counts, JS errors this session, and
-                         network connection state. Overall badge is the worst
-                         of the six (a bucket that isn't set up yet, or a
-                         purely informational row, doesn't count against it).
-                         Runs on load, on 'inigosync:profile-ready', on
-                         Run check, and every 5 minutes. -->
+                    <!-- Plain-language checks for the owner; technical diagnostics stay in logs. -->
                     <div class="admin-card">
                         <div class="admin-card-head admin-perf-head">
                             <div>
@@ -313,10 +303,10 @@
                              Chart.js CDN didn't load. -->
                         <div class="admin-perf-body" data-admin-perf-body>
                             <div class="admin-perf-chart-wrap" data-admin-perf-chart-wrap>
-                                <canvas data-admin-perf-chart role="img" aria-label="Website performance status breakdown, 6 checks"></canvas>
+                                <canvas data-admin-perf-chart role="img" aria-label="Website health status breakdown, 5 checks"></canvas>
                                 <div class="admin-perf-chart-center">
                                     <span class="admin-perf-chart-status" data-admin-perf-chart-status>—</span>
-                                    <span class="admin-perf-chart-sub">6 checks</span>
+                                    <span class="admin-perf-chart-sub">5 checks</span>
                                 </div>
                             </div>
                             <div class="admin-perf-list" data-admin-perf-list>
@@ -374,8 +364,26 @@
                         <h3>All Staff Accounts</h3>
                         <div class="admin-search-wrap">
                             <svg viewBox="0 0 24 24" fill="none"><circle cx="11" cy="11" r="7" stroke="currentColor" stroke-width="1.8"/><path d="M21 21l-4.3-4.3" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
-                            <input type="text" class="admin-search" placeholder="Search staff by name or role…" data-admin-staff-search>
+                            <input type="text" class="admin-search" placeholder="Search staff by name, email, or position…" data-admin-staff-search>
                         </div>
+                    </div>
+
+                    <div class="admin-staff-filters" aria-label="Filter staff accounts">
+                        <label class="admin-staff-filter">
+                            <span>Status</span>
+                            <select class="admin-select" data-admin-staff-status-filter aria-label="Filter staff by status">
+                                <option value="all">All statuses</option>
+                                <option value="active">Active</option>
+                                <option value="pending">Invited</option>
+                                <option value="disabled">Deactivated</option>
+                            </select>
+                        </label>
+                        <label class="admin-staff-filter">
+                            <span>Position</span>
+                            <select class="admin-select" data-admin-staff-position-filter aria-label="Filter staff by position">
+                                <option value="all">All positions</option>
+                            </select>
+                        </label>
                     </div>
 
                     <!-- Reset Password now sets the account's password to a
@@ -412,6 +420,11 @@
                             <tbody><tr><td colspan="5">Loading staff accounts…</td></tr></tbody>
                         </table>
                     </div>
+                    <nav class="admin-staff-pagination" data-admin-staff-pagination aria-label="Staff list pages" hidden>
+                        <button type="button" class="admin-btn-ghost" data-admin-staff-page-prev disabled>Previous</button>
+                        <span data-admin-staff-page-info aria-live="polite">Page 1 of 1</span>
+                        <button type="button" class="admin-btn-ghost" data-admin-staff-page-next disabled>Next</button>
+                    </nav>
                 </div>
 
                 <!-- Payment Configuration card — REMOVED (Revision A2,
@@ -431,25 +444,34 @@
                  COURT LISTINGS PANEL
                  ============================================================ -->
             <section class="admin-panel" data-admin-panel="courts">
-                <div class="admin-panel-head">
-                    <div>
-                        <h2>Court Listings</h2>
-                    </div>
-                </div>
                 <div class="admin-court-toolbar">
-                    <div class="admin-court-toolbar-left">
+                    <label class="admin-search-wrap admin-court-search">
+                        <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="11" cy="11" r="7" stroke="currentColor" stroke-width="1.8"/><path d="M21 21l-4.3-4.3" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+                        <input type="search" class="admin-search" placeholder="Search sports or courts…" aria-label="Search sports or courts" data-admin-court-search>
+                    </label>
+                    <div class="admin-court-toolbar-bottom">
                         <div class="admin-filter-row">
                             <button type="button" class="admin-chip is-active" data-admin-chip data-admin-court-filter="all">All</button>
                             <button type="button" class="admin-chip" data-admin-chip data-admin-court-filter="active">Active</button>
-                            <button type="button" class="admin-chip" data-admin-chip data-admin-court-filter="inactive">Deactivated</button>
+                            <button type="button" class="admin-chip" data-admin-chip data-admin-court-filter="inactive">Archived</button>
                         </div>
-                        <label class="admin-search-wrap">
-                            <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="11" cy="11" r="7" stroke="currentColor" stroke-width="1.8"/><path d="M21 21l-4.3-4.3" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
-                            <input type="search" class="admin-search" placeholder="Search sports or courts…" aria-label="Search sports or courts" data-admin-court-search>
-                        </label>
+                        <button type="button" class="admin-btn-primary" data-admin-toggle-court-form>+ Add Sport</button>
                     </div>
-                    <button type="button" class="admin-btn-primary" data-admin-toggle-court-form>+ Add New Court</button>
                 </div>
+
+                <details class="admin-card admin-pricing-rules">
+                    <summary>Day and night pricing rule</summary>
+                    <p class="admin-card-sub">This cutoff applies to court units that have different day and night rates.</p>
+                    <form class="admin-resource-cutoff" data-admin-rate-cutoff-form>
+                        <label class="admin-form-group">
+                            <span class="admin-form-label">Night rates start at</span>
+                            <input class="admin-input" type="time" data-admin-rate-cutoff aria-describedby="admin-rate-cutoff-help">
+                        </label>
+                        <button class="admin-btn-primary" type="submit" data-admin-rate-cutoff-save>Save cutoff</button>
+                        <span class="admin-resource-rate-status" data-admin-rate-cutoff-status role="status" aria-live="polite">Loading cutoff…</span>
+                        <p class="admin-form-hint" id="admin-rate-cutoff-help">Leave blank when all day and night prices are the same. Local time is Asia/Manila; this cutoff is used to calculate mixed day/night bookings.</p>
+                    </form>
+                </details>
 
                 <div class="admin-court-grid" data-admin-court-grid>
                     <!-- Rendered by includes/owner_dashboard.js from the real
@@ -466,9 +488,6 @@
                  ============================================================ -->
             <section class="admin-panel" data-admin-panel="media">
                 <div class="admin-panel-head">
-                    <div>
-                        <h2>Media Manager</h2>
-                    </div>
                     <button type="button" class="admin-btn-primary" data-admin-slide-add>+ Add slide</button>
                 </div>
 
@@ -498,13 +517,25 @@
                 </div>
             </section>
 
-            <!-- Google reviews use the same published widget as the landing page. -->
             <section class="admin-panel" data-admin-panel="feedback">
-                <div class="admin-panel-head"><h2>Feedbacks &amp; Reviews</h2></div>
-                <div class="admin-card admin-google-reviews-card">
-                    <div class="google-reviews" data-google-reviews hidden aria-label="Google reviews for Iñigos Sports Center"></div>
-                    <p class="google-reviews-note" data-google-reviews-note hidden>Google reviews update periodically. Open a review in the widget to see its source.</p>
-                    <p class="google-reviews-note" data-google-reviews-fallback>Google reviews are currently unavailable.</p>
+                <div class="admin-card admin-booking-reviews-card">
+                    <div class="admin-review-summary" data-admin-review-summary aria-live="polite">Loading customer reviews…</div>
+                    <div class="admin-review-filter" role="group" aria-label="Filter reviews by star rating">
+                        <button type="button" class="admin-chip is-active" data-admin-review-rating="all" aria-pressed="true">All ratings</button>
+                        <button type="button" class="admin-chip" data-admin-review-rating="5" aria-pressed="false">5 stars</button>
+                        <button type="button" class="admin-chip" data-admin-review-rating="4" aria-pressed="false">4 stars</button>
+                        <button type="button" class="admin-chip" data-admin-review-rating="3" aria-pressed="false">3 stars</button>
+                        <button type="button" class="admin-chip" data-admin-review-rating="2" aria-pressed="false">2 stars</button>
+                        <button type="button" class="admin-chip" data-admin-review-rating="1" aria-pressed="false">1 star</button>
+                    </div>
+                    <div class="admin-review-list" data-admin-review-list aria-live="polite" aria-busy="true">
+                        <p class="admin-form-hint">Loading reviews…</p>
+                    </div>
+                    <nav class="admin-review-pagination" data-admin-review-pagination aria-label="Review pages" hidden>
+                        <button type="button" class="admin-btn-ghost" data-admin-review-prev disabled>Previous</button>
+                        <span data-admin-review-page-info aria-live="polite">Page 1 of 1</span>
+                        <button type="button" class="admin-btn-ghost" data-admin-review-next disabled>Next</button>
+                    </nav>
                 </div>
             </section>
             <!-- ============================================================
@@ -513,7 +544,6 @@
             <section class="admin-panel" data-admin-panel="settings">
                 <div class="admin-panel-head">
                     <div>
-                        <h2>Account Settings</h2>
                         <p>Update your personal details and manage your owner password.</p>
                     </div>
                 </div>
@@ -528,73 +558,28 @@
                      paints this SAME .admin-avatar element as the topbar and
                      the card above. -->
                 <div class="admin-card">
-                    <div class="admin-card-head"><h3>Profile Photo</h3></div>
+                    <div class="admin-card-head">
+                        <h3>Profile Photo</h3>
+                        <button type="button" class="admin-btn-secondary" data-admin-avatar-edit>Edit</button>
+                    </div>
                     <div class="admin-avatar-upload-row">
                         <div class="admin-avatar admin-avatar-upload-preview">RD</div>
-                        <div class="admin-avatar-upload-controls">
-                            <div class="admin-avatar-upload-actions">
-                                <button type="button" class="admin-btn-save" data-admin-avatar-upload-trigger>Upload Photo</button>
-                                <button type="button" class="admin-btn-ghost" data-admin-avatar-remove hidden>Remove Photo</button>
-                                <input type="file" accept="image/*" class="admin-visually-hidden" data-admin-avatar-file>
-                            </div>
-                            <p class="admin-form-hint">Any image file, up to 5&nbsp;MB — we'll resize and crop it automatically.</p>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Personal Information — Revision A1 (decision A9). Full
-                     name AND email are both now genuinely editable and
-                     genuinely saved (previously email had a value= but no
-                     write path at all). The old "Username · not available
-                     yet" field is removed outright — profiles has no
-                     username column, and a permanently-disabled field
-                     explaining that added nothing a comment couldn't. -->
-                <div class="admin-card">
-                    <div class="admin-card-head"><h3>Personal Information</h3></div>
-                    <div class="admin-settings-grid">
-                        <div class="admin-form-group">
-                            <span class="admin-form-label">Full name</span>
-                            <input type="text" class="admin-input" data-admin-settings-name>
-                        </div>
-                        <div class="admin-form-group">
-                            <span class="admin-form-label">Email address</span>
-                            <input type="email" class="admin-input" data-admin-settings-email>
-                        </div>
-                        <div class="admin-form-group">
-                            <span class="admin-form-label">Mobile number</span>
-                            <input type="tel" class="admin-input" inputmode="tel" data-admin-settings-mobile>
-                        </div>
-                        <div class="admin-form-group">
-                            <span class="admin-form-label">Address</span>
-                            <input type="text" class="admin-input" autocomplete="street-address" data-admin-settings-address>
-                        </div>
-                        <div class="admin-form-group">
-                            <span class="admin-form-label">Date of birth</span>
-                            <input type="date" class="admin-input" data-admin-settings-birthdate>
-                        </div>
-                        <div class="admin-form-group">
-                            <span class="admin-form-label">Gender</span>
-                            <select class="admin-input" data-admin-settings-gender>
-                                <option value="">Prefer not to say</option>
-                                <option value="Male">Male</option>
-                                <option value="Female">Female</option>
-                            </select>
-                        </div>
-                    </div>
-                    <p class="admin-form-hint">Changing your email sends a confirmation link to the new address — the change only applies after you click it.</p>
-                    <div class="admin-form-actions">
-                        <button type="button" class="admin-btn-ghost" data-admin-settings-cancel="profile">Cancel</button>
-                        <button type="button" class="admin-btn-save" data-admin-settings-save="profile">Save Changes</button>
                     </div>
                 </div>
 
                 <div class="admin-card">
-                    <div class="admin-card-head"><h3>Additional Google sign-in addresses</h3></div>
-                    <p class="admin-form-hint">Connect another Gmail account by signing in to Google and approving the link. The address can then access this same owner account.</p>
-                    <div data-admin-linked-google-emails><p class="admin-form-hint">Loading linked accounts…</p></div>
-                    <div class="admin-form-actions">
-                        <button type="button" class="admin-btn-save" data-admin-link-google>Add Gmail address</button>
+                    <div class="admin-card-head">
+                        <h3>Personal Information</h3>
+                        <button type="button" class="admin-btn-secondary" data-admin-profile-edit>Edit</button>
                     </div>
+                    <dl class="admin-settings-readonly">
+                        <div><dt>Full name</dt><dd data-admin-profile-full-name>—</dd></div>
+                        <div><dt>Email address</dt><dd data-admin-profile-email>—</dd></div>
+                        <div><dt>Mobile number</dt><dd data-admin-profile-mobile>—</dd></div>
+                        <div><dt>Address</dt><dd data-admin-profile-address>—</dd></div>
+                        <div><dt>Date of birth</dt><dd data-admin-profile-birthdate>—</dd></div>
+                        <div><dt>Gender</dt><dd data-admin-profile-gender>—</dd></div>
+                    </dl>
                 </div>
 
                 <!-- Change Password — Revision A1 (decision A9): a 2-step
@@ -921,7 +906,7 @@
 
         <div class="admin-form-row">
             <div class="admin-form-group">
-                <span class="admin-form-label">Court name</span>
+                <span class="admin-form-label">Sport name</span>
                 <input type="text" class="admin-input" placeholder="e.g. Badminton — Court 3" data-admin-court-name>
             </div>
             <div class="admin-form-group">
@@ -937,8 +922,9 @@
         </div>
         <div class="admin-form-row">
             <div class="admin-form-group">
-                <span class="admin-form-label">Quantity</span>
-                <input type="number" class="admin-input" placeholder="2" min="1" step="1" value="1" data-admin-court-quantity>
+                <span class="admin-form-label">Number of units</span>
+                <input type="number" class="admin-input" placeholder="1" min="1" max="50" step="1" value="1" data-admin-court-quantity aria-describedby="admin-court-quantity-help">
+                <span class="admin-form-hint" id="admin-court-quantity-help">Choose how many courts, lanes, or tables to create for this sport.</span>
             </div>
             <div class="admin-form-group">
                 <span class="admin-form-label">Unit</span>
@@ -950,35 +936,30 @@
                 </select>
             </div>
         </div>
-        <!-- Revision A2 (implementation_plan.md, decision B7) — "Billing
-             unit" (Per hour / Per game) removed outright; every court now
-             bills '/hr' (hardcoded in includes/owner_dashboard.js's save
-             payload, not read from a field). Rate pairs with Status
-             instead, freeing the row Photo now needs below. -->
-        <div class="admin-form-row">
-            <div class="admin-form-group">
-                <span class="admin-form-label">Rate (₱) <span class="admin-form-label-hint">— leave blank until confirmed</span></span>
-                <input type="number" class="admin-input" placeholder="e.g. 300" min="0" step="0.01" data-admin-court-rate>
-            </div>
-            <div class="admin-form-group">
-                <span class="admin-form-label">Billing unit</span>
-                <select class="admin-select" data-admin-court-rate-unit>
-                    <option value="/hr">Per hour</option>
-                    <option value="/game">Per game</option>
-                </select>
-            </div>
-            <div class="admin-form-group">
-                <span class="admin-form-label">Status</span>
-                <select class="admin-select" data-admin-court-op-status>
-                    <option value="Available">Available</option>
-                    <option value="Maintenance">Maintenance</option>
-                </select>
-            </div>
-        </div>
         <div class="admin-form-group">
             <span class="admin-form-label">Description</span>
             <input type="text" class="admin-input" placeholder="e.g. Full court · Indoor · Scoreboard" data-admin-court-description>
         </div>
+
+        <section class="admin-unit-manager" data-admin-unit-manager hidden aria-labelledby="adminCourtUnitsTitle">
+            <div class="admin-unit-manager-head">
+                <div>
+                    <h4 id="adminCourtUnitsTitle">Individual courts and rates</h4>
+                    <p class="admin-form-hint">Set each unit’s rate and availability. Choose another court only when a booking there should block this space.</p>
+                </div>
+            </div>
+            <form class="admin-unit-add" data-admin-unit-add>
+                <label class="admin-form-group">
+                    <span class="admin-form-label">Add one unit</span>
+                    <input class="admin-input" type="text" maxlength="80" required placeholder="Court 3, Lane 9, or Table 2" data-admin-unit-label>
+                </label>
+                <input type="hidden" data-admin-unit-court>
+                <button class="admin-btn-primary" type="submit">Add unit</button>
+            </form>
+            <div class="admin-unit-card-list" data-admin-resource-rows aria-live="polite">
+                <p class="admin-form-hint">Loading this sport’s units…</p>
+            </div>
+        </section>
 
         <!-- Photos — Revision A2 (implementation_plan.md, decision B6).
              Replaces the old single Image URL + Upload row: a Cover photo
@@ -1002,8 +983,9 @@
         </div>
 
         <div class="admin-form-actions">
+            <button type="button" class="admin-btn-secondary is-danger" data-admin-court-archive hidden>Archive Sport</button>
             <button type="button" class="admin-btn-ghost" data-admin-court-modal-close>Cancel</button>
-            <button type="button" class="admin-btn-save" data-admin-court-submit>Add Court</button>
+            <button type="button" class="admin-btn-save" data-admin-court-submit>Add Sport</button>
         </div>
     </div>
 </div>
@@ -1044,8 +1026,6 @@
      Settings avatar upload all use window.InigoImageTools. Must load
      before owner_dashboard.js. -->
 <script src="../includes/imageTools.js"></script>
-<script src="../Config/googleReviews.js"></script>
-<script src="../includes/google-reviews.js"></script>
 
 <div class="admin-modal-overlay" data-admin-slide-modal hidden>
     <div class="admin-modal admin-slide-modal" role="dialog" aria-modal="true" aria-label="Edit slideshow slide" tabindex="-1" data-admin-slide-dialog>
@@ -1053,6 +1033,49 @@
         <h3>Edit slide</h3>
         <div data-admin-slide-editor></div>
         <button type="button" class="admin-btn-ghost" data-admin-slide-modal-close>Close</button>
+    </div>
+</div>
+
+<div class="admin-modal-overlay" data-admin-settings-profile-modal hidden>
+    <div class="admin-modal admin-account-modal" role="dialog" aria-modal="true" aria-labelledby="adminPersonalInfoTitle" tabindex="-1">
+        <button type="button" class="admin-modal-close" data-admin-settings-cancel="profile" aria-label="Close personal information editor">×</button>
+        <h3 id="adminPersonalInfoTitle">Edit Personal Information</h3>
+        <div class="admin-settings-grid">
+            <label class="admin-form-group"><span class="admin-form-label">Full name</span><input type="text" class="admin-input" autocomplete="name" data-admin-settings-name></label>
+            <div class="admin-form-group"><span class="admin-form-label">Email address</span><p class="admin-input admin-readonly-email" data-admin-settings-email>—</p><span class="admin-form-hint">Your sign-in email cannot be changed.</span></div>
+            <label class="admin-form-group"><span class="admin-form-label">Mobile number</span><input type="tel" class="admin-input" inputmode="tel" autocomplete="tel" data-admin-settings-mobile></label>
+            <label class="admin-form-group"><span class="admin-form-label">Address</span><input type="text" class="admin-input" autocomplete="street-address" data-admin-settings-address></label>
+            <label class="admin-form-group"><span class="admin-form-label">Date of birth</span><input type="date" class="admin-input" data-admin-settings-birthdate></label>
+            <label class="admin-form-group"><span class="admin-form-label">Gender</span><select class="admin-input" data-admin-settings-gender><option value="">Prefer not to say</option><option value="Male">Male</option><option value="Female">Female</option></select></label>
+        </div>
+        <div class="admin-google-account-row admin-modal-google-accounts">
+            <div><strong>Linked Google accounts</strong><div data-admin-linked-google-emails><p class="admin-form-hint">Loading linked accounts…</p></div></div>
+            <button type="button" class="admin-btn-secondary" data-admin-link-google>Add Gmail address</button>
+        </div>
+        <div class="admin-form-actions">
+            <button type="button" class="admin-btn-ghost" data-admin-settings-cancel="profile">Cancel</button>
+            <button type="button" class="admin-btn-save" data-admin-settings-save="profile">Save Changes</button>
+        </div>
+    </div>
+</div>
+
+<div class="admin-modal-overlay" data-admin-avatar-modal hidden>
+    <div class="admin-modal admin-account-modal admin-avatar-modal" role="dialog" aria-modal="true" aria-labelledby="adminAvatarModalTitle" tabindex="-1">
+        <button type="button" class="admin-modal-close" data-admin-avatar-cancel aria-label="Close profile photo editor">×</button>
+        <h3 id="adminAvatarModalTitle">Edit Profile Photo</h3>
+        <div class="admin-avatar-upload-row"><div class="admin-avatar admin-avatar-upload-preview">RD</div></div>
+        <div class="admin-avatar-upload-controls">
+            <div class="admin-avatar-upload-actions">
+                <button type="button" class="admin-btn-secondary" data-admin-avatar-upload-trigger>Choose photo</button>
+                <button type="button" class="admin-btn-ghost" data-admin-avatar-remove hidden>Remove photo</button>
+                <input type="file" accept="image/jpeg,image/png,image/webp" class="admin-visually-hidden" data-admin-avatar-file>
+            </div>
+            <p class="admin-form-hint">Choose a JPG, PNG, or WebP image up to 5 MB. The photo is resized before saving.</p>
+        </div>
+        <div class="admin-form-actions">
+            <button type="button" class="admin-btn-ghost" data-admin-avatar-cancel>Cancel</button>
+            <button type="button" class="admin-btn-save" data-admin-avatar-save>Save photo</button>
+        </div>
     </div>
 </div>
 

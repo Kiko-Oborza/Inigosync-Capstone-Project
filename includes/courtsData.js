@@ -177,11 +177,31 @@
     function resolveCourtUnits(court) {
         const noun = unitNoun(court.unit);
 
+        // When the shared physical-resource schema is present, its UUID is
+        // the stable identity used by reservation triggers. Never regenerate
+        // a bookable identity from quantity or a mutable photo label.
+        if (Array.isArray(court.bookableUnits)) {
+            return {
+                pickerLabel: `Choose a ${noun.toLowerCase()}`,
+                units: court.bookableUnits.map((entry) => ({
+                    id: entry.id,
+                    label: entry.label,
+                    resourceIds: Array.isArray(entry.resourceIds) ? entry.resourceIds.slice() : [],
+                    imageUrl: entry.imageUrl || court.imageUrl,
+                    pricingTier: entry.pricingTier || null,
+                    rateDay: entry.rateDay === null || entry.rateDay === undefined ? null : Number(entry.rateDay),
+                    rateNight: entry.rateNight === null || entry.rateNight === undefined ? null : Number(entry.rateNight),
+                    rateUnit: entry.rateUnit || '/hr',
+                })),
+            };
+        }
+
         const fromImages = Array.isArray(court.unitImages) ? court.unitImages : [];
         if (fromImages.length > 0) {
             return {
                 pickerLabel: `Choose a ${noun.toLowerCase()}`,
                 units: fromImages.map((entry, i) => ({
+                    id: null,
                     label: entry.label || `${noun} ${i + 1}`,
                     imageUrl: entry.imageUrl,
                 })),
@@ -194,13 +214,13 @@
         const count = Math.max(0, Math.floor(Number(court.quantity) || 0));
         const units = [];
         for (let i = 1; i <= count; i++) {
-            units.push({ label: `${noun} ${i}`, imageUrl: court.imageUrl });
+            units.push({ id: null, label: `${noun} ${i}`, imageUrl: court.imageUrl });
         }
         // quantity 0 or missing: still show the court's own photo, but with
         // nothing to pick between and no invented "Court 1" that doesn't
         // exist.
         if (units.length === 0) {
-            units.push({ label: null, imageUrl: court.imageUrl });
+            units.push({ id: null, label: null, imageUrl: court.imageUrl });
         }
 
         return { pickerLabel: `Choose a ${noun.toLowerCase()}`, units };
@@ -262,7 +282,7 @@
         { id: 'basketball', name: 'Basketball', quantity: 2, unit: 'courts', description: 'Full court · Indoor · Scoreboard', rate: null, rateUnit: '/hr', status: 'Available', image_url: null },
         { id: 'badminton', name: 'Badminton', quantity: 9, unit: 'courts', description: 'Indoor · Rackets for rent', rate: null, rateUnit: '/hr', status: 'Available', image_url: null },
         { id: 'lawn-tennis', name: 'Lawn Tennis', quantity: 3, unit: 'courts', description: 'Outdoor · Professional grade', rate: null, rateUnit: '/hr', status: 'Available', image_url: null },
-        { id: 'pickleball', name: 'Pickleball', quantity: 2, unit: 'courts', description: 'Indoor · Recently added', rate: null, rateUnit: '/hr', status: 'Available', image_url: null },
+        { id: 'pickleball', name: 'Pickleball', quantity: 10, unit: 'courts', description: 'Shared across Basketball, Volleyball & Lawn Tennis', rate: null, rateUnit: '/hr', status: 'Available', image_url: null },
         { id: 'bowling-duckpin', name: 'Bowling — Duckpin', quantity: 8, unit: 'lanes', description: 'Duckpin bowling · Shoes included', rate: null, rateUnit: '/game', status: 'Available', image_url: null },
         { id: 'bowling-tenpin', name: 'Bowling — Ten-Pin', quantity: 12, unit: 'lanes', description: 'Ten-pin bowling · Shoes included', rate: null, rateUnit: '/game', status: 'Available', image_url: null },
         { id: 'billiards', name: 'Billiards', quantity: 2, unit: 'tables', description: 'Professional pool tables · Cue service available', rate: null, rateUnit: '/hr', status: 'Available', image_url: null },
@@ -302,6 +322,9 @@
                 // for a fallback row — same as a live DB row before
                 // database/schema/006_court_unit_images.sql is filled in.
                 unitImages: normalizeUnitImages(item.unit_images, item.id),
+                // Static quantities are useful for read-only public pages,
+                // but cannot authorize a booking when live inventory failed.
+                inventoryLoadFailed: true,
             };
         });
     }
@@ -322,7 +345,7 @@
     // needs zero changes here — an unknown `rating` column is simply
     // `undefined` on every row until it exists, same as `null`.
     // ------------------------------------------------------------------
-    function normalizeCourt(row) {
+    function normalizeCourt(row, bookableUnits) {
         return {
             id: row.id,
             sportId: row.sport_id || (row.sport && row.sport.id) || null,
@@ -346,6 +369,8 @@
             // this migration needs zero changes here either: row.unit_images
             // is simply `undefined` on every row until it's applied.
             unitImages: normalizeUnitImages(row.unit_images, row.slug || row.name),
+            bookableUnits: Array.isArray(bookableUnits) ? bookableUnits : undefined,
+            inventoryLoadFailed: bookableUnits === null,
         };
     }
 
@@ -366,8 +391,34 @@
         const key = includeInactive ? 'all' : 'active';
         if (force) courtsCache[key] = null;
         if (!courtsCache[key]) {
-            courtsCache[key] = safeSelect(() => runCourtsQuery(includeInactive))
-                .then((rows) => (rows ? rows.map(normalizeCourt) : fallbackCourts()));
+            courtsCache[key] = Promise.all([
+                safeSelect(() => runCourtsQuery(includeInactive)),
+                safeSelect(() => window.sb.from('court_unit_inventory')
+                    .select('id,court_id,label,pricing_tier,rate_day,rate_night,rate_unit,court_unit_resource_map(resource_id)')
+                    .eq('is_active', true).eq('inventory_verified', true)),
+            ]).then(([rows, unitRows]) => {
+                if (!rows) return fallbackCourts();
+                const configuredUnits = new Map();
+                (unitRows || []).forEach((unit) => {
+                    if (!Array.isArray(unit.court_unit_resource_map) || unit.court_unit_resource_map.length === 0) return;
+                    const list = configuredUnits.get(unit.court_id) || [];
+                    list.push({
+                        id: unit.id,
+                        label: unit.label,
+                        pricingTier: unit.pricing_tier || null,
+                        rateDay: unit.rate_day === null || unit.rate_day === undefined ? null : Number(unit.rate_day),
+                        rateNight: unit.rate_night === null || unit.rate_night === undefined ? null : Number(unit.rate_night),
+                        rateUnit: unit.rate_unit || '/hr',
+                        resourceIds: unit.court_unit_resource_map.map((mapping) => mapping.resource_id).filter(Boolean),
+                    });
+                    configuredUnits.set(unit.court_id, list);
+                });
+                return rows.map((row) => {
+                    const court = normalizeCourt(row, unitRows ? (configuredUnits.get(row.id) || []) : undefined);
+                    court.inventoryLoadFailed = unitRows === null;
+                    return court;
+                });
+            });
         }
         return courtsCache[key];
     }
@@ -405,6 +456,24 @@
         return sportsWasFallback;
     }
 
+    function rateHint(court) {
+        const units = Array.isArray(court?.bookableUnits) ? court.bookableUnits : [];
+        const scheduled = units.flatMap((unit) => [unit.rateDay, unit.rateNight]
+            .filter((value) => typeof value === 'number' && Number.isFinite(value))
+            .map((value) => ({ value, unit: unit.rateUnit || court.rateUnit || '/hr' })));
+        if (!scheduled.length) {
+            return typeof court?.rate === 'number' && Number.isFinite(court.rate)
+                ? `₱${court.rate.toLocaleString('en-PH', { maximumFractionDigits: 2 })}${court.rateUnit || '/hr'}`
+                : null;
+        }
+        const rateUnit = scheduled[0].unit;
+        if (scheduled.some((rate) => rate.unit !== rateUnit)) return 'See rates by type';
+        const lowest = Math.min(...scheduled.map((rate) => rate.value));
+        const uniqueValues = new Set(scheduled.map((rate) => rate.value));
+        const amount = lowest.toLocaleString('en-PH', { maximumFractionDigits: 2 });
+        return uniqueValues.size > 1 ? `From ₱${amount}${rateUnit}` : `₱${amount}${rateUnit}`;
+    }
+
     window.InigoCourtsData = {
         getCourts,
         invalidateCourts,
@@ -413,5 +482,6 @@
         monogramFor,
         slugify,
         resolveCourtUnits,
+        rateHint,
     };
 })();

@@ -49,9 +49,9 @@ const COURTS_INVENTORY = [
     {
         id: 'pickleball',
         name: 'Pickleball',
-        quantity: 2,
+        quantity: 10,
         unit: 'courts',
-        description: 'Indoor · Recently added',
+        description: 'Shared across Basketball, Volleyball & Lawn Tennis',
         rate: '—',
         rateUnit: '/hr',
         status: 'Available',
@@ -116,7 +116,8 @@ const COURTS_INVENTORY = [
     }
 ];
 
-// TODO: confirm with Ms. Driz: hourly rates for each sport (Basketball, Badminton, Lawn Tennis, Pickleball, Billiards, Table Tennis, Volleyball).
-// TODO: confirm if Bowling (duckpin & ten-pin) is billed per-game or per-hour, and rates for each lane type.
+// Published prices come from verified unit inventory, never from this fallback
+// array. Pickleball's verified capacity is 10; its old/new unit prices remain
+// intentionally blank until the owner assigns those tiers.
 
 console.log('[IñigoSync] courts-data.js loaded — static fallback, used only if the Supabase `court` fetch fails or is empty.');
