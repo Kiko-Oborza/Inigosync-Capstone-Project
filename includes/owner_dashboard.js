@@ -65,7 +65,8 @@ document.addEventListener('DOMContentLoaded', () => {
         // Revision A3 (implementation_plan.md, decision C5) — new tab, after
         // Media Manager in the sidebar.
         feedback: { title: 'Feedbacks & Reviews', subtitle: '' },
-        settings: { title: 'Account Settings', subtitle: 'Update your personal details and manage your owner password.' },
+        notifications: { title: 'Notifications', subtitle: '' },
+        settings: { title: 'Account Settings', subtitle: '' },
         // Revision A2, decision B2 — not in .admin-nav, only reachable from
         // the profile dropdown's "View Profile"; setActivePanel() below
         // still works unmodified since it just looks this key up.
@@ -100,8 +101,11 @@ document.addEventListener('DOMContentLoaded', () => {
         closeMobileSidebar();
         closeProfileMenu();
         closeAdminNotifMenu();
+        document.dispatchEvent(new CustomEvent('inigosync:owner-panel', { detail: name }));
         window.scrollTo({ top: 0, behavior: 'smooth' });
     }
+
+    window.InigoOwnerUI.navigate = setActivePanel;
 
     document.querySelectorAll('[data-admin-nav]').forEach((btn) => {
         btn.addEventListener('click', () => setActivePanel(btn.dataset.adminNav));
@@ -379,10 +383,8 @@ document.addEventListener('DOMContentLoaded', () => {
         let monthRes, todayRes, staffRes, sports;
         try {
             [monthRes, todayRes, staffRes, sports] = await Promise.all([
-                window.sb.from('booking').select('*', { count: 'exact', head: true })
-                    .gte('time_date', monthStart.toISOString()).lt('time_date', monthEnd.toISOString()),
-                window.sb.from('booking').select('*', { count: 'exact', head: true })
-                    .gte('time_date', dayStart.toISOString()).lt('time_date', dayEnd.toISOString()),
+                window.sb.rpc('admin_booking_overview', { p_from_at: monthStart.toISOString(), p_to_at: monthEnd.toISOString() }),
+                window.sb.rpc('admin_booking_overview', { p_from_at: dayStart.toISOString(), p_to_at: dayEnd.toISOString() }),
                 // Revision A3, decision C2 — staff ONLY now (.eq, not the old
                 // .in('role', ['staff', 'admin'])): this tile shares the
                 // data-admin-stat="active-staff" hook with the profile
@@ -432,8 +434,8 @@ document.addEventListener('DOMContentLoaded', () => {
             window.InigoCourtsData && window.InigoCourtsData.isSportsFallback && window.InigoCourtsData.isSportsFallback()
         );
 
-        setAdminStat('bookings-month', monthRes.error ? '—' : (monthRes.count || 0));
-        setAdminStat('bookings-today', todayRes.error ? '—' : (todayRes.count || 0));
+        setAdminStat('bookings-month', monthRes.error ? '—' : (monthRes.data?.length || 0));
+        setAdminStat('bookings-today', todayRes.error ? '—' : (todayRes.data?.length || 0));
         setAdminStat('sports-listed', sportsIsFallback ? '—' : (sports || []).length);
         setAdminStat('active-staff', staffRes.error ? '—' : (staffRes.count || 0));
 
@@ -460,7 +462,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // "counts still fetched for nothing else" per the plan). The derived
     // Unattended rule itself (adminDisplayStatusFor()) is unchanged; bars
     // stay proportional to the max of these 3 shown counts.
-    const ADMIN_STATUS_LABELS = { pending: 'Pending', confirmed: 'Confirmed', completed: 'Completed', cancelled: 'Cancelled', no_show: 'No-show' };
+    const ADMIN_STATUS_LABELS = { pending: 'Awaiting payment', booked: 'Booked', completed: 'Completed', no_show: 'No-show' };
     let statusRange = 'month';
 
     function statusDateRange(range) {
@@ -491,28 +493,15 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const { start, end } = statusDateRange(statusRange);
 
-        const rows = [];
-        for (let offset = 0; ; offset += 1000) {
-            const { data, error } = await window.sb
-                .from('booking')
-                .select('status, time_date, auto_cancelled_at')
-                .gte('time_date', start.toISOString())
-                .lt('time_date', end.toISOString())
-                .order('time_date', { ascending: true })
-                .range(offset, offset + 999);
-            if (error || !data) {
-                console.error('[admin] failed to load the booking status breakdown', error);
-                listRoot.innerHTML = '<p style="color: var(--color-ink-faint);">Could not load booking status.</p>';
-                return;
-            }
-            rows.push(...data);
-            if (data.length < 1000) break;
-        }
-
-        const counts = { pending: 0, confirmed: 0, completed: 0, cancelled: 0, no_show: 0 };
-        rows.forEach((row) => {
-            const key = row.auto_cancelled_at ? 'no_show' : row.status;
-            if (Object.prototype.hasOwnProperty.call(counts, key)) counts[key] += 1;
+        const { data: rows, error } = await window.sb.rpc('admin_booking_overview', { p_from_at: start.toISOString(), p_to_at: end.toISOString() });
+        if (error) { listRoot.innerHTML = '<p class="admin-form-hint">Could not load booking status.</p>'; return; }
+        const counts = { pending: 0, booked: 0, completed: 0, no_show: 0 };
+        (rows || []).forEach(row => {
+            const key = row.auto_cancelled_at || ['no_show', 'unattended'].includes(row.status) ? 'no_show'
+                : row.status === 'completed' ? 'completed'
+                : row.status === 'confirmed' && Number(row.amount_paid) > 0 ? 'booked'
+                : ['pending', 'confirmed'].includes(row.status) ? 'pending' : null;
+            if (key) counts[key]++;
         });
 
         const maxCount = Math.max(1, ...Object.values(counts));
@@ -668,11 +657,12 @@ document.addEventListener('DOMContentLoaded', () => {
         const LABEL = 'Saved bookings and customers';
         if (!window.sb) return adminPerfUnavailableRow(LABEL, 'Not connected to the server yet.');
         try {
-            const [bookingsRes, customersRes] = await Promise.all([
+            const [bookingsRes, walkinsRes, customersRes] = await Promise.all([
                 window.sb.from('booking').select('*', { count: 'exact', head: true }),
+                window.sb.from('walk_in_booking').select('*', { count: 'exact', head: true }),
                 window.sb.from('profiles').select('*', { count: 'exact', head: true }).eq('role', 'customer'),
             ]);
-            const bookings = bookingsRes.error ? null : (bookingsRes.count || 0);
+            const bookings = bookingsRes.error || walkinsRes.error ? null : (bookingsRes.count || 0) + (walkinsRes.count || 0);
             const customers = customersRes.error ? null : (customersRes.count || 0);
 
             if (bookings === null && customers === null) {
@@ -1019,6 +1009,8 @@ document.addEventListener('DOMContentLoaded', () => {
         const emergencyNumberInput = staffForm.querySelector('[data-admin-staff-emergency-number]');
         if (addressInput) addressInput.value = '';
         if (birthdateInput) birthdateInput.value = '';
+        const ageInput = staffForm.querySelector('[data-admin-staff-age]');
+        if (ageInput) ageInput.value = '';
         if (genderSelect) genderSelect.selectedIndex = 0;
         if (emergencyNameInput) emergencyNameInput.value = '';
         if (emergencyNumberInput) emergencyNumberInput.value = '';
@@ -1141,6 +1133,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 return;
             }
 
+            if (!['Secretary', 'Court Attendant'].includes(position) || !birthdateInput?.value || birthdateInput.value > todayDateInputValue() || computeAdminStaffAge(birthdateInput.value) === null) {
+                window.InigoToast?.show('Choose a staff position and enter a valid birthdate.', true);
+                birthdateInput?.focus(); return;
+            }
+            if (!emailInput.checkValidity()) { emailInput.reportValidity(); return; }
+
             // Revision S3 — the emergency contact number is optional, but
             // validated the same way as everywhere else in this app
             // whenever a value IS entered; checked BEFORE the invite goes
@@ -1180,40 +1178,12 @@ document.addEventListener('DOMContentLoaded', () => {
                         'Content-Type': 'application/json',
                         Authorization: `Bearer ${session.access_token}`
                     },
-                    body: JSON.stringify({ email, full_name: name, position, role: 'staff' })
+                    body: JSON.stringify({ email, full_name: name, position, role: 'staff', birthdate: birthdateInput.value, address: addressInput?.value.trim() || '', gender: genderSelect?.value || '', emergency_contact_name: emergencyNameInput?.value.trim() || '', emergency_contact_number })
                 });
 
                 const result = await res.json().catch(() => ({}));
                 if (!res.ok) {
                     throw new Error(result.error || 'Could not send the invite.');
-                }
-
-                // Revision S3 (database/schema/018_staff_details.sql) —
-                // invite-staff (the edge function above; source not in this
-                // repo) only ever writes email/full_name/position/role. Its
-                // response carries no id back, so these five extra fields
-                // are saved in a SEPARATE update() matched by email right
-                // after — never blocking, and never undoing, the invite
-                // that already succeeded. Skipped entirely when the owner
-                // left every one of them blank (nothing to write).
-                const extraDetails = {
-                    address: addressInput ? addressInput.value.trim() : '',
-                    birthdate: (birthdateInput && birthdateInput.value) ? birthdateInput.value : null,
-                    gender: genderSelect ? genderSelect.value : '',
-                    emergency_contact_name: emergencyNameInput ? emergencyNameInput.value.trim() : '',
-                    emergency_contact_number,
-                };
-                const hasExtraDetails = Object.values(extraDetails).some((v) => v);
-                if (hasExtraDetails) {
-                    const { data: updatedRows, error: detailsError } = await window.sb
-                        .from('profiles')
-                        .update(extraDetails)
-                        .eq('email', email)
-                        .select('id');
-
-                    if (detailsError || !updatedRows || !updatedRows.length) {
-                        window.InigoToast?.show("Invite sent — details couldn't be saved yet, edit the staff record to add them.", true);
-                    }
                 }
 
                 refreshStaffList();
@@ -1248,6 +1218,10 @@ document.addEventListener('DOMContentLoaded', () => {
     const staffEditBirthdateInput = document.querySelector('[data-admin-staff-edit-birthdate]');
     if (staffEditBirthdateInput) staffEditBirthdateInput.max = todayDateInputValue();
 
+    [[staffAddBirthdateInput, '[data-admin-staff-age]'], [staffEditBirthdateInput, '[data-admin-staff-edit-age]']].forEach(([input, selector]) => {
+        input?.addEventListener('input', () => { document.querySelector(selector).value = computeAdminStaffAge(input.value) ?? ''; });
+    });
+
     const STAFF_EDIT_MODAL_CLOSE_DELAY_MS = 250;
     let staffEditModalHideTimer = null;
     let staffEditModalIsOpen = false;
@@ -1265,6 +1239,7 @@ document.addEventListener('DOMContentLoaded', () => {
         set('[data-admin-staff-edit-mobile]', profile.contact_num || '');
         set('[data-admin-staff-edit-address]', profile.address || '');
         set('[data-admin-staff-edit-birthdate]', profile.birthdate || '');
+        set('[data-admin-staff-edit-age]', computeAdminStaffAge(profile.birthdate) ?? '');
         set('[data-admin-staff-edit-gender]', profile.gender || '');
         set('[data-admin-staff-edit-emergency-name]', profile.emergency_contact_name || '');
         set('[data-admin-staff-edit-emergency-number]', profile.emergency_contact_number || '');
@@ -1360,6 +1335,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 return;
             }
             const position = get('[data-admin-staff-edit-position]');
+            const birthdate = get('[data-admin-staff-edit-birthdate]');
+            if (!['Secretary', 'Court Attendant'].includes(position) || (birthdate && (birthdate > todayDateInputValue() || computeAdminStaffAge(birthdate) === null))) {
+                window.InigoToast?.show('Choose a valid position and birthdate.', true); return;
+            }
 
             const mobileRaw = get('[data-admin-staff-edit-mobile]');
             let contact_num = '';
@@ -1607,8 +1586,7 @@ document.addEventListener('DOMContentLoaded', () => {
     function refreshStaffPositionOptions() {
         if (!staffPositionFilter) return;
         const previousValue = staffPositionFilter.value || 'all';
-        const positions = [...new Set(staffProfiles.map((profile) => (profile.position || '').trim()).filter(Boolean))]
-            .sort((a, b) => a.localeCompare(b));
+        const positions = ['Secretary', 'Court Attendant'];
         staffPositionFilter.innerHTML = '<option value="all">All positions</option>'
             + positions.map((position) => `<option value="${window.escapeHtml(position)}">${window.escapeHtml(position)}</option>`).join('');
         staffPositionFilter.value = positions.includes(previousValue) ? previousValue : 'all';
@@ -1800,1686 +1778,100 @@ document.addEventListener('DOMContentLoaded', () => {
     // owner wants to edit these again — the data layer already supports it.
     // ------------------------------------------------------------------
 
-    // ------------------------------------------------------------------
-    // Court Listings — real CRUD against the `court` table (Phase 2; see
-    // docs/QA_AUDIT_REPORT.md's Court Listings STUB finding and P0#8,
-    // "three contradictory court lists"). window.InigoCourtsData
-    // (includes/courtsData.js) is the same fetch-with-static-fallback data
-    // layer includes/Dashboard.js uses for the customer-facing Court
-    // Information + Booking Management panels, so an admin's edit here is
-    // visible everywhere else on next load instead of a fourth hand-copied
-    // list drifting from the rest.
-    //
-    // Revision A1, decision A6 — Add/Edit now happen in a modal
-    // ([data-admin-court-modal]) instead of an inline .admin-add-panel that
-    // scrolled into view. courtForm below now resolves to the MODAL's
-    // content element (it carries the same data-admin-court-form attribute
-    // the old inline panel did), so every field selector and the
-    // editingId-on-dataset trick are unchanged from before this revision.
-    // ------------------------------------------------------------------
-    const courtGrid = document.querySelector('[data-admin-court-grid]');
-    const courtFormToggleBtns = document.querySelectorAll('[data-admin-toggle-court-form]');
-    const courtForm = document.querySelector('[data-admin-court-form]');
-    const courtSubmitBtn = document.querySelector('[data-admin-court-submit]');
-    const courtModal = document.querySelector('[data-admin-court-modal]');
-    const courtModalTitle = document.querySelector('[data-admin-court-modal-title]');
+    // Court and media editors live in owner-courts.js and owner-media.js.
 
-    // Last-fetched rows, kept so "Edit" can look up a court's full data
-    // (rate, description, sport_id, ...) by id without a second round trip
-    // — the rendered card markup alone doesn't carry all of it.
-    let currentCourts = [];
-
-    // ------------------------------------------------------------------
-    // Court modal — Photos (Revision A2, decision B6). courtModalState is
-    // the modal's own draft of what Save will write: a single Cover URL
-    // (the same column the form always saved to, `image_url`) plus an
-    // array of per-unit photos (`unit_images`, one entry per bookable unit
-    // once Quantity > 1 — see database/schema/006_court_unit_images.sql).
-    // Reset to blank on every resetCourtForm() (Add mode) and overwritten
-    // from the real court on openCourtModal(court) (Edit mode).
-    // ------------------------------------------------------------------
-    let courtModalState = { coverUrl: null, unitImages: [], activeUploadSlot: null };
-
-    // Same noun mapping as includes/courtsData.js's own (unexported)
-    // unitNoun() — duplicated locally rather than importing it, matching
-    // this file's existing convention of keeping every helper
-    // self-contained (see isSchemaMismatchError's own comment above).
-    // Used only to label the Photos section's live per-unit slots.
-    const COURT_UNIT_NOUN = { court: 'Court', courts: 'Court', lane: 'Lane', lanes: 'Lane', table: 'Table', tables: 'Table' };
-    function courtUnitNoun(unit) {
-        const key = String(unit || '').trim().toLowerCase();
-        if (COURT_UNIT_NOUN[key]) return COURT_UNIT_NOUN[key];
-        const word = key.replace(/s$/, '');
-        return word ? word.charAt(0).toUpperCase() + word.slice(1) : 'Unit';
-    }
-
-    // Re-derives the per-unit photo slots for the CURRENT Quantity/Unit
-    // field values — called on modal open and again live whenever either
-    // field changes. Sized to `quantity` exactly (growing pads new slots
-    // with a derived label + no photo yet; shrinking drops the tail), and
-    // keeps each already-set slot's photo/label by POSITION so adjusting
-    // Quantity never orphans an upload already made in this session.
-    // Returns [] outright for quantity <= 1 — a single-unit court has
-    // nothing to pick between, so only the Cover slot applies (same rule
-    // includes/courtsData.js's resolveCourtUnits() documents for the
-    // customer-facing picker).
-    function deriveCourtPhotoUnits(quantity, unitValue, existingUnitImages) {
-        const count = Math.max(0, Math.floor(Number(quantity) || 0));
-        if (count <= 1) return [];
-        const noun = courtUnitNoun(unitValue);
-        const source = Array.isArray(existingUnitImages) ? existingUnitImages : [];
-        const units = [];
-        for (let i = 0; i < count; i++) {
-            const existing = source[i] || null;
-            units.push({
-                label: (existing && existing.label) ? existing.label : `${noun} ${i + 1}`,
-                imageUrl: existing ? (existing.imageUrl || null) : null,
-            });
-        }
-        return units;
-    }
-
-    // `unit_images` column shape is snake_case {label, image_url}
-    // (database/schema/006_court_unit_images.sql); courtModalState.unitImages
-    // stays in the camelCase {label, imageUrl} shape
-    // includes/courtsData.js's normalizeUnitImages()/resolveCourtUnits()
-    // already use, so this is the ONE place the two shapes are bridged, at
-    // save time.
-    function unitImagesToDbShape(unitImages) {
-        return (unitImages || []).map((u) => ({ label: u.label || null, image_url: u.imageUrl || null }));
-    }
-
-    function applyCourtFilter() {
-        const activeChip = document.querySelector('[data-admin-court-filter].is-active');
-        const filter = activeChip ? activeChip.dataset.adminCourtFilter : 'all';
-        const search = (document.querySelector('[data-admin-court-search]')?.value || '').trim().toLocaleLowerCase();
-        document.querySelectorAll('[data-admin-court-status]').forEach((card) => {
-            const matchesStatus = filter === 'all' || card.dataset.adminCourtStatus === filter;
-            const matchesSearch = !search || card.textContent.toLocaleLowerCase().includes(search);
-            const match = matchesStatus && matchesSearch;
-            card.style.display = match ? '' : 'none';
-        });
-    }
-
-    document.querySelector('[data-admin-court-search]')?.addEventListener('input', applyCourtFilter);
-
-    document.querySelectorAll('[data-admin-court-filter]').forEach((chip) => {
-        chip.addEventListener('click', () => {
-            document.querySelectorAll('[data-admin-court-filter]').forEach((c) => c.classList.remove('is-active'));
-            chip.classList.add('is-active');
-            applyCourtFilter();
-        });
-    });
-
-    // Resets the modal's form back to "add a new court" — clears the
-    // editingId marker Edit sets (see openCourtModal below), the heading,
-    // the submit button label, and every field.
-    function resetCourtForm() {
-        if (!courtForm) return;
-        delete courtForm.dataset.editingId;
-        selectedCourtIdForUnits = null;
-        if (unitCourtSelect) unitCourtSelect.value = '';
-        if (unitLabelInput) unitLabelInput.value = '';
-        if (courtModalTitle) courtModalTitle.textContent = 'Add Sport';
-        if (courtSubmitBtn) courtSubmitBtn.textContent = 'Add Sport';
-        const archiveSportBtn = courtForm.querySelector('[data-admin-court-archive]');
-        if (archiveSportBtn) archiveSportBtn.hidden = true;
-
-        courtForm.querySelectorAll('input[type="text"], input[type="number"], input[type="url"]').forEach((el) => { el.value = ''; });
-        const quantityInput = courtForm.querySelector('[data-admin-court-quantity]');
-        if (quantityInput) { quantityInput.value = '1'; quantityInput.readOnly = false; }
-        ['[data-admin-court-unit]', '[data-admin-court-op-status]'].forEach((selector) => {
-            const el = courtForm.querySelector(selector);
-            if (el) el.selectedIndex = 0;
-        });
-        const unitManager = courtForm.querySelector('[data-admin-unit-manager]');
-        if (unitManager) unitManager.hidden = true;
-        const sportSelect = courtForm.querySelector('[data-admin-court-sport]');
-        if (sportSelect && sportSelect.options.length) sportSelect.selectedIndex = 0;
-        if (sportSelect?.closest('.admin-form-group')) sportSelect.closest('.admin-form-group').hidden = true;
-
-        // Revision A2, decision B6 — a fresh Add starts with no cover and
-        // no per-unit photos; openCourtModal() below overwrites this again
-        // with the court's real values when editing.
-        courtModalState = { coverUrl: null, unitImages: [], activeUploadSlot: null };
-        renderCourtPhotoSlots();
-    }
-
-    // ------------------------------------------------------------------
-    // Court modal — Photos rendering/wiring (Revision A2, decision B6).
-    // ------------------------------------------------------------------
-    function courtPhotoSlotThumbHtml(url, kind) {
-        const safe = url && isSafeImageUrl(url) ? url : null;
-        if (safe) return `<img src="${window.escapeHtml(safe)}" alt="" loading="lazy">`;
-        if (kind === 'cover') {
-            const editingCourt = currentCourts.find((court) => String(court.id) === String(courtForm?.dataset.editingId));
-            const art = ['basketball', 'badminton', 'bowling', 'billiards', 'lawn-tennis', 'pickleball', 'table-tennis', 'volleyball'].indexOf(editingCourt?.sportSlug);
-            if (art >= 0) return `<span class="admin-court-art admin-court-art-${art}" aria-label="Landing illustration; no cover photo uploaded"></span>`;
-        }
-        return '<span class="admin-photo-slot-empty">No photo yet</span>';
-    }
-
-    function courtPhotoSlotHtml(kind, index, label, url) {
-        const hasPhoto = Boolean(url && isSafeImageUrl(url));
-        return `
-            <div class="admin-photo-slot" data-admin-photo-slot data-slot-kind="${kind}"${index === null ? '' : ` data-slot-index="${index}"`}>
-                <div class="admin-photo-slot-thumb">${courtPhotoSlotThumbHtml(url, kind)}</div>
-                <div class="admin-photo-slot-body">
-                    <span class="admin-photo-slot-label">${window.escapeHtml(label)}${kind === 'cover' && !hasPhoto ? ' · Landing illustration only' : ''}</span>
-                    <div class="admin-photo-slot-actions">
-                        <button type="button" class="admin-btn-chip-secondary" data-admin-photo-upload>Upload</button>
-                        ${hasPhoto ? '<button type="button" class="admin-btn-chip-danger" data-admin-photo-remove>Remove</button>' : ''}
-                    </div>
-                </div>
-            </div>
-        `;
-    }
-
-    function renderCourtPhotoSlots() {
-        const grid = document.querySelector('[data-admin-court-photo-grid]');
-        if (!grid) return;
-
-        const slots = [courtPhotoSlotHtml('cover', null, 'Cover photo', courtModalState.coverUrl)];
-        const visibleUnits = deriveCourtPhotoUnits(
-            document.querySelector('[data-admin-court-quantity]')?.value,
-            document.querySelector('[data-admin-court-unit]')?.value,
-            courtModalState.unitImages
-        );
-        visibleUnits.forEach((unit, index) => {
-            slots.push(courtPhotoSlotHtml('unit', index, unit.label, unit.imageUrl));
-        });
-
-        grid.innerHTML = slots.join('');
-        wireCourtPhotoSlotActions(grid);
-    }
-
-    function wireCourtPhotoSlotActions(scope) {
-        scope.querySelectorAll('[data-admin-photo-slot]').forEach((slotEl) => {
-            const kind = slotEl.dataset.slotKind;
-            const index = kind === 'unit' ? Number(slotEl.dataset.slotIndex) : null;
-
-            const uploadBtn = slotEl.querySelector('[data-admin-photo-upload]');
-            if (uploadBtn) {
-                uploadBtn.addEventListener('click', () => {
-                    courtModalState.activeUploadSlot = kind === 'cover' ? { kind: 'cover' } : { kind: 'unit', index };
-                    if (courtPhotoFileInput) courtPhotoFileInput.click();
-                });
-            }
-
-            const removeBtn = slotEl.querySelector('[data-admin-photo-remove]');
-            if (removeBtn) {
-                removeBtn.addEventListener('click', () => {
-                    if (kind === 'cover') {
-                        courtModalState.coverUrl = null;
-                        const urlInput = document.querySelector('[data-admin-court-image-url]');
-                        if (urlInput) urlInput.value = '';
-                    } else {
-                        const unit = courtModalState.unitImages[index];
-                        if (unit) {
-                            unit.imageUrl = null;
-                        }
-                    }
-                    renderCourtPhotoSlots();
-                });
-            }
-        });
-    }
-
-    // ------------------------------------------------------------------
-    // Court modal open/close (Revision A1, decision A6) — same fade/focus
-    // idiom as the customer dashboard's generic .dash-modal-overlay dialogs
-    // (includes/Dashboard.js's openFeedbackModal()/closeFeedbackModal()):
-    // a `hidden` round-trip timed to the CSS opacity transition, focus
-    // moved into the dialog on open and restored to whatever triggered it
-    // on close.
-    // ------------------------------------------------------------------
-    const COURT_MODAL_CLOSE_DELAY_MS = 250;
-    let courtModalHideTimer = null;
-    let courtModalIsOpen = false;
-    let courtModalLastFocused = null;
-
-    function openCourtModal(court) {
-        if (!courtModal || !courtForm) return;
-        courtModalLastFocused = document.activeElement;
-        resetCourtForm();
-
-        if (court) {
-            const archiveSportBtn = courtForm.querySelector('[data-admin-court-archive]');
-            if (archiveSportBtn) { archiveSportBtn.hidden = false; archiveSportBtn.textContent = court.isActive ? 'Archive Sport' : 'Restore Sport'; archiveSportBtn.classList.toggle('is-danger', court.isActive); }
-            courtForm.dataset.editingId = court.id;
-            if (courtModalTitle) courtModalTitle.textContent = `Edit — ${court.name}`;
-            if (courtSubmitBtn) courtSubmitBtn.textContent = 'Save Changes';
-
-            // .value assignment (never innerHTML) — a `"` or `<` in an
-            // existing name/description can't break out of an attribute or
-            // inject markup this way, same fix already applied to the
-            // staff-edit inputs (docs/QA_AUDIT_REPORT.md P2#2).
-            const setValue = (selector, value) => {
-                const el = courtForm.querySelector(selector);
-                if (el) el.value = value;
-            };
-            setValue('[data-admin-court-name]', court.name || '');
-            setValue('[data-admin-court-sport]', court.sportId || '');
-            const sportSelect = courtForm.querySelector('[data-admin-court-sport]');
-            if (sportSelect?.closest('.admin-form-group')) sportSelect.closest('.admin-form-group').hidden = false;
-            setValue('[data-admin-court-quantity]', court.quantity || 1);
-            setValue('[data-admin-court-unit]', court.unit || 'courts');
-            setValue('[data-admin-court-description]', court.description || '');
-            setValue('[data-admin-court-op-status]', court.status || 'Available');
-            setValue('[data-admin-court-image-url]', court.imageUrl || '');
-            const quantityInput = courtForm.querySelector('[data-admin-court-quantity]');
-            if (quantityInput) quantityInput.readOnly = true;
-            const unitManager = courtForm.querySelector('[data-admin-unit-manager]');
-            if (unitManager) unitManager.hidden = false;
-            selectedCourtIdForUnits = String(court.id);
-            if (unitCourtSelect) unitCourtSelect.value = String(court.id);
-            if (unitLabelInput) unitLabelInput.value = nextCourtUnitLabel(court);
-            loadPhysicalResourceSettings().then(() => {
-                if (selectedCourtIdForUnits === String(court.id) && unitLabelInput) {
-                    unitLabelInput.value = nextCourtUnitLabel(court);
-                }
-            });
-
-            // Revision A2, decision B6 — Photos state/slots for Edit mode:
-            // cover mirrors the URL field just set above; per-unit slots
-            // are derived from the court's own quantity/unit + whatever
-            // unit_images it already has (includes/courtsData.js's
-            // normalizeCourt() already parses that column into the
-            // {label, imageUrl} shape deriveCourtPhotoUnits expects).
-            courtModalState.coverUrl = court.imageUrl || null;
-            courtModalState.unitImages = deriveCourtPhotoUnits(court.quantity, court.unit, court.unitImages || []);
-            renderCourtPhotoSlots();
-        }
-
-        if (courtModalHideTimer) {
-            window.clearTimeout(courtModalHideTimer);
-            courtModalHideTimer = null;
-        }
-        courtModal.hidden = false;
-        // Force a synchronous layout flush so the browser commits the
-        // hidden->visible state before [data-open] flips opacity to 1 —
-        // same trick includes/Dashboard.js's modal dialogs use.
-        void courtModal.offsetWidth;
-        courtModal.setAttribute('data-open', '');
-        courtModalIsOpen = true;
-
-        const firstField = courtForm.querySelector('input, select');
-        if (firstField) firstField.focus();
-    }
-
-    function closeCourtModal() {
-        if (!courtModalIsOpen || !courtModal) return;
-        courtModalIsOpen = false;
-
-        courtModal.removeAttribute('data-open');
-        if (courtModalHideTimer) window.clearTimeout(courtModalHideTimer);
-        courtModalHideTimer = window.setTimeout(() => {
-            courtModal.hidden = true;
-            courtModalHideTimer = null;
-        }, COURT_MODAL_CLOSE_DELAY_MS);
-
-        if (courtModalLastFocused && typeof courtModalLastFocused.focus === 'function' && document.contains(courtModalLastFocused)) {
-            courtModalLastFocused.focus();
-        }
-        courtModalLastFocused = null;
-    }
-
-    // "+ Add New Court" always opens the modal fresh (add mode) — the hook
-    // is unchanged from before this revision even though what it does
-    // (open a modal, not toggle an inline panel) has changed.
-    courtFormToggleBtns.forEach((btn) => {
-        btn.addEventListener('click', () => openCourtModal(null));
-    });
-
-    document.querySelectorAll('[data-admin-court-modal-close]').forEach((btn) => {
-        btn.addEventListener('click', closeCourtModal);
-    });
-
-    // S1 (Revision A1 fix) — a plain 'click' listener on the overlay also
-    // fires when a drag STARTS inside a field (e.g. selecting text in the
-    // Description textarea, or a slow click that drifts) and ENDS on the
-    // backdrop once the mouse is released there — the resulting click
-    // event's target is the overlay even though the user never intended to
-    // close the modal. Tracked via 'mousedown' on the overlay instead: only
-    // treat it as a real backdrop click when BOTH the mousedown and the
-    // click landed on the overlay element itself, not a descendant. (The
-    // Staff modal above uses the identical pair of listeners under its own
-    // staffModalMouseDownOnBackdrop name — apply the same pattern to any
-    // future overlay-close modal added to this file.)
-    let courtModalMouseDownOnBackdrop = false;
-    if (courtModal) {
-        courtModal.addEventListener('mousedown', (e) => {
-            courtModalMouseDownOnBackdrop = e.target === courtModal;
-        });
-        courtModal.addEventListener('click', (e) => {
-            if (e.target === courtModal && courtModalMouseDownOnBackdrop) closeCourtModal();
-            courtModalMouseDownOnBackdrop = false;
-        });
-    }
-
-    document.addEventListener('keydown', (e) => {
-        if (e.key === 'Escape' && courtModalIsOpen) closeCourtModal();
-    });
-
-    // Revision A2, decision B6 — Photos section live wiring: Quantity/Unit
-    // changing re-derives the per-unit slots (growing/shrinking/relabeling,
-    // keeping already-uploaded photos by position — see
-    // deriveCourtPhotoUnits's own comment above); typing directly into the
-    // "paste an https:// URL" fallback keeps courtModalState.coverUrl (the
-    // single source of truth Save reads) in sync with whatever the admin
-    // typed, exactly like an Upload does.
-    const courtQuantityInput = document.querySelector('[data-admin-court-quantity]');
-    const courtUnitSelect = document.querySelector('[data-admin-court-unit]');
-    function handleCourtUnitFieldsChange() {
-        const visibleUnits = deriveCourtPhotoUnits(
-            courtQuantityInput ? courtQuantityInput.value : 0,
-            courtUnitSelect ? courtUnitSelect.value : '',
-            courtModalState.unitImages
-        );
-        // Keep hidden drafts while someone edits the number field. Typing "12"
-        // passes through "1"; truncating here used to destroy Court 2's photo.
-        if (visibleUnits.length > courtModalState.unitImages.length) {
-            courtModalState.unitImages = visibleUnits;
-        }
-        renderCourtPhotoSlots();
-    }
-    if (courtQuantityInput) courtQuantityInput.addEventListener('input', handleCourtUnitFieldsChange);
-    if (courtUnitSelect) courtUnitSelect.addEventListener('change', handleCourtUnitFieldsChange);
-
-    const courtImageUrlInput = document.querySelector('[data-admin-court-image-url]');
-    if (courtImageUrlInput) {
-        courtImageUrlInput.addEventListener('input', () => {
-            courtModalState.coverUrl = courtImageUrlInput.value.trim() || null;
-            renderCourtPhotoSlots();
-        });
-    }
-
-    // Escapes every interpolated field — a court name/description written
-    // by any staff-or-admin session (RLS lets staff write `court` too, see
-    // database/schema/002_content_tables.sql's "court_staff_write" policy)
-    // must render as literal text here, not run.
-    //
-    // Revision A1, decision A6 — card redesign parity with the customer
-    // dashboard's .dash-court-card: media block + status badge, name,
-    // sport chip + "N units" chip + description tags (unchanged from
-    // before this revision — this file already built that same tags
-    // array), rate line, and a consistent Edit/Activate-Deactivate action
-    // row (Deactivate now carries .is-danger, matching the court's own
-    // "this is a consequential action" convention elsewhere on this page).
-    function renderAdminCourtCard(court) {
-        const isActive = court.isActive !== false;
-        const statusCls = isActive ? 'active' : 'inactive';
-        const statusLabel = isActive ? 'Active' : 'Archived';
-        const monogram = window.InigoCourtsData ? window.InigoCourtsData.monogramFor(court.sportSlug, court.name) : '?';
-        const safeImageUrl = court.imageUrl && isSafeImageUrl(court.imageUrl) ? court.imageUrl : null;
-        const artworkIndex = ['basketball', 'badminton', 'bowling', 'billiards', 'lawn-tennis', 'pickleball', 'table-tennis', 'volleyball'].indexOf(court.sportSlug);
-        const media = safeImageUrl
-            ? `<img src="${window.escapeHtml(safeImageUrl)}" alt="${window.escapeHtml(court.name)}" loading="lazy">`
-            : artworkIndex >= 0
-                ? `<span class="admin-court-art admin-court-art-${artworkIndex}" role="img" aria-label="${window.escapeHtml(court.name)} illustration"></span>`
-            : `<span class="admin-court-monogram" aria-hidden="true">${window.escapeHtml(monogram)}</span>`;
-        // Published pricing is stored per unit. Use the same unit schedule
-        // source as the customer picker instead of the legacy listing rate,
-        // which may legitimately be null for courts with different prices.
-        const rateHint = window.InigoCourtsData?.rateHint(court);
-        const rateHtml = rateHint
-            ? window.escapeHtml(rateHint)
-            : '<span>Rate TBA</span>';
-        // Revision A2, decision B6 — a small "N photos" chip whenever at
-        // least one per-unit photo has actually been uploaded (not merely
-        // a placeholder slot with no image yet); the cover itself already
-        // renders above via `media`, same column as always.
-        const uploadedUnitPhotoCount = Array.isArray(court.unitImages)
-            ? court.unitImages.filter((u) => u.imageUrl).length
-            : 0;
-        const tags = [court.sportName, `${court.quantity} ${court.unit}`]
-            .concat(uploadedUnitPhotoCount > 0 ? [`${uploadedUnitPhotoCount} photo${uploadedUnitPhotoCount === 1 ? '' : 's'}`] : [])
-            .concat(String(court.description || '').split('·').map((s) => s.trim()).filter(Boolean))
-            .filter(Boolean);
-        const tagsHtml = tags.map((t) => `<span>${window.escapeHtml(t)}</span>`).join('');
-
-        return `
-            <article class="admin-court-card" data-admin-court-status="${statusCls}" data-court-id="${window.escapeHtml(court.id)}">
-                <div class="admin-court-media">
-                    ${media}
-                    <span class="admin-status ${statusCls}">${window.escapeHtml(statusLabel)}</span>
-                </div>
-                <div class="admin-court-body">
-                    <h3>${window.escapeHtml(court.name)}</h3>
-                    <p class="admin-court-rate">${rateHtml}</p>
-                    <div class="admin-court-tags">${tagsHtml}</div>
-                    <div class="admin-court-actions">
-                        <button type="button" class="admin-btn-secondary" data-admin-court-edit>Edit sport</button>
-                    </div>
-                </div>
-            </article>
-        `;
-    }
-
-    // Admin sees every court (including deactivated ones, so it can
-    // reactivate them) — unlike the customer-facing fetches in
-    // includes/Dashboard.js, which default to active-only.
-    async function loadAndRenderCourts() {
-        if (!courtGrid || !window.InigoCourtsData) return;
-        window.InigoCourtsData.invalidateCourts();
-        const courts = await window.InigoCourtsData.getCourts({ includeInactive: true });
-        currentCourts = courts;
-        courtGrid.innerHTML = courts.length
-            ? courts.map(renderAdminCourtCard).join('')
-            : '<p style="color: var(--color-ink-faint); padding: 8px 4px;">No courts yet — add one above.</p>';
-        wireCourtCardActions(courtGrid);
-        applyCourtFilter();
-        // Revision A2, decision B2 — the Profile panel's "Courts listed"
-        // quick stat reuses this exact count (InigoCourtsData.getCourts
-        // with includeInactive:true, same call as just above).
-        setAdminStat('courts-listed', courts.length);
-    }
-
-    if (courtSubmitBtn) {
-        courtSubmitBtn.addEventListener('click', async () => {
-            const nameInput = document.querySelector('[data-admin-court-name]');
-            const sportSelect = document.querySelector('[data-admin-court-sport]');
-            const quantityInput = document.querySelector('[data-admin-court-quantity]');
-            const unitSelect = document.querySelector('[data-admin-court-unit]');
-            const descriptionInput = document.querySelector('[data-admin-court-description]');
-            const opStatusSelect = document.querySelector('[data-admin-court-op-status]');
-
-            const name = nameInput ? nameInput.value.trim() : '';
-            if (!name) {
-                window.InigoToast?.show('Enter a court name.', true);
-                nameInput?.focus();
-                return;
-            }
-
-            if (!window.sb || !window.InigoCourtsData) {
-                window.InigoToast?.show('Unable to reach the server right now. Please try again shortly.', true);
-                return;
-            }
-
-            const sportId = sportSelect ? sportSelect.value : '';
-            const editingId = courtForm.dataset.editingId;
-            if (editingId && !sportId) {
-                window.InigoToast?.show('Select a sport.', true);
-                return;
-            }
-
-            let quantity = Number(quantityInput ? quantityInput.value : NaN);
-            if (!Number.isFinite(quantity) || quantity < 1) quantity = 1;
-
-            // Revision A1 security requirement — courtModalState.coverUrl
-            // (kept in sync with the "paste a URL" fallback field AND every
-            // Cover Upload — see handleCourtUnitFieldsChange's neighbouring
-            // listener and wireCourtPhotoSlotActions above) is the ONE
-            // remaining free-text path into an <img src>; reject anything
-            // that isn't https:// or a relative project path before it
-            // ever reaches the database (renderAdminCourtCard() also
-            // re-checks this on render, as defense in depth).
-            const coverUrl = courtModalState.coverUrl ? courtModalState.coverUrl.trim() : '';
-            if (coverUrl && !isSafeImageUrl(coverUrl)) {
-                window.InigoToast?.show('Image URL must start with https:// (or be left blank).', true);
-                document.querySelector('[data-admin-court-image-url]')?.focus();
-                return;
-            }
-
-            const payload = {
-                name,
-                sport_id: sportId,
-                quantity,
-                unit: unitSelect ? unitSelect.value : 'courts',
-                description: (descriptionInput && descriptionInput.value.trim()) ? descriptionInput.value.trim() : null,
-                status: editingId ? (currentCourts.find((court) => String(court.id) === String(editingId))?.status || 'Available') : 'Available',
-                image_url: coverUrl || null,
-                // Revision A2, decision B6 — per-unit photos, bridged to
-                // the column's snake_case {label, image_url} shape.
-                unit_images: unitImagesToDbShape(deriveCourtPhotoUnits(
-                    quantity,
-                    unitSelect ? unitSelect.value : 'courts',
-                    courtModalState.unitImages
-                )),
-            };
-
-            const originalCourt = editingId ? currentCourts.find((court) => String(court.id) === String(editingId)) : null;
-            if (!window.confirm(editingId
-                ? `Save changes to "${name}"?`
-                : `Add "${name}" as a new court?`)) return;
-            const originalLabel = courtSubmitBtn.textContent;
-            courtSubmitBtn.disabled = true;
-            courtSubmitBtn.textContent = editingId ? 'Saving…' : 'Adding…';
-
-            // Revision A2, decision B6 — set when a save had to drop
-            // unit_images and retry because the column doesn't exist yet
-            // (pre-006 database), so the success toast below can say so
-            // instead of silently pretending per-unit photos saved.
-            let unitImagesSchemaMissing = false;
-
-            let error;
-            let createdListingId = null;
-            if (editingId) {
-                // .select() so `data` reflects the actually-updated row(s):
-                // an UPDATE that RLS's USING clause filters out (a
-                // logged-out or non-staff/admin session — see
-                // database/schema/002_content_tables.sql's "court_staff_write"
-                // policy) matches zero rows and comes back with NO `error`
-                // at all, just an empty result — without checking the row
-                // count that would silently report success on a write that
-                // never happened. Edits never touch `slug` — renaming a
-                // court can't collide with, or orphan, another row's slug.
-                let { error: updateError, data: updateData } = await window.sb
-                    .from('court').update(payload).eq('id', editingId).select();
-                if (updateError && isSchemaMismatchError(updateError)) {
-                    unitImagesSchemaMissing = true;
-                    const { unit_images, ...payloadWithoutUnitImages } = payload;
-                    ({ error: updateError, data: updateData } = await window.sb
-                        .from('court').update(payloadWithoutUnitImages).eq('id', editingId).select());
-                }
-                error = updateError || ((!updateData || updateData.length === 0)
-                    ? { message: 'Could not save changes — you may not have permission, or this court may no longer exist.' }
-                    : null);
-            } else {
-                const unitCount = Math.floor(quantity);
-                if (unitCount < 1 || unitCount > 50) {
-                    window.InigoToast?.show('Enter between 1 and 50 units.', true);
-                    courtSubmitBtn.disabled = false;
-                    courtSubmitBtn.textContent = originalLabel;
-                    return;
-                }
-                const { error: createError } = await window.sb.rpc('admin_create_sport_with_units', {
-                    p_name: name,
-                    p_slug: window.InigoCourtsData.slugify(name),
-                    p_unit: payload.unit,
-                    p_quantity: unitCount,
-                    p_description: payload.description,
-                    p_status: payload.status,
-                    p_image_url: payload.image_url,
-                    p_unit_images: payload.unit_images,
-                });
-                error = createError;
-            }
-
-            courtSubmitBtn.disabled = false;
-            courtSubmitBtn.textContent = originalLabel;
-
-            if (error) {
-                // Covers both a genuine DB error and RLS rejecting a
-                // non-admin/non-staff session — either way this is
-                // surfaced via the page's toast pattern instead of alert().
-                window.InigoToast?.show(error.message || 'Could not save this court. Please try again.', true);
-                return;
-            }
-
-            // Remove superseded Storage objects only after the database save succeeds.
-            // Cancelling the editor or a failed save must leave existing photos intact.
-            if (originalCourt) {
-                const previousUrls = [originalCourt.imageUrl, ...(originalCourt.unitImages || []).map((unit) => unit.imageUrl)].filter(Boolean);
-                const retainedUrls = new Set([payload.image_url, ...(unitImagesSchemaMissing ? (originalCourt.unitImages || []).map((unit) => unit.imageUrl) : (payload.unit_images || []).map((unit) => unit.image_url))].filter(Boolean));
-                previousUrls.filter((url) => !retainedUrls.has(url)).forEach(removeUploadedMediaBestEffort);
-            }
-
-            window.InigoToast?.show(
-                unitImagesSchemaMissing && courtModalState.unitImages.length
-                    ? `${editingId ? 'Court updated' : 'Court added'}, but per-unit photos need a database update (see database/schema/006_court_unit_images.sql).`
-                    : (editingId ? 'Sport updated.' : 'Sport and units added.')
-            );
-            closeCourtModal();
-            // Revision A2, decision B6 — invalidateCourts() happens inside
-            // loadAndRenderCourts() itself (see its own comment above), so
-            // the freshly-saved unit_images/image_url are what the
-            // customer dashboard's unit picker sees on its own next load.
-            loadAndRenderCourts();
-            recordOwnerActivity(`${editingId ? 'Sport updated' : 'Sport added'}: ${name}`, 'courts');
-        });
-    }
-
-    document.querySelector('[data-admin-court-archive]')?.addEventListener('click', async (event) => {
-        const courtId = courtForm?.dataset.editingId;
-        const court = currentCourts.find((item) => String(item.id) === String(courtId));
-        const restore = court && court.isActive === false;
-        if (!court || !window.sb || !window.confirm(`${restore ? 'Restore' : 'Archive'} ${court.name}? Past reservations will remain in the system.`)) return;
-        const { data, error } = await window.sb.from('court').update({ is_active: restore }).eq('id', courtId).select('id');
-        if (error || !data?.length) { window.InigoToast?.show(error?.message || `Could not ${restore ? 'restore' : 'archive'} this sport.`, true); return; }
-        const otherActive = currentCourts.some((item) => String(item.id) !== String(courtId)
-            && String(item.sportId) === String(court.sportId) && item.isActive);
-        if (court.sportId && (restore || !otherActive)) {
-            const { error: sportError } = await window.sb.from('sport').update({ is_active: restore }).eq('id', court.sportId);
-            if (sportError) window.InigoToast?.show(`Listing changed, but its sport status needs attention: ${sportError.message}`, true);
-        }
-        window.InigoToast?.show(restore ? 'Sport restored.' : 'Sport archived. Existing reservations were preserved.');
-        closeCourtModal();
-        await loadAndRenderCourts();
-    });
-
-    function wireCourtCardActions(scope) {
-        scope.querySelectorAll('[data-admin-court-edit]').forEach((btn) => {
-            btn.addEventListener('click', () => {
-                const card = btn.closest('.admin-court-card');
-                const id = card ? card.dataset.courtId : null;
-                const court = currentCourts.find((c) => String(c.id) === String(id));
-                if (!court) return;
-                openCourtModal(court);
-            });
-        });
-
-        scope.querySelectorAll('[data-admin-court-toggle-status]').forEach((btn) => {
-            btn.addEventListener('click', async () => {
-                const card = btn.closest('.admin-court-card');
-                const id = card ? card.dataset.courtId : null;
-                if (!id || !window.sb) return;
-
-                const court = currentCourts.find((c) => String(c.id) === String(id));
-                const currentlyActive = card.dataset.adminCourtStatus === 'active';
-                const verb = currentlyActive ? 'deactivate' : 'activate';
-                if (!window.confirm(`Are you sure you want to ${verb} "${court ? court.name : 'this court'}"?`)) return;
-
-                btn.disabled = true;
-                // Soft toggle only, same convention already used for staff
-                // (profiles.status — see refreshStaffList above) rather
-                // than deleting the row. `status` (Available/Maintenance —
-                // day-to-day bookability) is left untouched; is_active only
-                // controls whether the court is listed at all. .select() so
-                // an RLS-filtered UPDATE (0 rows matched — see the Add/Edit
-                // handler's note above) is caught explicitly instead of
-                // silently reporting success on a write that never happened.
-                const { error: toggleError, data: toggleData } = await window.sb
-                    .from('court').update({ is_active: !currentlyActive }).eq('id', id).select();
-                const error = toggleError || ((!toggleData || toggleData.length === 0)
-                    ? { message: `Could not ${verb} this court — you may not have permission.` }
-                    : null);
-                btn.disabled = false;
-
-                if (error) {
-                    window.InigoToast?.show(error.message || `Could not ${verb} this court.`, true);
-                    return;
-                }
-                window.InigoToast?.show(`Court ${currentlyActive ? 'deactivated' : 'activated'}.`);
-                loadAndRenderCourts();
-                recordOwnerActivity(`Court ${currentlyActive ? 'deactivated' : 'activated'}: ${court?.name || 'Court'}`, 'courts');
-            });
-        });
-    }
-
-    // Court modal's Photos section (Revision A2, decision B6) — ONE shared
-    // hidden file input for every slot (Cover + each unit); which slot a
-    // given upload targets is tracked in courtModalState.activeUploadSlot,
-    // set by wireCourtPhotoSlotActions' Upload button handler right before
-    // this input is .click()ed. Each upload goes through
-    // includes/imageTools.js's openCropEditor() first (fixed 16:10 frame,
-    // drag-to-pan, 1×–4× zoom) so every photo — cover or per-unit — is
-    // consistently framed before it ever reaches uploadToMedia(). Uses the
-    // court's real slug when editing, or derives one from whatever's
-    // currently typed in the Name field when adding (courtsData.js's own
-    // slugify(), same helper the Add/Edit save handler above uses for a
-    // brand-new court's `slug` column).
-    const courtPhotoFileInput = document.querySelector('[data-admin-court-photo-file]');
-
-    function currentCourtSlugForUpload() {
-        const editingId = courtForm ? courtForm.dataset.editingId : null;
-        const editingCourt = editingId ? currentCourts.find((c) => String(c.id) === String(editingId)) : null;
-        if (editingCourt && editingCourt.slug) return editingCourt.slug;
-        const nameInput = document.querySelector('[data-admin-court-name]');
-        return window.InigoCourtsData.slugify(nameInput ? nameInput.value : '');
-    }
-
-    if (courtPhotoFileInput) {
-        courtPhotoFileInput.addEventListener('change', async () => {
-            const file = courtPhotoFileInput.files && courtPhotoFileInput.files[0];
-            courtPhotoFileInput.value = '';
-            const slot = courtModalState.activeUploadSlot;
-            courtModalState.activeUploadSlot = null;
-            if (!file || !slot) return;
-
-            if (!window.InigoImageTools || !window.sb) {
-                window.InigoToast?.show('Unable to reach the server right now. Please try again shortly.', true);
-                return;
-            }
-
-            let blob;
-            try {
-                blob = await window.InigoImageTools.openCropEditor(file, { aspect: 16 / 10, maxW: 1600, maxH: 1000, quality: 0.85 });
-            } catch (err) {
-                window.InigoToast?.show(err.message || 'Could not process that image.', true);
-                return;
-            }
-            if (!blob) return; // user cancelled the crop dialog
-
-            const slug = currentCourtSlugForUpload();
-            const path = slot.kind === 'cover'
-                ? `courts/${slug}/cover-${Date.now()}.jpg`
-                : `courts/${slug}/unit-${slot.index + 1}-${Date.now()}.jpg`;
-
-            try {
-                const url = await uploadToMedia(path, blob);
-                if (slot.kind === 'cover') {
-                    courtModalState.coverUrl = url;
-                    const urlInput = document.querySelector('[data-admin-court-image-url]');
-                    if (urlInput) urlInput.value = url;
-                } else {
-                    const unit = courtModalState.unitImages[slot.index];
-                    if (unit) {
-                        unit.imageUrl = url;
-                    }
-                }
-                renderCourtPhotoSlots();
-                window.InigoToast?.show('Photo uploaded.');
-            } catch (err) {
-                window.InigoToast?.show(err.message || 'Could not upload that image.', true);
-            }
-        });
-    }
-
-    if (window.InigoCourtsData) {
-        window.InigoCourtsData.getSports().then((sports) => {
-            const sportSelect = document.querySelector('[data-admin-court-sport]');
-            if (sportSelect) {
-                sportSelect.innerHTML = sports.map((s) => `<option value="${window.escapeHtml(s.id)}">${window.escapeHtml(s.name)}</option>`).join('');
-            }
-        });
-        loadAndRenderCourts();
-    } else {
-        // Should never happen — includes/courtsData.js must load before
-        // this file (see the <script> order in Pages/owner_dashboard.html).
-        console.error('[admin] window.InigoCourtsData is missing — check that includes/courtsData.js loads before includes/owner_dashboard.js.');
-    }
-
-    // Inventory and shared-availability data stay backed by the reservation
-    // ledger, but are edited in context from the selected sport's dialog.
-    const resourceRows = document.querySelector('[data-admin-resource-rows]');
-    const unitAddForm = document.querySelector('[data-admin-unit-add]');
-    const unitCourtSelect = document.querySelector('[data-admin-unit-court]');
-    const unitLabelInput = document.querySelector('[data-admin-unit-label]');
-    let selectedCourtIdForUnits = null;
-    let adminInventoryUnits = [];
-    let adminResources = [];
-    const rateCutoffForm = document.querySelector('[data-admin-rate-cutoff-form]');
-    const rateCutoffInput = document.querySelector('[data-admin-rate-cutoff]');
-    const rateCutoffSave = document.querySelector('[data-admin-rate-cutoff-save]');
-    const rateCutoffStatus = document.querySelector('[data-admin-rate-cutoff-status]');
-
-    function showRateCutoffStatus(message, isError = false) {
-        if (!rateCutoffStatus) return;
-        rateCutoffStatus.textContent = message;
-        rateCutoffStatus.classList.toggle('is-error', isError);
-        rateCutoffStatus.classList.toggle('is-success', !isError && Boolean(message));
-    }
-
-    function adminWriteError(error, action) {
-        if (error?.code === '42501') return `Admin access is required to ${action}.`;
-        return `Could not ${action}: ${error?.message || 'database request failed'}`;
-    }
-
-    async function loadRateCutoff() {
-        if (!window.sb || !rateCutoffInput) return;
-        rateCutoffInput.disabled = true;
-        if (rateCutoffSave) rateCutoffSave.disabled = true;
-        showRateCutoffStatus('Loading cutoff…');
-        let result;
-        try {
-            result = await window.sb.from('app_settings')
-                .select('night_rate_starts_at').eq('id', true).maybeSingle();
-        } catch (err) {
-            showRateCutoffStatus(adminWriteError(err, 'load the day/night cutoff'), true);
-            return;
-        }
-        const { data, error } = result;
-        if (error || !data) {
-            showRateCutoffStatus(error
-                ? adminWriteError(error, 'load the day/night cutoff')
-                : 'No app settings row was found. Check the database migration and admin access.', true);
-            return;
-        }
-        rateCutoffInput.value = data.night_rate_starts_at
-            ? String(data.night_rate_starts_at).slice(0, 5)
-            : '';
-        rateCutoffInput.disabled = false;
-        if (rateCutoffSave) rateCutoffSave.disabled = false;
-        showRateCutoffStatus(data.night_rate_starts_at
-            ? `Current cutoff: ${rateCutoffInput.value} (Asia/Manila).`
-            : 'No cutoff is configured. Different day and night rates cannot be quoted until one is saved.');
-    }
-
-    rateCutoffForm?.addEventListener('submit', async (event) => {
-        event.preventDefault();
-        if (!window.sb || !rateCutoffInput) return;
-        const value = rateCutoffInput.value || null;
-        if (rateCutoffSave) { rateCutoffSave.disabled = true; rateCutoffSave.textContent = 'Saving…'; }
-        rateCutoffInput.disabled = true;
-        showRateCutoffStatus('Saving cutoff…');
-        let result;
-        try {
-            result = await window.sb.from('app_settings').update({ night_rate_starts_at: value }).eq('id', true)
-                .select('night_rate_starts_at').maybeSingle();
-        } catch (err) {
-            if (rateCutoffSave) { rateCutoffSave.disabled = false; rateCutoffSave.textContent = 'Save cutoff'; }
-            rateCutoffInput.disabled = false;
-            showRateCutoffStatus(adminWriteError(err, 'save the cutoff'), true);
-            return;
-        }
-        const { data, error } = result;
-        if (rateCutoffSave) { rateCutoffSave.disabled = false; rateCutoffSave.textContent = 'Save cutoff'; }
-        rateCutoffInput.disabled = false;
-        if (error || !data) {
-            showRateCutoffStatus(error
-                ? adminWriteError(error, 'save the cutoff')
-                : 'No settings row was updated. Admin access may be required.', true);
-            return;
-        }
-        rateCutoffInput.value = data.night_rate_starts_at ? String(data.night_rate_starts_at).slice(0, 5) : '';
-        showRateCutoffStatus(data.night_rate_starts_at
-            ? `Cutoff saved: ${rateCutoffInput.value} (Asia/Manila).`
-            : 'Cutoff cleared. Different day and night rates cannot be quoted until one is saved.');
-    });
-
-    function describeResourceForUnit(resource, unit) {
-        const otherUnits = adminInventoryUnits.filter((candidate) => String(candidate.id) !== String(unit.id)
-            && (candidate.court_unit_resource_map || []).some((link) => link.resource_id === resource.id));
-        const otherNames = otherUnits.map((candidate) => {
-            const linkedCourt = Array.isArray(candidate.court) ? candidate.court[0] : candidate.court;
-            return `${linkedCourt?.name || 'Court'} ${candidate.label}`;
-        });
-        return otherNames.length
-            ? `Shares availability with ${otherNames.join(', ')}`
-            : 'Dedicated space for this unit';
-    }
-
-    function renderResourceRows(units = adminInventoryUnits, resources = adminResources) {
-        if (!resourceRows) return;
-        if (!selectedCourtIdForUnits) {
-            resourceRows.innerHTML = '<p class="admin-form-hint">Open a sport’s Edit view to manage its individual units.</p>';
-            return;
-        }
-        const selectedUnits = units.filter((unit) => String(unit.court_id) === String(selectedCourtIdForUnits));
-        if (!selectedUnits.length) {
-            resourceRows.innerHTML = '<p class="admin-unit-empty">No individual units are configured yet. Add the first court, lane, or table above.</p>';
-            return;
-        }
-        resourceRows.innerHTML = selectedUnits.map((unit) => {
-            const mapped = new Set((unit.court_unit_resource_map || []).map((link) => link.resource_id));
-            const court = Array.isArray(unit.court) ? unit.court[0] : unit.court;
-            const unitDescription = `${court?.name || 'Court'} ${unit.label}`;
-            const connectedResources = resources.filter((resource) => {
-                if (mapped.has(resource.id)) return true;
-                const alreadyOwnedByCapacityCourt = adminInventoryUnits.some((candidate) => String(candidate.id) !== String(unit.id)
-                    && (candidate.court_unit_resource_map || []).length > 1
-                    && (candidate.court_unit_resource_map || []).some((link) => link.resource_id === resource.id));
-                if (alreadyOwnedByCapacityCourt) return false;
-                return adminInventoryUnits.some((candidate) => String(candidate.id) !== String(unit.id)
-                    && String(candidate.court_id) !== String(unit.court_id)
-                    && (candidate.court_unit_resource_map || []).length === 1
-                    && (candidate.court_unit_resource_map || []).some((link) => link.resource_id === resource.id));
-            });
-            const options = connectedResources.map((resource) => {
-                const capacityOwner = adminInventoryUnits.find((candidate) => String(candidate.id) !== String(unit.id)
-                    && (candidate.court_unit_resource_map || []).length > 1
-                    && (candidate.court_unit_resource_map || []).some((link) => link.resource_id === resource.id));
-                const managedElsewhere = mapped.has(resource.id) && Boolean(capacityOwner);
-                const ownerCourt = Array.isArray(capacityOwner?.court) ? capacityOwner.court[0] : capacityOwner?.court;
-                const label = managedElsewhere
-                    ? `${describeResourceForUnit(resource, unit)} · managed from ${ownerCourt?.name || 'larger court'} ${capacityOwner.label}`
-                    : describeResourceForUnit(resource, unit);
-                return `<label class="admin-unit-share-option">
-                    <input type="checkbox" data-resource-map="${window.escapeHtml(resource.id)}" aria-label="${window.escapeHtml(label)}" ${mapped.has(resource.id) ? 'checked' : ''} ${managedElsewhere ? 'disabled' : ''}>
-                    <span>${window.escapeHtml(label)}</span>
-                </label>`;
-            }).join('');
-            const peerCount = (unit.court_unit_resource_map || []).reduce((count, link) => {
-                return count + adminInventoryUnits.filter((candidate) => String(candidate.id) !== String(unit.id)
-                    && (candidate.court_unit_resource_map || []).some((candidateLink) => candidateLink.resource_id === link.resource_id)).length;
-            }, 0);
-            return `<article class="admin-unit-card" data-admin-resource-unit="${window.escapeHtml(unit.id)}">
-                <header class="admin-unit-card-head">
-                    <div><strong>${window.escapeHtml(unitDescription)}</strong><span>${unit.inventory_verified ? 'Inventory verified' : 'Needs verification'}</span></div>
-                    <label class="admin-unit-bookable"><span>Unit status</span><select data-resource-status aria-label="Status for ${window.escapeHtml(unitDescription)}"><option value="available" ${(unit.availability_status || (unit.is_active ? 'available' : 'archived')) === 'available' ? 'selected' : ''}>Available</option><option value="maintenance" ${unit.availability_status === 'maintenance' ? 'selected' : ''}>Maintenance</option><option value="archived" ${unit.availability_status === 'archived' ? 'selected' : ''}>Archived</option></select></label>
-                </header>
-                <div class="admin-unit-price-grid">
-                    <label class="admin-form-group"><span class="admin-form-label">Pricing tier</span><select class="admin-input admin-resource-tier" aria-label="Pricing tier for ${window.escapeHtml(unitDescription)}">
-                    <option value="">Unassigned</option><option value="old" ${unit.pricing_tier === 'old' ? 'selected' : ''}>Old</option>
-                    <option value="new" ${unit.pricing_tier === 'new' ? 'selected' : ''}>New</option><option value="standard" ${unit.pricing_tier === 'standard' ? 'selected' : ''}>Standard</option>
-                    </select></label>
-                    <label class="admin-form-group"><span class="admin-form-label">Day rate (₱)</span><input class="admin-input" type="number" min="0" step="0.01" inputmode="decimal" data-rate-day value="${unit.rate_day == null ? '' : window.escapeHtml(String(unit.rate_day))}" placeholder="Not set" aria-label="Day rate for ${window.escapeHtml(unitDescription)}"></label>
-                    <label class="admin-form-group"><span class="admin-form-label">Night rate (₱)</span><input class="admin-input" type="number" min="0" step="0.01" inputmode="decimal" data-rate-night value="${unit.rate_night == null ? '' : window.escapeHtml(String(unit.rate_night))}" placeholder="Not set" aria-label="Night rate for ${window.escapeHtml(unitDescription)}"></label>
-                    <label class="admin-form-group"><span class="admin-form-label">Bill by</span><select class="admin-input admin-resource-rate-basis" data-rate-unit aria-label="Rate basis for ${window.escapeHtml(unitDescription)}">
-                    <option value="/hr" ${unit.rate_unit === '/hr' ? 'selected' : ''}>Per hour</option>
-                    <option value="/set" ${unit.rate_unit === '/set' ? 'selected' : ''}>Per set</option>
-                    </select></label>
-                </div>
-                <div class="admin-unit-save-row"><button type="button" class="admin-btn-chip-secondary admin-resource-rate-save" data-rate-save aria-label="Save rates for ${window.escapeHtml(unitDescription)}">Save rates</button><span class="admin-resource-rate-status" data-rate-status role="status" aria-live="polite"></span></div>
-                <details class="admin-unit-sharing">
-                    <summary>Availability connections <span>${peerCount ? `${peerCount} shared link${peerCount === 1 ? '' : 's'}` : 'No other courts linked'}</span></summary>
-                    <p>Each choice is one shared booking space. For a larger court that covers several smaller courts, configure the larger court and select every smaller court it covers. The smaller courts then remain independently bookable.</p>
-                    <div class="admin-unit-share-list">${options || '<span>No other spaces are available to connect.</span>'}</div>
-                </details>
-            </article>`;
-        }).join('');
-
-        resourceRows.querySelectorAll('[data-admin-resource-unit]').forEach((row) => {
-            const unitId = row.dataset.adminResourceUnit;
-            const unit = adminInventoryUnits.find((item) => item.id === unitId);
-            const mapped = new Set((unit?.court_unit_resource_map || []).map((link) => link.resource_id));
-            const disabledByDesign = new Set(Array.from(row.querySelectorAll('input,select')).filter((input) => input.disabled));
-            const setBusy = (busy) => row.querySelectorAll('input,select').forEach((input) => {
-                input.disabled = busy || disabledByDesign.has(input);
-            });
-            const rateSaveButton = row.querySelector('[data-rate-save]');
-            const rateStatus = row.querySelector('[data-rate-status]');
-            rateSaveButton?.addEventListener('click', async () => {
-                const dayInput = row.querySelector('[data-rate-day]');
-                const nightInput = row.querySelector('[data-rate-night]');
-                const basisInput = row.querySelector('[data-rate-unit]');
-                const amount = (input) => {
-                    if (input.value.trim() === '') return null;
-                    const parsed = Number(input.value);
-                    return Number.isFinite(parsed) && parsed >= 0 ? parsed : NaN;
-                };
-                const rateDay = amount(dayInput);
-                const rateNight = amount(nightInput);
-                if (Number.isNaN(rateDay) || Number.isNaN(rateNight)) {
-                    if (rateStatus) { rateStatus.textContent = 'Enter a non-negative amount or leave blank.'; rateStatus.classList.add('is-error'); }
-                    return;
-                }
-                setBusy(true);
-                rateSaveButton.disabled = true;
-                rateSaveButton.textContent = 'Saving…';
-                if (rateStatus) { rateStatus.textContent = 'Saving…'; rateStatus.classList.remove('is-error', 'is-success'); }
-                let updateResult;
-                try {
-                    updateResult = await window.sb.from('court_unit_inventory').update({
-                        rate_day: rateDay,
-                        rate_night: rateNight,
-                        rate_unit: basisInput.value,
-                    }).eq('id', unitId).select('id,rate_day,rate_night,rate_unit').single();
-                } catch (err) {
-                    setBusy(false);
-                    rateSaveButton.disabled = false;
-                    rateSaveButton.textContent = 'Save rates';
-                    if (rateStatus) { rateStatus.textContent = adminWriteError(err, 'save rates'); rateStatus.classList.add('is-error'); }
-                    return;
-                }
-                const { data, error } = updateResult;
-                setBusy(false);
-                rateSaveButton.disabled = false;
-                rateSaveButton.textContent = 'Save rates';
-                if (error) {
-                    const message = error.code === '23514'
-                        ? 'Unsupported rate. Use a non-negative amount and a valid basis.'
-                        : error.code === 'PGRST116'
-                            ? 'No unit was updated. Check that this unit still exists and that you have admin access.'
-                            : adminWriteError(error, 'save rates');
-                    if (rateStatus) { rateStatus.textContent = message; rateStatus.classList.add('is-error'); }
-                    console.error('[admin] could not save unit rates', error);
-                    return;
-                }
-                if (!data) {
-                    if (rateStatus) { rateStatus.textContent = 'No unit was updated. Check admin access and reload the table.'; rateStatus.classList.add('is-error'); }
-                    return;
-                }
-                if (rateStatus) { rateStatus.textContent = 'Saved'; rateStatus.classList.remove('is-error'); rateStatus.classList.add('is-success'); }
-                if (unit) Object.assign(unit, { rate_day: rateDay, rate_night: rateNight, rate_unit: basisInput.value });
-                window.InigoCourtsData?.invalidateCourts();
-                loadAndRenderCourts();
-            });
-            const save = async (promise, successMessage) => {
-                setBusy(true);
-                let result;
-                try {
-                    result = await promise;
-                } catch (error) {
-                    setBusy(false);
-                    window.InigoToast?.show(adminWriteError(error, 'update court availability'), true);
-                    await loadPhysicalResourceSettings();
-                    return false;
-                }
-                const { data, error } = result;
-                setBusy(false);
-                if (error) {
-                    window.InigoToast?.show(error.code === '23P01'
-                        ? 'That change conflicts with an active reservation. It was not saved.'
-                        : error.code === '23503'
-                            ? 'This unit has an active booking. Wait for it to finish or expire before changing its status.'
-                        : (error.message || 'Could not update court availability.'), true);
-                    await loadPhysicalResourceSettings();
-                    return false;
-                }
-                if (!data) {
-                    window.InigoToast?.show('No change was saved. Check your admin access, then reload the court.', true);
-                    await loadPhysicalResourceSettings();
-                    return false;
-                }
-                if (successMessage) window.InigoToast?.show(successMessage);
-                return true;
-            };
-
-            const tierSelect = row.querySelector('.admin-resource-tier');
-            tierSelect?.addEventListener('change', async () => {
-                if (await save(window.sb.from('court_unit_inventory').update({ pricing_tier: tierSelect.value || null }).eq('id', unitId).select('id').maybeSingle(), 'Pricing tier saved.')) {
-                    await loadPhysicalResourceSettings();
-                }
-            });
-            row.querySelector('[data-resource-status]')?.addEventListener('change', async (event) => {
-                const select = event.currentTarget;
-                const previous = unit?.availability_status || (unit?.is_active ? 'available' : 'archived');
-                const nextStatus = select.value;
-                if (nextStatus !== 'available' && !window.confirm(`${nextStatus === 'archived' ? 'Archive' : 'Set to maintenance'} for ${unit?.label || 'this court'}? Existing reservations remain saved.`)) {
-                    select.value = previous;
-                    return;
-                }
-                if (await save(window.sb.from('court_unit_inventory').update({ availability_status: nextStatus }).eq('id', unitId).select('id').maybeSingle(), 'Court availability updated.')) {
-                    if (unit) { unit.availability_status = nextStatus; unit.is_active = nextStatus === 'available'; }
-                    await loadPhysicalResourceSettings();
-                    window.InigoCourtsData?.invalidateCourts();
-                    await loadAndRenderCourts();
-                } else {
-                    select.value = previous;
-                }
-            });
-
-            row.querySelectorAll('[data-resource-map]').forEach((input) => {
-                input.addEventListener('change', async () => {
-                    const resourceId = input.dataset.resourceMap;
-                    if (!input.checked && mapped.size <= 1) {
-                        input.checked = true;
-                        window.InigoToast?.show('Keep at least one availability space linked to each court.', true);
-                        return;
-                    }
-                    const request = input.checked
-                        ? window.sb.from('court_unit_resource_map').upsert(
-                            { court_unit_id: unitId, resource_id: resourceId },
-                            { onConflict: 'court_unit_id,resource_id', ignoreDuplicates: true }).select('court_unit_id').maybeSingle()
-                        : window.sb.from('court_unit_resource_map').delete()
-                            .eq('court_unit_id', unitId).eq('resource_id', resourceId).select('court_unit_id').maybeSingle();
-                    if (await save(request, 'Availability connection saved.')) {
-                        await loadPhysicalResourceSettings();
-                    } else {
-                        input.checked = !input.checked;
-                    }
-                });
-            });
-        });
-    }
-
-    async function loadPhysicalResourceSettings() {
-        if (!window.sb || !resourceRows) return;
-        const [unitsRes, resourcesRes] = await Promise.all([
-            window.sb.from('court_unit_inventory')
-                .select('id,court_id,label,pricing_tier,rate_day,rate_night,rate_unit,is_active,availability_status,inventory_verified,court(id,name,unit),court_unit_resource_map(resource_id)')
-                .order('court_id').order('label'),
-            window.sb.from('physical_court_resource').select('id,name,is_active').order('name'),
-        ]);
-        if (unitsRes.error || resourcesRes.error) {
-            resourceRows.innerHTML = '<p class="admin-unit-empty">Court settings could not be loaded. Refresh and check your admin access.</p>';
-            console.error('[admin] could not load physical court settings', unitsRes.error || resourcesRes.error);
-            return;
-        }
-        adminInventoryUnits = (unitsRes.data || []).sort((a, b) => {
-            const courtOrder = String(a.court_id).localeCompare(String(b.court_id));
-            if (courtOrder) return courtOrder;
-            return String(a.label || '').localeCompare(String(b.label || ''), undefined, { numeric: true, sensitivity: 'base' });
-        });
-        adminResources = (resourcesRes.data || []).filter((resource) => resource.is_active);
-        renderResourceRows();
-    }
-
-    function nextCourtUnitLabel(court) {
-        const noun = String(court.unit || 'courts').replace(/s$/i, '');
-        const titleNoun = noun.charAt(0).toUpperCase() + noun.slice(1);
-        const used = new Set(adminInventoryUnits.filter((unit) => String(unit.court_id) === String(court.id))
-            .map((unit) => String(unit.label || '').toLowerCase()));
-        let index = 1;
-        while (used.has(`${titleNoun} ${index}`.toLowerCase())) index += 1;
-        return `${titleNoun} ${index}`;
-    }
-
-    async function createCourtUnitWithSpace(courtId, label) {
-        const courtResult = await window.sb.from('court').select('id,name,quantity').eq('id', courtId).single();
-        if (courtResult.error || !courtResult.data) return { error: courtResult.error || new Error('Sport listing not found.') };
-
-        const unitResult = await window.sb.from('court_unit_inventory')
-            .insert({ court_id: courtId, label, inventory_verified: true, is_active: true })
-            .select('id').single();
-        if (unitResult.error || !unitResult.data) return { error: unitResult.error || new Error('Could not create the court unit.') };
-
-        const unitId = unitResult.data.id;
-        const resourceResult = await window.sb.from('physical_court_resource')
-            .insert({ name: `${courtResult.data.name} · ${label} · ${unitId}` }).select('id').single();
-        if (resourceResult.error || !resourceResult.data) {
-            await window.sb.from('court_unit_inventory').delete().eq('id', unitId);
-            return { error: resourceResult.error || new Error('Could not initialize availability for this court.') };
-        }
-
-        const mapResult = await window.sb.from('court_unit_resource_map')
-            .insert({ court_unit_id: unitId, resource_id: resourceResult.data.id });
-        if (mapResult.error) {
-            await window.sb.from('physical_court_resource').delete().eq('id', resourceResult.data.id);
-            await window.sb.from('court_unit_inventory').delete().eq('id', unitId);
-            return { error: mapResult.error };
-        }
-
-        const countResult = await window.sb.from('court_unit_inventory').select('id', { count: 'exact', head: true }).eq('court_id', courtId);
-        const nextQuantity = countResult.count || Number(courtResult.data.quantity) + 1;
-        const listingUpdate = await window.sb.from('court').update({ quantity: nextQuantity }).eq('id', courtId).select('id').maybeSingle();
-        if (listingUpdate.error || !listingUpdate.data) {
-            await window.sb.from('court_unit_resource_map').delete().eq('court_unit_id', unitId);
-            await window.sb.from('physical_court_resource').delete().eq('id', resourceResult.data.id);
-            await window.sb.from('court_unit_inventory').delete().eq('id', unitId);
-            return { error: listingUpdate.error || new Error('Unit was added, but the sport listing count could not be refreshed. Reload the page.') };
-        }
-        return { data: { id: unitId, resourceId: resourceResult.data.id, quantity: nextQuantity } };
-    }
-
-    unitAddForm?.addEventListener('submit', async (event) => {
-        event.preventDefault();
-        const courtId = unitCourtSelect?.value;
-        const label = unitLabelInput?.value.trim();
-        const submit = unitAddForm.querySelector('button[type="submit"]');
-        if (!courtId || !label || !window.sb) return;
-        if (adminInventoryUnits.some((unit) => String(unit.court_id) === String(courtId)
-            && String(unit.label).toLocaleLowerCase() === label.toLocaleLowerCase())) {
-            window.InigoToast?.show('A court with that label already exists in this sport.', true);
-            unitLabelInput?.focus();
-            return;
-        }
-        if (submit) { submit.disabled = true; submit.textContent = 'Adding…'; }
-        const { data, error } = await createCourtUnitWithSpace(courtId, label);
-        if (submit) { submit.disabled = false; submit.textContent = 'Add unit'; }
-        if (error) {
-            window.InigoToast?.show(error.message || 'Could not add this unit and set up its availability.', true);
-            return;
-        }
-        await loadPhysicalResourceSettings();
-        const court = currentCourts.find((item) => String(item.id) === String(courtId));
-        if (court && data?.quantity) {
-            court.quantity = data.quantity;
-            const quantityInput = courtForm?.querySelector('[data-admin-court-quantity]');
-            if (quantityInput) quantityInput.value = String(data.quantity);
-            courtModalState.unitImages = deriveCourtPhotoUnits(data.quantity, court.unit, courtModalState.unitImages);
-            renderCourtPhotoSlots();
-            if (unitLabelInput) unitLabelInput.value = nextCourtUnitLabel(court);
-        }
-        window.InigoCourtsData?.invalidateCourts();
-        await loadAndRenderCourts();
-        window.InigoToast?.show('Court added and ready for bookings. Add its rate before accepting paid reservations.');
-    });
-
-    loadPhysicalResourceSettings();
-    loadRateCutoff();
-    document.addEventListener('inigosync:profile-ready', loadPhysicalResourceSettings);
-    document.addEventListener('inigosync:profile-ready', loadRateCutoff);
-
-    // ------------------------------------------------------------------
-    // Media Manager — real slideshow against `public.event` (Revision A1,
-    // decision A5). Lists every row (published or not) ordered by
-    // display_order, so an admin can stage an unpublished slide before it
-    // goes live. Uploads go to the same public `media` Storage bucket the
-    // Court modal uses above, path `slides/<event id>-<ts>.jpg`. The old
-    // "Court photos" card (a second, redundant path to the SAME
-    // court.image_url the Court Listings modal already edits) is removed
-    // outright rather than ported.
-    // The landing page and customer dashboard load every published slide;
-    // the owner can stage an unlimited number of drafts and publish them as needed.
-    let currentSlides = [];
-
-    function slideMediaMarkup(slide) {
-        const safeUrl = slide.image_url && isSafeImageUrl(slide.image_url) ? slide.image_url : null;
-        if (safeUrl) {
-            return `<img src="${window.escapeHtml(safeUrl)}" alt="${window.escapeHtml(slide.title || '')}" loading="lazy">`;
-        }
-        return '<span class="admin-slide-photo-soon" aria-hidden="true">No photo yet</span>';
-    }
-
-    function renderSlideEditor(slide, index, total) {
-        const media = slideMediaMarkup(slide);
-        const isFirst = index === 0;
-        const isLast = index === total - 1;
-        const isOn = slide.is_published !== false;
-        return `
-            <div class="admin-slide-card" data-admin-slide data-slide-id="${window.escapeHtml(slide.id)}">
-                <div class="admin-slide-thumb">
-                    ${media}
-                    <span class="admin-slide-badge">Slide ${index + 1}</span>
-                </div>
-                <div class="admin-slide-body">
-                    <div class="admin-form-group">
-                        <span class="admin-form-label">Title</span>
-                        <input type="text" class="admin-input admin-slide-title" data-admin-slide-title value="${window.escapeHtml(slide.title || '')}">
-                    </div>
-                    <div class="admin-form-group">
-                        <span class="admin-form-label">Caption</span>
-                        <input type="text" class="admin-input admin-slide-caption" data-admin-slide-caption value="${window.escapeHtml(slide.meta || '')}">
-                    </div>
-                    <div class="admin-form-group">
-                        <span class="admin-form-label">Tag <span class="admin-form-label-hint">(optional)</span></span>
-                        <input type="text" class="admin-input" data-admin-slide-tag value="${window.escapeHtml(slide.tag || '')}">
-                    </div>
-                    <div class="admin-slide-publish-row">
-                        <span>Published</span>
-                        <button type="button" class="admin-switch${isOn ? ' is-on' : ''}" data-admin-slide-publish aria-label="Toggle published" aria-pressed="${isOn}"></button>
-                    </div>
-                    <div class="admin-slide-actions">
-                        <button type="button" class="admin-btn-chip-primary" data-admin-slide-replace>Replace photo</button>
-                    </div>
-                    <div class="admin-slide-actions admin-slide-actions-row2">
-                        <button type="button" class="admin-btn-chip-secondary" data-admin-slide-move-up${isFirst ? ' disabled' : ''}>↑ Move up</button>
-                        <button type="button" class="admin-btn-chip-secondary" data-admin-slide-move-down${isLast ? ' disabled' : ''}>↓ Move down</button>
-                        <button type="button" class="admin-btn-chip-danger" data-admin-slide-remove>Remove</button>
-                    </div>
-                    <input type="file" accept="image/jpeg,image/png,image/webp" class="admin-visually-hidden" data-admin-slide-file>
-                </div>
-            </div>
-        `;
-    }
-
-    function renderSlideCard(slide, index) {
-        return `<div class="admin-slide-card" data-slide-id="${window.escapeHtml(slide.id)}">
-            <div class="admin-slide-thumb">${slideMediaMarkup(slide)}<span class="admin-slide-badge">Slide ${index + 1}</span></div>
-            <div class="admin-slide-body">
-                <strong>${window.escapeHtml(slide.title || 'Untitled slide')}</strong>
-                <span class="admin-slide-caption">${slide.is_published === false ? 'Draft' : 'Published'}</span>
-                <button type="button" class="admin-btn-chip-primary" data-admin-slide-edit="${window.escapeHtml(slide.id)}">Edit slide</button>
-            </div>
-        </div>`;
-    }
-
-    const slideModal = document.querySelector('[data-admin-slide-modal]');
-    const slideEditorRoot = document.querySelector('[data-admin-slide-editor]');
-    const slideDialog = document.querySelector('[data-admin-slide-dialog]');
-
-    function closeSlideEditor() {
-        if (!slideModal) return;
-        slideModal.removeAttribute('data-open');
-        slideModal.hidden = true;
-    }
-
-    function openSlideEditor(slideId) {
-        const index = currentSlides.findIndex((slide) => String(slide.id) === String(slideId));
-        if (index < 0 || !slideModal || !slideEditorRoot) return;
-        slideEditorRoot.innerHTML = renderSlideEditor(currentSlides[index], index, currentSlides.length);
-        slideModal.hidden = false;
-        slideModal.setAttribute('data-open', '');
-        wireSlideCardActions(slideEditorRoot);
-        slideDialog?.focus();
-    }
-
-    slideModal?.querySelectorAll('[data-admin-slide-modal-close]').forEach((button) => button.addEventListener('click', closeSlideEditor));
-    slideModal?.addEventListener('click', (event) => { if (event.target === slideModal) closeSlideEditor(); });
-    document.addEventListener('keydown', (event) => { if (event.key === 'Escape' && slideModal && !slideModal.hidden) closeSlideEditor(); });
-
-    function renderSlides() {
-        const slidesGrid = document.querySelector('[data-admin-slides]');
-        if (!slidesGrid) return;
-
-        slidesGrid.innerHTML = currentSlides.length
-            ? currentSlides.map((slide, i) => renderSlideCard(slide, i, currentSlides.length)).join('')
-            : '<p style="color: var(--color-ink-faint); padding: 8px 4px;">No slides yet — add one above.</p>';
-        slidesGrid.querySelectorAll('[data-admin-slide-edit]').forEach((button) => {
-            button.addEventListener('click', () => openSlideEditor(button.dataset.adminSlideEdit));
-        });
-
-        const subEl = document.querySelector('[data-admin-slides-sub]');
-        if (subEl) subEl.textContent = `${currentSlides.length} slide${currentSlides.length === 1 ? '' : 's'}`;
-    }
-
-    async function loadSlides() {
-        const slidesGrid = document.querySelector('[data-admin-slides]');
-        if (!slidesGrid || !window.sb) return;
-
-        const { data, error } = await window.sb
-            .from('event')
-            .select('id, sport_id, tag, title, meta, event_date, image_url, display_order, is_published, created_at')
-            .order('display_order', { ascending: true })
-            .order('created_at', { ascending: true });
-
-        if (error) {
-            console.error('[admin] failed to load slides', error);
-            slidesGrid.innerHTML = isSchemaMismatchError(error)
-                ? '<p style="color: var(--color-ink-faint); padding: 8px 4px;">This needs a database update that hasn\'t been applied yet.</p>'
-                : '<p style="color: var(--color-ink-faint); padding: 8px 4px;">Could not load slides. Please try again.</p>';
-            return;
-        }
-
-        currentSlides = data || [];
-        renderSlides();
-    }
-
-    function wireSlideCardActions(scope) {
-        scope.querySelectorAll('[data-admin-slide]').forEach((card) => {
-            const slideId = card.dataset.slideId;
-            const slide = currentSlides.find((s) => String(s.id) === String(slideId));
-            if (!slide || !window.sb) return;
-
-            // Text fields save on blur (single-row update) — Title is
-            // required (the `event.title` column is NOT NULL); an empty
-            // Title reverts to the last-saved value instead of attempting
-            // a write that would fail the NOT NULL constraint anyway.
-            const titleInput = card.querySelector('[data-admin-slide-title]');
-            if (titleInput) {
-                titleInput.addEventListener('blur', async () => {
-                    const value = titleInput.value.trim();
-                    if (!value) {
-                        window.InigoToast?.show('Title is required.', true);
-                        titleInput.value = slide.title || '';
-                        return;
-                    }
-                    if (value === (slide.title || '')) return;
-                    const { error } = await window.sb.from('event').update({ title: value }).eq('id', slideId);
-                    if (error) {
-                        window.InigoToast?.show(error.message || 'Could not save the title.', true);
-                        titleInput.value = slide.title || '';
-                        return;
-                    }
-                    slide.title = value;
-                    recordOwnerActivity(`Updated slideshow slide: ${value}`, 'media');
-                });
-            }
-
-            const captionInput = card.querySelector('[data-admin-slide-caption]');
-            if (captionInput) {
-                captionInput.addEventListener('blur', async () => {
-                    const value = captionInput.value.trim();
-                    if (value === (slide.meta || '')) return;
-                    const { error } = await window.sb.from('event').update({ meta: value || null }).eq('id', slideId);
-                    if (error) {
-                        window.InigoToast?.show(error.message || 'Could not save the caption.', true);
-                        captionInput.value = slide.meta || '';
-                        return;
-                    }
-                    slide.meta = value || null;
-                    recordOwnerActivity(`Updated slideshow caption: ${slide.title || 'Slide'}`, 'media');
-                });
-            }
-
-            const tagInput = card.querySelector('[data-admin-slide-tag]');
-            if (tagInput) {
-                tagInput.addEventListener('blur', async () => {
-                    const value = tagInput.value.trim();
-                    if (value === (slide.tag || '')) return;
-                    const { error } = await window.sb.from('event').update({ tag: value || null }).eq('id', slideId);
-                    if (error) {
-                        window.InigoToast?.show(error.message || 'Could not save the tag.', true);
-                        tagInput.value = slide.tag || '';
-                        return;
-                    }
-                    slide.tag = value || null;
-                    recordOwnerActivity(`Updated slideshow tag: ${slide.title || 'Slide'}`, 'media');
-                });
-            }
-
-            const publishBtn = card.querySelector('[data-admin-slide-publish]');
-            if (publishBtn) {
-                publishBtn.addEventListener('click', async () => {
-                    const next = !publishBtn.classList.contains('is-on');
-                    publishBtn.disabled = true;
-                    const { error } = await window.sb.from('event').update({ is_published: next }).eq('id', slideId);
-                    publishBtn.disabled = false;
-                    if (error) {
-                        window.InigoToast?.show(error.message || 'Could not update the publish state.', true);
-                        return;
-                    }
-                    slide.is_published = next;
-                    publishBtn.classList.toggle('is-on', next);
-                    publishBtn.setAttribute('aria-pressed', String(next));
-                    window.InigoToast?.show(next ? 'Slide published.' : 'Slide unpublished.');
-                    recordOwnerActivity(`${next ? 'Published' : 'Unpublished'} slideshow slide: ${slide.title || 'Slide'}`, 'media');
-                });
-            }
-
-            const replaceBtn = card.querySelector('[data-admin-slide-replace]');
-            const fileInput = card.querySelector('[data-admin-slide-file]');
-            if (replaceBtn && fileInput) {
-                replaceBtn.addEventListener('click', () => fileInput.click());
-                fileInput.addEventListener('change', async () => {
-                    const file = fileInput.files && fileInput.files[0];
-                    fileInput.value = '';
-                    if (!file || !window.InigoImageTools) return;
-
-                    const originalLabel = replaceBtn.textContent;
-                    replaceBtn.disabled = true;
-                    replaceBtn.textContent = 'Uploading…';
-                    try {
-                        const blob = await window.InigoImageTools.downscaleImageToBlob(file, { maxW: 1600, maxH: 900, quality: 0.85 });
-                        const path = `slides/${slideId}-${Date.now()}.jpg`;
-                        const url = await uploadToMedia(path, blob);
-                        const { error } = await window.sb.from('event').update({ image_url: url }).eq('id', slideId);
-                        if (error) throw error;
-                        const oldUrl = slide.image_url;
-                        slide.image_url = url;
-                        removeUploadedMediaBestEffort(oldUrl);
-                        renderSlides();
-                        window.InigoToast?.show('Photo updated.');
-                        recordOwnerActivity(`Updated slideshow photo: ${slide.title || 'Slide'}`, 'media');
-                    } catch (err) {
-                        window.InigoToast?.show(err.message || 'Could not upload that image.', true);
-                        replaceBtn.disabled = false;
-                        replaceBtn.textContent = originalLabel;
-                    }
-                });
-            }
-
-            const removeBtn = card.querySelector('[data-admin-slide-remove]');
-            if (removeBtn) {
-                removeBtn.addEventListener('click', async () => {
-                    if (!window.confirm('Remove this slide? This cannot be undone.')) return;
-                    removeBtn.disabled = true;
-                    const { error } = await window.sb.from('event').delete().eq('id', slideId);
-                    removeBtn.disabled = false;
-                    if (error) {
-                        window.InigoToast?.show(error.message || 'Could not remove this slide.', true);
-                        return;
-                    }
-                    removeUploadedMediaBestEffort(slide.image_url);
-                    window.InigoToast?.show('Slide removed.');
-                    recordOwnerActivity(`Removed slideshow slide: ${slide.title || 'Slide'}`, 'media');
-                    closeSlideEditor();
-                    loadSlides();
-                });
-            }
-
-            const moveUpBtn = card.querySelector('[data-admin-slide-move-up]');
-            if (moveUpBtn) moveUpBtn.addEventListener('click', () => moveSlide(slideId, -1));
-            const moveDownBtn = card.querySelector('[data-admin-slide-move-down]');
-            if (moveDownBtn) moveDownBtn.addEventListener('click', () => moveSlide(slideId, 1));
-        });
-    }
-
-    // W3 (Revision A1 fix) — true when two-or-more slides in the
-    // last-fetched array already share the same display_order (seen with
-    // data that predates ordering being enforced, e.g. several rows all at
-    // 0). Swapping two EQUAL values is a silent no-op: each row is written
-    // back the exact value it already had, so Move up/down does nothing
-    // and gives no error either.
-    function hasDuplicateDisplayOrder(slides) {
-        const seen = new Set();
-        for (const slide of slides) {
-            if (seen.has(slide.display_order)) return true;
-            seen.add(slide.display_order);
-        }
-        return false;
-    }
-
-    // Swaps display_order with the slide immediately before/after it in the
-    // last-fetched (already display_order-sorted) array, then reloads —
-    // simpler and safer than renumbering the whole list, and immune to any
-    // gaps already present in display_order.
-    async function moveSlide(slideId, direction) {
-        if (!window.sb) return;
-        const index = currentSlides.findIndex((s) => String(s.id) === String(slideId));
-        const targetIndex = index + direction;
-        if (index === -1 || targetIndex < 0 || targetIndex >= currentSlides.length) return;
-
-        let a = currentSlides[index];
-        let b = currentSlides[targetIndex];
-
-        // W3 (Revision A1 fix) — the pair being swapped shares a value, OR
-        // a duplicate exists elsewhere in the list (left alone, that
-        // duplicate would just relocate this same bug to a future move
-        // instead of fixing it now). Renumber the WHOLE list to its
-        // current, already display_order-sorted array positions first (one
-        // `update` per row via Promise.all) so every value is unique, then
-        // re-read the fresh values below before doing the actual swap.
-        if (a.display_order === b.display_order || hasDuplicateDisplayOrder(currentSlides)) {
-            const renumberResults = await Promise.all(currentSlides.map((slide, i) =>
-                window.sb.from('event').update({ display_order: i + 1 }).eq('id', slide.id)
-            ));
-            const renumberFailure = renumberResults.find((r) => r.error);
-            if (renumberFailure) {
-                window.InigoToast?.show(renumberFailure.error.message || 'Could not reorder slides.', true);
-                return;
-            }
-            currentSlides.forEach((slide, i) => { slide.display_order = i + 1; });
-            a = currentSlides[index];
-            b = currentSlides[targetIndex];
-        }
-
-        const [{ error: err1 }, { error: err2 }] = await Promise.all([
-            window.sb.from('event').update({ display_order: b.display_order }).eq('id', a.id),
-            window.sb.from('event').update({ display_order: a.display_order }).eq('id', b.id),
-        ]);
-
-        if (err1 || err2) {
-            window.InigoToast?.show((err1 || err2).message || 'Could not reorder slides.', true);
-            return;
-        }
-        closeSlideEditor();
-        recordOwnerActivity(`Reordered slideshow slide: ${a.title || 'Slide'}`, 'media');
-        loadSlides();
-    }
-
-    const addSlideBtn = document.querySelector('[data-admin-slide-add]');
-    if (addSlideBtn) {
-        addSlideBtn.addEventListener('click', async () => {
-            if (!window.sb) return;
-
-            const maxOrder = currentSlides.reduce((max, s) => Math.max(max, Number(s.display_order) || 0), 0);
-            addSlideBtn.disabled = true;
-            // W1 (Revision A1 fix) — event.is_published defaults to true at
-            // the DB level, so a bare insert here went live on the public
-            // landing page/customer dashboard the instant this button was
-            // clicked, before the admin ever typed a title or picked a
-            // photo. Explicit is_published: false keeps the placeholder
-            // staged (renderSlideCard's Published toggle already reads
-            // Off for any slide whose is_published is exactly false) until
-            // the admin turns it on deliberately via that same toggle.
-            const { data: created, error } = await window.sb.from('event')
-                .insert({ title: 'New slide', display_order: maxOrder + 1, is_published: false })
-                .select('id').single();
-            addSlideBtn.disabled = false;
-
-            if (error) {
-                window.InigoToast?.show(
-                    isSchemaMismatchError(error)
-                        ? "This needs a database update that hasn't been applied yet."
-                        : (error.message || 'Could not add a new slide.'),
-                    true
-                );
-                return;
-            }
-            window.InigoToast?.show('Slide added as a draft.');
-            recordOwnerActivity('Added a slideshow draft', 'media');
-            await loadSlides();
-            if (created?.id) openSlideEditor(created.id);
-        });
-    }
-
-    loadSlides();
-
-    // ------------------------------------------------------------------
-    // Owner-only activity notifications: staff, court, slideshow, and profile changes.
-    // ------------------------------------------------------------------
+    // Owner activity: a compact bell list and a paginated detail page.
     const adminNotif = document.querySelector('[data-admin-notif]');
     const adminNotifTrigger = document.querySelector('[data-admin-notif-trigger]');
     const adminNotifList = document.querySelector('[data-admin-notif-list]');
     const adminNotifDot = document.querySelector('[data-admin-notif-dot]');
     const adminNotifMarkAll = document.querySelector('[data-admin-notif-mark-all]');
-    const ADMIN_NOTIF_REFRESH_MS = 15000;
-
+    const notificationList = document.querySelector('[data-owner-notification-list]');
+    const notificationDetail = document.querySelector('[data-owner-notification-detail]');
+    let notificationPage = 0;
+    let selectedNotificationId = null;
+    let notificationGeneration = 0;
+    const NOTIFICATION_PAGE_SIZE = 15;
+    const formatActivityTime = value => new Date(value).toLocaleString('en-PH', { timeZone: 'Asia/Manila', dateStyle: 'medium', timeStyle: 'short' });
     function closeAdminNotifMenu() {
-        if (adminNotif) adminNotif.removeAttribute('data-open');
-        if (adminNotifTrigger) adminNotifTrigger.setAttribute('aria-expanded', 'false');
+        adminNotif?.removeAttribute('data-open');
+        adminNotifTrigger?.setAttribute('aria-expanded', 'false');
     }
-
-    if (adminNotifTrigger && adminNotif) {
-        adminNotifTrigger.addEventListener('click', (e) => {
-            e.stopPropagation();
-            const isOpen = adminNotif.hasAttribute('data-open');
-            closeProfileMenu();
-            if (isOpen) {
-                closeAdminNotifMenu();
-            } else {
-                adminNotif.setAttribute('data-open', '');
-                adminNotifTrigger.setAttribute('aria-expanded', 'true');
-            }
-        });
-
-        document.addEventListener('click', (e) => {
-            if (!adminNotif.contains(e.target)) closeAdminNotifMenu();
-        });
-
-        document.addEventListener('keydown', (e) => {
-            if (e.key === 'Escape') closeAdminNotifMenu();
-        });
-    }
-
-    async function recordOwnerActivity(title, targetSection) {
-        const ownerId = window.inigosyncProfile?.id;
-        if (!ownerId || !window.sb) return;
-        const { error } = await window.sb.from('owner_activity').insert({
-            owner_id: ownerId, title, target_section: targetSection,
-        });
-        if (error) {
-            console.error('[admin] could not record owner activity', error);
-            return;
-        }
-        refreshOwnerActivityNotifications();
-    }
-
-    async function refreshOwnerActivityNotifications() {
-        if (!adminNotifList || !window.sb || !window.inigosyncProfile?.id) return;
-        const { data, error } = await window.sb.from('owner_activity')
-            .select('id,title,target_section,created_at,seen_at')
-            .eq('owner_id', window.inigosyncProfile.id)
-            .order('created_at', { ascending: false })
-            .limit(30);
-        if (error) {
-            console.error('[admin] owner notifications unavailable', error);
-            adminNotifList.innerHTML = '<p class="admin-notif-empty">Could not load notifications.</p>';
-            return;
-        }
-        const items = data || [];
-        adminNotifList.innerHTML = items.length
-            ? items.map((item) => '<button type="button" class="admin-notif-item' + (item.seen_at ? ' is-seen' : '') + '" data-owner-activity-id="' + window.escapeHtml(item.id) + '" data-owner-activity-section="' + window.escapeHtml(item.target_section) + '"><span class="admin-notif-dot pending" aria-hidden="true"></span><span class="admin-notif-item-body"><strong>' + window.escapeHtml(item.title) + '</strong><span>' + window.escapeHtml(new Date(item.created_at).toLocaleString()) + (item.seen_at ? ' · Seen' : ' · New') + '</span></span></button>').join('')
-            : '<p class="admin-notif-empty">No owner activity yet.</p>';
-        const unread = items.filter((item) => !item.seen_at);
-        if (adminNotifDot) adminNotifDot.hidden = unread.length === 0;
-        if (adminNotifMarkAll) adminNotifMarkAll.disabled = unread.length === 0;
-    }
-
-    adminNotifList?.addEventListener('click', async (event) => {
-        const item = event.target.closest('[data-owner-activity-id]');
-        if (!item || !window.sb) return;
-        const { error } = await window.sb.from('owner_activity')
-            .update({ seen_at: new Date().toISOString() })
-            .eq('id', item.dataset.ownerActivityId)
-            .eq('owner_id', window.inigosyncProfile.id);
-        if (error) {
-            window.InigoToast?.show('Could not mark this notification as seen.', true);
-            return;
-        }
-        closeAdminNotifMenu();
-        setActivePanel(item.dataset.ownerActivitySection);
-        refreshOwnerActivityNotifications();
+    adminNotifTrigger?.addEventListener('click', event => {
+        event.stopPropagation();
+        const wasOpen = adminNotif.hasAttribute('data-open');
+        closeProfileMenu(); closeAdminNotifMenu();
+        if (!wasOpen) { adminNotif.setAttribute('data-open', ''); adminNotifTrigger.setAttribute('aria-expanded', 'true'); refreshOwnerActivityNotifications(); }
     });
-
+    document.addEventListener('click', event => { if (!adminNotif?.contains(event.target)) closeAdminNotifMenu(); });
+    document.addEventListener('keydown', event => { if (event.key === 'Escape') closeAdminNotifMenu(); });
+    async function recordOwnerActivity(title, targetSection, detail = '') {
+        if (!window.sb || !window.inigosyncProfile?.id) return;
+        const { error } = await window.sb.from('owner_activity').insert({
+            owner_id: window.inigosyncProfile.id, title, target_section: targetSection,
+            detail: detail || ({staff: 'A staff account was updated in Staff Management.', settings: 'The owner updated their account settings.'}[targetSection] || title),
+        });
+        if (error) console.error('[admin] activity save failed', error);
+        else refreshOwnerActivityNotifications();
+    }
+    window.InigoOwnerUI.recordActivity = recordOwnerActivity;
+    async function refreshOwnerActivityNotifications() {
+        if (!window.sb || !window.inigosyncProfile?.id) return;
+        const ownerId = window.inigosyncProfile.id;
+        const [latest, unread] = await Promise.all([
+            window.sb.from('owner_activity').select('id,title,created_at,seen_at').eq('owner_id', ownerId).order('created_at', { ascending: false }).limit(8),
+            window.sb.from('owner_activity').select('id', { count: 'exact', head: true }).eq('owner_id', ownerId).is('seen_at', null),
+        ]);
+        if (latest.error) { if (adminNotifList) adminNotifList.textContent = 'Notifications could not be loaded.'; return; }
+        if (adminNotifList) adminNotifList.innerHTML = latest.data?.length ? latest.data.map(item => `<button type="button" class="admin-notif-item${item.seen_at ? ' is-seen' : ''}" data-owner-activity-id="${window.escapeHtml(item.id)}"><span class="admin-notif-dot pending" aria-hidden="true"></span><span class="admin-notif-item-body"><strong>${window.escapeHtml(item.title)}</strong><span>${window.escapeHtml(formatActivityTime(item.created_at))} · ${item.seen_at ? 'Seen' : 'New'}</span></span></button>`).join('') : '<p class="admin-notif-empty">No owner activity yet.</p>';
+        if (!unread.error) {
+            if (adminNotifDot) adminNotifDot.hidden = !unread.count;
+            if (adminNotifMarkAll) adminNotifMarkAll.disabled = !unread.count;
+        }
+        if (document.querySelector('[data-admin-panel="notifications"].is-active')) loadNotificationsPage();
+    }
+    async function loadNotificationsPage() {
+        if (!window.sb || !window.inigosyncProfile?.id || !notificationList) return;
+        const generation = ++notificationGeneration;
+        const { data, count, error } = await window.sb.from('owner_activity').select('id,title,created_at,seen_at', { count: 'exact' })
+            .eq('owner_id', window.inigosyncProfile.id).order('created_at', { ascending: false }).order('id', { ascending: false })
+            .range(notificationPage * NOTIFICATION_PAGE_SIZE, (notificationPage + 1) * NOTIFICATION_PAGE_SIZE - 1);
+        if (generation !== notificationGeneration) return;
+        if (error) { notificationList.textContent = 'Could not load notifications. Try opening this page again.'; return; }
+        notificationList.innerHTML = data?.length ? data.map(item => `<button type="button" class="owner-notification-row${item.seen_at ? ' is-seen' : ''}${item.id === selectedNotificationId ? ' is-selected' : ''}" data-owner-activity-id="${window.escapeHtml(item.id)}"><strong>${window.escapeHtml(item.title)}</strong><time datetime="${window.escapeHtml(item.created_at)}">${window.escapeHtml(formatActivityTime(item.created_at))} · ${item.seen_at ? 'Read' : 'Unread'}</time></button>`).join('') : '<p class="admin-form-hint">No notifications yet.</p>';
+        document.querySelector('[data-owner-notification-page]').textContent = `Page ${notificationPage + 1} of ${Math.max(1, Math.ceil(count / NOTIFICATION_PAGE_SIZE))}`;
+        document.querySelector('[data-owner-notification-prev]').disabled = notificationPage === 0;
+        document.querySelector('[data-owner-notification-next]').disabled = (notificationPage + 1) * NOTIFICATION_PAGE_SIZE >= count;
+    }
+    async function openNotification(id) {
+        selectedNotificationId = id;
+        setActivePanel('notifications');
+        notificationDetail.textContent = 'Loading notification…';
+        const { data, error } = await window.sb.from('owner_activity').select('id,title,detail,target_section,created_at,seen_at').eq('id', id).eq('owner_id', window.inigosyncProfile.id).single();
+        if (selectedNotificationId !== id) return;
+        if (error) { notificationDetail.textContent = 'This notification could not be loaded.'; return; }
+        const seenResult = data.seen_at ? { error: null } : await window.sb.from('owner_activity').update({ seen_at: new Date().toISOString() }).eq('id', id).eq('owner_id', window.inigosyncProfile.id);
+        notificationDetail.innerHTML = `<h3>${window.escapeHtml(data.title)}</h3><time datetime="${window.escapeHtml(data.created_at)}">${window.escapeHtml(formatActivityTime(data.created_at))} · ${seenResult.error ? 'Unread' : 'Read'}</time><p>${window.escapeHtml(data.detail || 'This earlier notification contains only the activity title and date.')}</p><button type="button" class="admin-btn-secondary" data-notification-go>Open ${window.escapeHtml(panelMeta[data.target_section]?.title || 'Overview')}</button>`;
+        notificationDetail.querySelector('[data-notification-go]').onclick = () => setActivePanel(panelMeta[data.target_section] ? data.target_section : 'overview');
+        notificationDetail.focus();
+        refreshOwnerActivityNotifications();
+    }
+    [adminNotifList, notificationList].forEach(root => root?.addEventListener('click', event => {
+        const item = event.target.closest('[data-owner-activity-id]');
+        if (item) openNotification(item.dataset.ownerActivityId).catch(() => window.InigoToast?.show('Could not open notification.', true));
+    }));
     adminNotifMarkAll?.addEventListener('click', async () => {
         if (!window.sb || !window.inigosyncProfile?.id) return;
-        adminNotifMarkAll.disabled = true;
-        const { error } = await window.sb.from('owner_activity')
-            .update({ seen_at: new Date().toISOString() })
-            .eq('owner_id', window.inigosyncProfile.id)
-            .is('seen_at', null);
-        if (error) window.InigoToast?.show('Could not mark notifications as seen.', true);
+        const { error } = await window.sb.from('owner_activity').update({ seen_at: new Date().toISOString() }).eq('owner_id', window.inigosyncProfile.id).is('seen_at', null);
+        if (error) window.InigoToast?.show('Could not mark notifications as read.', true);
         refreshOwnerActivityNotifications();
     });
-
-    refreshOwnerActivityNotifications();
+    document.querySelector('[data-owner-notification-prev]')?.addEventListener('click', () => { if (notificationPage > 0) { notificationPage--; loadNotificationsPage(); } });
+    document.querySelector('[data-owner-notification-next]')?.addEventListener('click', () => { notificationPage++; loadNotificationsPage(); });
+    document.addEventListener('inigosync:owner-panel', event => { if (event.detail === 'notifications') loadNotificationsPage(); });
     document.addEventListener('inigosync:profile-ready', refreshOwnerActivityNotifications);
-    window.setInterval(refreshOwnerActivityNotifications, ADMIN_NOTIF_REFRESH_MS);
+    window.setInterval(() => { if (!document.hidden) refreshOwnerActivityNotifications(); }, 15000);
+    refreshOwnerActivityNotifications();
 
     // ------------------------------------------------------------------
     // Account Settings — password visibility toggles
@@ -3516,21 +1908,31 @@ document.addEventListener('DOMContentLoaded', () => {
     document.querySelector('[data-admin-profile-edit]')?.addEventListener('click', () => {
         paintOwnerDetails(window.inigosyncProfile || {});
         const modal = document.querySelector('[data-admin-settings-profile-modal]');
-        if (modal) modal.hidden = false;
+        window.InigoOwnerUI.open(modal);
         refreshLinkedGoogleEmails();
     });
     document.querySelector('[data-admin-avatar-edit]')?.addEventListener('click', () => {
         stagedAvatarUrl = window.inigosyncProfile?.avatar_url || null;
         renderAdminProfile(window.inigosyncProfile || {});
         if (adminAvatarRemoveBtn) adminAvatarRemoveBtn.hidden = !stagedAvatarUrl;
-        if (adminAvatarModal) adminAvatarModal.hidden = false;
+        window.InigoOwnerUI.open(adminAvatarModal);
     });
     document.querySelectorAll('[data-admin-settings-cancel="profile"], [data-admin-avatar-cancel]').forEach((button) => {
         button.addEventListener('click', () => {
             const modal = button.closest('.admin-modal-overlay');
-            if (modal) modal.hidden = true;
+            window.InigoOwnerUI.close(modal);
             if (button.hasAttribute('data-admin-avatar-cancel')) renderAdminProfile(window.inigosyncProfile || {});
         });
+    });
+
+    const accountModals = [adminAvatarModal, document.querySelector('[data-admin-settings-profile-modal]')].filter(Boolean);
+    accountModals.forEach(modal => {
+        let backdropStart = false;
+        modal.addEventListener('pointerdown', event => { backdropStart = event.target === modal; });
+        modal.addEventListener('click', event => { if (backdropStart && event.target === modal) modal.querySelector('[data-admin-avatar-cancel], [data-admin-settings-cancel="profile"]')?.click(); backdropStart = false; });
+    });
+    document.addEventListener('keydown', event => {
+        if (event.key === 'Escape') accountModals.find(modal => !modal.hidden)?.querySelector('[data-admin-avatar-cancel], [data-admin-settings-cancel="profile"]')?.click();
     });
 
     async function saveAdminAvatarUrl(avatarUrl) {
@@ -3577,7 +1979,7 @@ document.addEventListener('DOMContentLoaded', () => {
             try {
                 const dataUrl = await window.InigoImageTools.downscaleImageToDataUrl(file, { size: AVATAR_OUTPUT_SIZE, quality: AVATAR_JPEG_QUALITY });
                 stagedAvatarUrl = dataUrl;
-                const preview = document.querySelector('.admin-avatar-upload-preview');
+                const preview = adminAvatarModal?.querySelector('.admin-avatar-upload-preview');
                 if (preview) preview.innerHTML = `<img class="admin-avatar-img" src="${window.escapeHtml(dataUrl)}" alt="Profile photo preview">`;
                 if (adminAvatarRemoveBtn) adminAvatarRemoveBtn.hidden = false;
             } catch (err) {
@@ -3592,7 +1994,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     adminAvatarRemoveBtn?.addEventListener('click', () => {
         stagedAvatarUrl = null;
-        const preview = document.querySelector('.admin-avatar-upload-preview');
+        const preview = adminAvatarModal?.querySelector('.admin-avatar-upload-preview');
         if (preview) preview.textContent = (window.inigosyncProfile?.full_name || 'Owner').split(/\s+/).map((part) => part[0]).slice(0, 2).join('').toUpperCase();
         adminAvatarRemoveBtn.hidden = true;
     });
@@ -3601,7 +2003,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const ok = await saveAdminAvatarUrl(stagedAvatarUrl);
         adminAvatarSaveBtn.disabled = false;
         if (ok) {
-            if (adminAvatarModal) adminAvatarModal.hidden = true;
+            window.InigoOwnerUI.close(adminAvatarModal);
             window.InigoToast?.show(stagedAvatarUrl ? 'Profile photo updated.' : 'Profile photo removed.');
         }
     });
@@ -3804,7 +2206,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 paintOwnerDetails(window.inigosyncProfile);
                 recordOwnerActivity('Owner profile updated', 'settings');
                 window.InigoToast?.show('Profile updated.');
-                document.querySelector('[data-admin-settings-profile-modal]')?.setAttribute('hidden', '');
+                window.InigoOwnerUI.close(document.querySelector('[data-admin-settings-profile-modal]'));
             } catch (err) {
                 window.InigoToast?.show(err.message || 'Could not save your changes.', true);
             } finally {
@@ -4045,14 +2447,17 @@ document.addEventListener('DOMContentLoaded', () => {
     const reviewPager = document.querySelector('[data-admin-review-pagination]');
     let reviewRatingFilter = 'all';
     let reviewPage = 0;
+    let reviewRequest = 0;
     const REVIEW_PAGE_SIZE = 10;
     async function loadOwnerReviews() {
         if (!reviewList || !window.sb) return;
+        const request = ++reviewRequest;
         reviewList.setAttribute('aria-busy', 'true');
         let query = window.sb.from('public_booking_reviews').select('id,display_name,rating,comment,created_at', { count: 'exact' })
             .order('created_at', { ascending: false }).range(reviewPage * REVIEW_PAGE_SIZE, (reviewPage + 1) * REVIEW_PAGE_SIZE - 1);
         if (reviewRatingFilter !== 'all') query = query.eq('rating', Number(reviewRatingFilter));
-        const { data, count, error } = await query;
+        const [{ data, count, error }, summaryResult] = await Promise.all([query, window.sb.rpc('owner_review_summary')]);
+        if (request !== reviewRequest) return;
         reviewList.setAttribute('aria-busy', 'false');
         if (error) {
             reviewList.innerHTML = '<p class="admin-form-hint">Reviews could not be loaded. Check your owner access and try again.</p>';
@@ -4061,7 +2466,16 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
         const total = count || 0;
-        if (reviewSummary) reviewSummary.textContent = `${total} customer review${total === 1 ? '' : 's'}${reviewRatingFilter === 'all' ? '' : ` rated ${reviewRatingFilter} star${reviewRatingFilter === '1' ? '' : 's'}`}`;
+        if (reviewSummary) {
+            const summary = Array.isArray(summaryResult.data) ? summaryResult.data[0] : summaryResult.data;
+            if (summaryResult.error || !summary) reviewSummary.textContent = 'Overall rating unavailable';
+            else {
+                const count = Number(summary.total_count || 0);
+                reviewSummary.classList.add('owner-review-summary');
+                const bins = [['five_star', 5], ['four_star', 4], ['three_star', 3], ['two_star', 2], ['one_star', 1]];
+                reviewSummary.innerHTML = `<strong class="owner-review-score">${count ? `${Number(summary.average_rating).toFixed(1)} / 5.0` : 'No reviews yet'}</strong><span>${count} customer review${count === 1 ? '' : 's'}</span><div class="owner-review-counts">${bins.map(([key, stars]) => `<span>${stars} ★ · ${Number(summary.star_counts?.[String(stars)] ?? summary[key] ?? 0)}</span>`).join('')}</div>`;
+            }
+        }
         reviewList.innerHTML = data?.length ? data.map((review) => `<article class="admin-review-item"><div class="admin-review-item-head"><strong>${window.escapeHtml(review.display_name || 'Customer')}</strong><span aria-label="${Number(review.rating)} out of 5 stars">${'★'.repeat(Number(review.rating))}${'☆'.repeat(5 - Number(review.rating))}</span></div><p>${window.escapeHtml(review.comment || 'No written comment.')}</p><time datetime="${window.escapeHtml(review.created_at)}">${window.escapeHtml(new Date(review.created_at).toLocaleDateString())}</time></article>`).join('') : '<p class="admin-form-hint">No reviews for this rating yet.</p>';
         const pages = Math.max(1, Math.ceil(total / REVIEW_PAGE_SIZE));
         if (reviewPager) reviewPager.hidden = total <= REVIEW_PAGE_SIZE;
@@ -4079,6 +2493,8 @@ document.addEventListener('DOMContentLoaded', () => {
     }));
     document.querySelector('[data-admin-review-prev]')?.addEventListener('click', () => { if (reviewPage > 0) { reviewPage -= 1; loadOwnerReviews(); } });
     document.querySelector('[data-admin-review-next]')?.addEventListener('click', () => { reviewPage += 1; loadOwnerReviews(); });
+    document.addEventListener('inigosync:owner-panel', event => { if (event.detail === 'feedback') loadOwnerReviews(); });
+    window.setInterval(() => { if (!document.hidden && document.querySelector('[data-admin-panel="feedback"].is-active')) loadOwnerReviews(); }, 15000);
     document.addEventListener('inigosync:profile-ready', loadOwnerReviews);
     if (window.inigosyncProfile) loadOwnerReviews();
 });

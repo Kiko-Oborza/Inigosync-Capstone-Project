@@ -1440,7 +1440,9 @@ document.addEventListener('DOMContentLoaded', () => {
         // instead of flashing outdated availability.
         if (mySeq !== slotGridRequestSeq) return;
         slotGridBookings = { ok: result.ok, rows: result.rows.filter((row) => row.source === 'online') };
-        slotGridWalkins = { ok: result.ok, rows: result.rows.filter((row) => row.source === 'walkin') };
+        // Maintenance shares the same occupancy snapshot and blocks selection
+        // exactly like either reservation channel.
+        slotGridWalkins = { ok: result.ok, rows: result.rows.filter((row) => row.source === 'walkin' || row.source === 'maintenance') };
         renderTimePickers();
     }
 
@@ -1566,7 +1568,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const live = await fetchDayOccupancy(item.court, item.date);
             if (!live.ok) { failure = 'Could not verify live availability. Your remaining list is still saved here.'; break; }
             const windowRange = { start: new Date(item.startIso), end: new Date(item.endIso) };
-            const conflict = live.rows.some((row) => ['pending', 'confirmed'].includes(String(row.status || '').toLowerCase())
+            const conflict = live.rows.some((row) => (row.source === 'maintenance' || ['pending', 'confirmed'].includes(String(row.status || '').toLowerCase()))
                 && courtUnitsOverlap(row.court_unit, item.unit)
                 && overviewWindowsOverlap(overviewBookingWindow(row), windowRange));
             if (conflict) { failure = `${item.court} at ${formatDate(item.date)} ${window.InigoBusinessHours.formatHourLabel(item.startHour)} is no longer available. The remaining list is still available to edit.`; break; }
@@ -1624,7 +1626,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const totalNote = totalAdjusted ? ' The saved total uses the current court rate; review My Bookings before paying.' : '';
         window.InigoToast?.show(hasOnlinePreference
             ? `${savedCount} booking${savedCount === 1 ? '' : 's'} saved. Start each online payment separately from My Bookings.${totalNote}`
-            : `${savedCount} booking${savedCount === 1 ? '' : 's'} saved — we’ll confirm them shortly.${totalNote}`);
+            : `${savedCount} booking${savedCount === 1 ? '' : 's'} saved — we’ll process them.${totalNote}`);
     }
 
     if (bookAddButton) {
@@ -1725,7 +1727,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 return;
             }
             slotGridBookings = { ok: true, rows: recheck.rows.filter((row) => row.source === 'online') };
-            slotGridWalkins = { ok: true, rows: recheck.rows.filter((row) => row.source === 'walkin') };
+            slotGridWalkins = { ok: true, rows: recheck.rows.filter((row) => row.source === 'walkin' || row.source === 'maintenance') };
             let conflict = false;
             if (slotGridBookings.ok && slotGridWalkins.ok) {
                 for (let h = bookingState.startHour; h <= effectiveEnd; h++) {
@@ -1916,7 +1918,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 return;
             }
 
-            window.InigoToast?.show('Booking request submitted — we\'ll confirm it shortly.');
+            window.InigoToast?.show('Booking saved. PayMongo payments are confirmed automatically after payment is received.');
             bookingState.startHour = null;
             bookingState.endHour = null;
             updateSummary();
@@ -2712,7 +2714,7 @@ document.addEventListener('DOMContentLoaded', () => {
         overviewDataOk = !occupancyRes.error;
         const occupancyRows = overviewDataOk ? (occupancyRes.data || []) : [];
         overviewBookings = occupancyRows.filter((row) => row.source === 'online');
-        overviewWalkins = occupancyRows.filter((row) => row.source === 'walkin');
+        overviewWalkins = occupancyRows.filter((row) => row.source === 'walkin' || row.source === 'maintenance');
 
         renderOverviewCourtList();
     }

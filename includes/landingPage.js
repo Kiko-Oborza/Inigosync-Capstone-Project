@@ -239,7 +239,9 @@ function applyCourtUnitRates(courts, rateRows) {
     (rateRows || []).forEach((row) => {
         const list = byCourt.get(row.court_id) || [];
         list.push({
+            id: row.id,
             label: row.label,
+            imageUrl: row.photo_url || null,
             rateDay: row.rate_day === null ? null : Number(row.rate_day),
             rateNight: row.rate_night === null ? null : Number(row.rate_night),
             rateUnit: row.rate_unit || '/hr',
@@ -250,6 +252,12 @@ function applyCourtUnitRates(courts, rateRows) {
     courts.forEach((court) => {
         const variants = court.variants?.length ? court.variants : [court];
         variants.forEach((variant) => { variant.unitRates = byCourt.get(variant.id) || []; });
+        const unitPhotos = variants.flatMap((variant) => variant.unitRates
+            .filter((unit) => unit.imageUrl)
+            .map((unit) => ({ label: unit.label, imageUrl: unit.imageUrl, id: unit.id })));
+        // Prefer the stable unit inventory photo association; legacy positional
+        // arrays remain a fallback for listings not yet edited in the portal.
+        if (unitPhotos.length) court.unitImages = unitPhotos;
         const rates = variants.flatMap((variant) => variant.unitRates.flatMap((unit) => [
             ...(typeof unit.rateDay === 'number' ? [{ value: unit.rateDay, unit: unit.rateUnit }] : []),
             ...(typeof unit.rateNight === 'number' ? [{ value: unit.rateNight, unit: unit.rateUnit }] : []),
@@ -364,7 +372,7 @@ function getCourts({ force = false } = {}) {
         .select('*, sport(slug, name)').eq('is_active', true).order('display_order'),
         rows => mergeCourtsBySport(rows.map(normalizeCourtFromDb)));
     const rates = requestContent('courtUnitRates', force, () => window.sb.from('court_unit_inventory')
-        .select('court_id,label,rate_day,rate_night,rate_unit')
+        .select('id,court_id,label,photo_url,rate_day,rate_night,rate_unit')
         .eq('is_active', true).eq('inventory_verified', true), rows => rows)
         .catch((error) => {
             console.warn('[IñigoSync] Unit rates could not be loaded for the public court list; showing TBA until they can be refreshed.', error);

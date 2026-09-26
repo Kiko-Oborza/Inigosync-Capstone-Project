@@ -1112,7 +1112,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const occupancyRes = await fetchWalkinOccupancyForCourt(walkinState.court.name);
         if (mySeq !== walkinRequestSeq) return; // a newer refresh already owns the pickers
         walkinBookings = { ok: occupancyRes.ok, rows: occupancyRes.rows.filter((row) => row.source === 'online') };
-        walkinWalkins = { ok: occupancyRes.ok, rows: occupancyRes.rows.filter((row) => row.source === 'walkin') };
+        walkinWalkins = { ok: occupancyRes.ok, rows: occupancyRes.rows.filter((row) => row.source === 'walkin' || row.source === 'maintenance') };
         renderWalkinTimePickers();
     }
 
@@ -1373,7 +1373,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 return;
             }
             walkinBookings = { ok: true, rows: recheck.rows.filter((row) => row.source === 'online') };
-            walkinWalkins = { ok: true, rows: recheck.rows.filter((row) => row.source === 'walkin') };
+            walkinWalkins = { ok: true, rows: recheck.rows.filter((row) => row.source === 'walkin' || row.source === 'maintenance') };
             let conflict = false;
             if (walkinBookings.ok && walkinWalkins.ok) {
                 for (let h = walkinState.startHour; h <= walkinState.endHour; h++) {
@@ -1946,11 +1946,23 @@ document.addEventListener('DOMContentLoaded', () => {
         if (bookingMatch) return { cls: 'is-booked', title: scheduleTooltipFor(bookingMatch, 'Online') };
 
         const walkinMatch = walkins.find((w) => {
+            if (w.source === 'maintenance') return false;
             if (!sameCourtName(w.courts, row.court.name)) return false;
             if (!courtUnitsOverlap(w.court_unit, row.unitValue)) return false;
             return windowsOverlap(rowWindow(w), slot);
         });
         if (walkinMatch) return { cls: 'is-booked', title: scheduleTooltipFor(walkinMatch, 'Walk-in', walkinMatch.customer_name || 'Walk-in customer') };
+
+        const maintenanceMatch = walkins.find((m) => m.source === 'maintenance'
+            && sameCourtName(m.courts, row.court.name)
+            && courtUnitsOverlap(m.court_unit, row.unitValue)
+            && windowsOverlap(rowWindow(m), slot));
+        if (maintenanceMatch) {
+            const { start, end } = rowWindow(maintenanceMatch);
+            const startLabel = start.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+            const endLabel = end.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+            return { cls: 'is-booked', label: 'Maintenance', title: `${maintenanceMatch.note || 'Court maintenance'} · ${startLabel}–${endLabel}` };
+        }
 
         return { cls: 'is-open', title: '' };
     }
@@ -1983,7 +1995,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 const info = scheduleCellInfo(row, hour, dateBase, bookings, walkins);
                 if (info.cls === 'is-open') openCount += 1;
                 const titleAttr = info.title ? ` title="${window.escapeHtml(info.title)}"` : '';
-                const label = info.cls === 'is-booked' ? 'Booked' : (info.cls === 'is-past' ? '—' : 'Open');
+                const label = info.label || (info.cls === 'is-booked' ? 'Booked' : (info.cls === 'is-past' ? '—' : 'Open'));
                 return `<td class="staff-schedule-cell ${info.cls}"${titleAttr}>${label}</td>`;
             }).join('');
             return `<tr><td>${window.escapeHtml(row.rowLabel)}</td>${cells}<td class="staff-schedule-trailer">${openCount} open hour${openCount === 1 ? '' : 's'}</td></tr>`;
@@ -2035,7 +2047,7 @@ document.addEventListener('DOMContentLoaded', () => {
         scheduleDataOk = !occupancyRes.error;
         const rows = scheduleDataOk ? (occupancyRes.data || []) : [];
         const bookings = rows.filter((row) => row.source === 'online');
-        const walkins = rows.filter((row) => row.source === 'walkin');
+        const walkins = rows.filter((row) => row.source === 'walkin' || row.source === 'maintenance');
 
         scheduleNameMap = new Map();
 

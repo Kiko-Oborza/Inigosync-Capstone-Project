@@ -394,7 +394,7 @@
             courtsCache[key] = Promise.all([
                 safeSelect(() => runCourtsQuery(includeInactive)),
                 safeSelect(() => window.sb.from('court_unit_inventory')
-                    .select('id,court_id,label,pricing_tier,rate_day,rate_night,rate_unit,court_unit_resource_map(resource_id)')
+                    .select('id,court_id,label,photo_url,pricing_tier,rate_day,rate_night,rate_unit,court_unit_resource_map(resource_id)')
                     .eq('is_active', true).eq('inventory_verified', true)),
             ]).then(([rows, unitRows]) => {
                 if (!rows) return fallbackCourts();
@@ -405,6 +405,7 @@
                     list.push({
                         id: unit.id,
                         label: unit.label,
+                        imageUrl: unit.photo_url || null,
                         pricingTier: unit.pricing_tier || null,
                         rateDay: unit.rate_day === null || unit.rate_day === undefined ? null : Number(unit.rate_day),
                         rateNight: unit.rate_night === null || unit.rate_night === undefined ? null : Number(unit.rate_night),

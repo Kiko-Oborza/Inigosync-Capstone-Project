@@ -24,6 +24,9 @@
 <link href="https://fonts.googleapis.com/css2?family=Sora:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="../Style/typography.css">
 <link rel="stylesheet" href="../Style/owner_dashboard.css">
+<link rel="stylesheet" href="../Style/owner-improvements.css">
+<link rel="stylesheet" href="../Style/owner-courts.css">
+<link rel="stylesheet" href="../Style/owner-media.css">
 <link rel="stylesheet" href="../Style/Loading.css">
 <script src="../includes/loadingOverlay.js"></script>
 
@@ -93,6 +96,7 @@
 
             <div class="admin-nav-divider"></div>
 
+            <li><button type="button" class="admin-nav-link" data-admin-nav="notifications"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M5 17h14l-2-3V9a5 5 0 0 0-10 0v5l-2 3Zm5 3h4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>Notifications</button></li>
             <li>
                 <button type="button" class="admin-nav-link" data-admin-nav="settings">
                     <svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="3.2" stroke="currentColor" stroke-width="1.8"/><path d="M19.4 13.5a7.6 7.6 0 0 0 0-3l2-1.4-2-3.4-2.3.8a7.6 7.6 0 0 0-2.6-1.5L14 2.5h-4l-.5 2.5a7.6 7.6 0 0 0-2.6 1.5l-2.3-.8-2 3.4 2 1.4a7.6 7.6 0 0 0 0 3l-2 1.4 2 3.4 2.3-.8a7.6 7.6 0 0 0 2.6 1.5l.5 2.5h4l.5-2.5a7.6 7.6 0 0 0 2.6-1.5l2.3.8 2-3.4z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>
@@ -345,7 +349,7 @@
             <section class="admin-panel" data-admin-panel="staff">
                 <div class="admin-panel-head">
                     <div>
-                        <h2>Staff Management</h2>
+
                         <!-- Revision A2 (implementation_plan.md, decision B4)
                              — "…and configure payment settings" dropped now
                              that the Payment Configuration card below is
@@ -444,43 +448,30 @@
                  COURT LISTINGS PANEL
                  ============================================================ -->
             <section class="admin-panel" data-admin-panel="courts">
-                <div class="admin-court-toolbar">
-                    <label class="admin-search-wrap admin-court-search">
-                        <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="11" cy="11" r="7" stroke="currentColor" stroke-width="1.8"/><path d="M21 21l-4.3-4.3" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
-                        <input type="search" class="admin-search" placeholder="Search sports or courts…" aria-label="Search sports or courts" data-admin-court-search>
-                    </label>
-                    <div class="admin-court-toolbar-bottom">
-                        <div class="admin-filter-row">
-                            <button type="button" class="admin-chip is-active" data-admin-chip data-admin-court-filter="all">All</button>
-                            <button type="button" class="admin-chip" data-admin-chip data-admin-court-filter="active">Active</button>
-                            <button type="button" class="admin-chip" data-admin-chip data-admin-court-filter="inactive">Archived</button>
-                        </div>
-                        <button type="button" class="admin-btn-primary" data-admin-toggle-court-form>+ Add Sport</button>
+                <div class="ioc-toolbar">
+                    <div class="ioc-toolbar-tabs" role="group" aria-label="Filter sports">
+                        <button type="button" class="ioc-tab is-active" data-ioc-filter="all" aria-pressed="true">All</button>
+                        <button type="button" class="ioc-tab" data-ioc-filter="active" aria-pressed="false">Active</button>
+                        <button type="button" class="ioc-tab" data-ioc-filter="archived" aria-pressed="false">Archived</button>
+                    </div>
+                    <div class="ioc-toolbar-actions">
+                        <label class="ioc-search">
+                            <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="11" cy="11" r="7" stroke="currentColor" stroke-width="1.8"/><path d="m16 16 5 5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+                            <input type="search" aria-label="Search sports" placeholder="Search sports…" data-ioc-search>
+                        </label>
+                        <button type="button" class="ioc-button ioc-button-primary" data-ioc-add>+ Add Sport</button>
                     </div>
                 </div>
 
-                <details class="admin-card admin-pricing-rules">
-                    <summary>Day and night pricing rule</summary>
-                    <p class="admin-card-sub">This cutoff applies to court units that have different day and night rates.</p>
-                    <form class="admin-resource-cutoff" data-admin-rate-cutoff-form>
-                        <label class="admin-form-group">
-                            <span class="admin-form-label">Night rates start at</span>
-                            <input class="admin-input" type="time" data-admin-rate-cutoff aria-describedby="admin-rate-cutoff-help">
-                        </label>
-                        <button class="admin-btn-primary" type="submit" data-admin-rate-cutoff-save>Save cutoff</button>
-                        <span class="admin-resource-rate-status" data-admin-rate-cutoff-status role="status" aria-live="polite">Loading cutoff…</span>
-                        <p class="admin-form-hint" id="admin-rate-cutoff-help">Leave blank when all day and night prices are the same. Local time is Asia/Manila; this cutoff is used to calculate mixed day/night bookings.</p>
-                    </form>
-                </details>
+                <section class="ioc-cutoff" aria-labelledby="iocCutoffTitle">
+                    <div>
+                        <h2 id="iocCutoffTitle">Day and night pricing</h2>
+                        <p>Night rate starts <strong data-ioc-cutoff-display>Loading…</strong> <span>(Asia/Manila)</span></p>
+                    </div>
+                    <button type="button" class="ioc-button ioc-button-secondary" data-ioc-cutoff-edit>Edit cutoff</button>
+                </section>
 
-                <div class="admin-court-grid" data-admin-court-grid>
-                    <!-- Rendered by includes/owner_dashboard.js from the real
-                         `court`/`sport` tables (window.InigoCourtsData) — see
-                         docs/QA_AUDIT_REPORT.md's Court Listings STUB finding
-                         and P0#8 ("three contradictory court lists"). No
-                         hardcoded court cards live here anymore. -->
-                    <p class="admin-court-loading-note" style="color: var(--color-ink-faint); padding: 8px 4px;">Loading courts…</p>
-                </div>
+                <div class="ioc-list" data-ioc-list aria-live="polite"><p class="ioc-empty">Loading sports…</p></div>
             </section>
 
             <!-- ============================================================
@@ -488,20 +479,15 @@
                  ============================================================ -->
             <section class="admin-panel" data-admin-panel="media">
                 <div class="admin-panel-head">
-                    <button type="button" class="admin-btn-primary" data-admin-slide-add>+ Add slide</button>
+                    <div class="owner-media-heading">
+                        <div><h2>Media Manager</h2><p class="admin-card-sub">Manage the photos and content shown in the featured slideshow.</p></div>
+                        <button type="button" class="admin-btn-primary" data-admin-slide-add>+ Add slide</button>
+                    </div>
                 </div>
 
-                <!-- Revision A1 (implementation_plan.md, decision A5) — the
-                     slideshow is now real, against `public.event`: every
-                     row (published or not) is listed, ordered by
-                     display_order; photo/title/caption/tag/publish/order/
-                     remove all persist. Uploads go to the new public
-                     Storage bucket `media`
-                     (database/schema/015_media_bucket.sql) via
-                     includes/owner_dashboard.js's uploadToMedia(). The old
-                     static, `disabled`-everything card (and the separate
-                     "Court photos" card, which duplicated Court Listings'
-                     own Image field for no reason) are both gone. -->
+                <!-- Slides are loaded from public.event by owner-media.js.
+                     The shared editor stages changes until Save, and the
+                     cards support accessible drag and keyboard reordering. -->
                 <div class="admin-card">
                     <div class="admin-card-head">
                         <div>
@@ -541,45 +527,32 @@
             <!-- ============================================================
                  ACCOUNT SETTINGS PANEL
                  ============================================================ -->
+            <section class="admin-panel" data-admin-panel="notifications">
+                <div class="owner-notifications-layout">
+                    <div><div class="owner-notification-list" data-owner-notification-list aria-live="polite"></div>
+                        <nav class="owner-notification-pages" aria-label="Notification pages"><button type="button" class="admin-btn-ghost" data-owner-notification-prev>Previous</button><span data-owner-notification-page></span><button type="button" class="admin-btn-ghost" data-owner-notification-next>Next</button></nav>
+                    </div>
+                    <article class="admin-card owner-notification-detail" data-owner-notification-detail tabindex="-1"><p>Select a notification to view its details.</p></article>
+                </div>
+            </section>
             <section class="admin-panel" data-admin-panel="settings">
-                <div class="admin-panel-head">
-                    <div>
-                        <p>Update your personal details and manage your owner password.</p>
-                    </div>
-                </div>
-
-                <!-- Profile Photo — Revision A1 (decision A9). Same
-                     upload/downscale/store pipeline as the customer
-                     dashboard's own Profile Photo card
-                     (Pages/user_dashboard.html), via the shared
-                     includes/imageTools.js — a 256×256 center-cropped JPEG
-                     data URL written straight to profiles.avatar_url (no
-                     Storage bucket needed for avatars). renderAdminProfile()
-                     paints this SAME .admin-avatar element as the topbar and
-                     the card above. -->
-                <div class="admin-card">
-                    <div class="admin-card-head">
+                <div class="admin-card owner-account-card">
+                    <section class="owner-photo-section" aria-label="Profile photo">
                         <h3>Profile Photo</h3>
-                        <button type="button" class="admin-btn-secondary" data-admin-avatar-edit>Edit</button>
-                    </div>
-                    <div class="admin-avatar-upload-row">
                         <div class="admin-avatar admin-avatar-upload-preview">RD</div>
-                    </div>
-                </div>
-
-                <div class="admin-card">
-                    <div class="admin-card-head">
-                        <h3>Personal Information</h3>
-                        <button type="button" class="admin-btn-secondary" data-admin-profile-edit>Edit</button>
-                    </div>
-                    <dl class="admin-settings-readonly">
-                        <div><dt>Full name</dt><dd data-admin-profile-full-name>—</dd></div>
-                        <div><dt>Email address</dt><dd data-admin-profile-email>—</dd></div>
-                        <div><dt>Mobile number</dt><dd data-admin-profile-mobile>—</dd></div>
-                        <div><dt>Address</dt><dd data-admin-profile-address>—</dd></div>
-                        <div><dt>Date of birth</dt><dd data-admin-profile-birthdate>—</dd></div>
-                        <div><dt>Gender</dt><dd data-admin-profile-gender>—</dd></div>
-                    </dl>
+                        <button type="button" class="admin-btn-primary" data-admin-avatar-edit>Edit</button>
+                    </section>
+                    <section class="owner-personal-section" aria-label="Personal information">
+                        <div class="admin-card-head"><h3>Personal Information</h3><button type="button" class="admin-btn-secondary" data-admin-profile-edit>Edit</button></div>
+                        <dl class="admin-settings-readonly">
+                            <div><dt>Full name</dt><dd data-admin-profile-full-name>—</dd></div>
+                            <div><dt>Email address</dt><dd data-admin-profile-email>—</dd></div>
+                            <div><dt>Mobile number</dt><dd data-admin-profile-mobile>—</dd></div>
+                            <div><dt>Address</dt><dd data-admin-profile-address>—</dd></div>
+                            <div><dt>Date of birth</dt><dd data-admin-profile-birthdate>—</dd></div>
+                            <div><dt>Gender</dt><dd data-admin-profile-gender>—</dd></div>
+                        </dl>
+                    </section>
                 </div>
 
                 <!-- Change Password — Revision A1 (decision A9): a 2-step
@@ -762,9 +735,8 @@
         <div class="admin-form-group">
             <span class="admin-form-label">Position</span>
             <select class="admin-select" data-admin-staff-role>
-                <option>Front Desk / Secretary</option>
+                <option>Secretary</option>
                 <option>Court Attendant</option>
-                <option>Weekend Relief Staff</option>
             </select>
         </div>
 
@@ -781,7 +753,8 @@
         <div class="admin-form-row">
             <div class="admin-form-group">
                 <span class="admin-form-label">Birthdate</span>
-                <input type="date" class="admin-input" data-admin-staff-birthdate>
+                <input type="date" class="admin-input" data-admin-staff-birthdate required aria-label="Birthdate">
+                <label class="admin-form-label">Age<input class="admin-input" data-admin-staff-age readonly aria-label="Age" placeholder="Calculated from birthdate"></label>
             </div>
             <div class="admin-form-group">
                 <span class="admin-form-label">Gender</span>
@@ -843,7 +816,7 @@
             </div>
             <div class="admin-form-group">
                 <span class="admin-form-label">Position</span>
-                <input type="text" class="admin-input" data-admin-staff-edit-position>
+                <select class="admin-select" data-admin-staff-edit-position><option>Secretary</option><option>Court Attendant</option></select>
             </div>
         </div>
         <div class="admin-form-group">
@@ -857,7 +830,8 @@
         <div class="admin-form-row">
             <div class="admin-form-group">
                 <span class="admin-form-label">Birthdate</span>
-                <input type="date" class="admin-input" data-admin-staff-edit-birthdate>
+                <input type="date" class="admin-input" data-admin-staff-edit-birthdate aria-label="Birthdate">
+                <label class="admin-form-label">Age<input class="admin-input" data-admin-staff-edit-age readonly aria-label="Age" placeholder="Not provided"></label>
             </div>
             <div class="admin-form-group">
                 <span class="admin-form-label">Gender</span>
@@ -887,107 +861,48 @@
     </div>
 </div>
 
-<!-- ================================================================
-     COURT ADD/EDIT MODAL — Revision A1 (decision A6). Sits outside
-     .admin-shell (same reasoning as the customer dashboard's Feedback/
-     Mobile-OTP dialogs in Pages/user_dashboard.html) so its position:fixed
-     overlay is never affected by the sidebar's own transform on mobile.
-     data-admin-court-form is kept on the dialog itself (rather than a
-     dropped inline .admin-add-panel) so includes/owner_dashboard.js's
-     existing "read the form fields, remember editingId on this element"
-     code keeps working unchanged — only HOW this shows/hides changed. -->
-<div class="admin-modal-overlay" data-admin-court-modal hidden>
-    <div class="admin-modal" role="dialog" aria-modal="true" aria-labelledby="adminCourtModalTitle" tabindex="-1" data-admin-court-form data-admin-court-dialog>
-        <button type="button" class="admin-modal-close" data-admin-court-modal-close aria-label="Close">
-            <svg viewBox="0 0 24 24" fill="none"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
-        </button>
-
-        <h3 id="adminCourtModalTitle" data-admin-court-modal-title>New Court</h3>
-
-        <div class="admin-form-row">
-            <div class="admin-form-group">
-                <span class="admin-form-label">Sport name</span>
-                <input type="text" class="admin-input" placeholder="e.g. Badminton — Court 3" data-admin-court-name>
-            </div>
-            <div class="admin-form-group">
-                <span class="admin-form-label">Sport type</span>
-                <!-- Options rendered by includes/owner_dashboard.js
-                     from window.InigoCourtsData.getSports() (the
-                     real `sport` table, all 8 rows) — no
-                     hardcoded/incomplete sport list here anymore. -->
-                <select class="admin-select" data-admin-court-sport>
-                    <option value="">Loading sports…</option>
-                </select>
-            </div>
-        </div>
-        <div class="admin-form-row">
-            <div class="admin-form-group">
-                <span class="admin-form-label">Number of units</span>
-                <input type="number" class="admin-input" placeholder="1" min="1" max="50" step="1" value="1" data-admin-court-quantity aria-describedby="admin-court-quantity-help">
-                <span class="admin-form-hint" id="admin-court-quantity-help">Choose how many courts, lanes, or tables to create for this sport.</span>
-            </div>
-            <div class="admin-form-group">
-                <span class="admin-form-label">Unit</span>
-                <select class="admin-select" data-admin-court-unit>
-                    <option value="courts">Courts</option>
-                    <option value="lanes">Lanes</option>
-                    <option value="tables">Tables</option>
-                    <option value="court">Court (singular)</option>
-                </select>
-            </div>
-        </div>
-        <div class="admin-form-group">
-            <span class="admin-form-label">Description</span>
-            <input type="text" class="admin-input" placeholder="e.g. Full court · Indoor · Scoreboard" data-admin-court-description>
-        </div>
-
-        <section class="admin-unit-manager" data-admin-unit-manager hidden aria-labelledby="adminCourtUnitsTitle">
-            <div class="admin-unit-manager-head">
-                <div>
-                    <h4 id="adminCourtUnitsTitle">Individual courts and rates</h4>
-                    <p class="admin-form-hint">Set each unit’s rate and availability. Choose another court only when a booking there should block this space.</p>
+<!-- Sport editor: fields and local file selections stay in a client draft until Save Changes. -->
+<div class="ioc-overlay" data-ioc-editor-overlay hidden>
+    <section class="ioc-dialog" role="dialog" aria-modal="true" aria-labelledby="iocEditorTitle" tabindex="-1" data-ioc-editor>
+        <button type="button" class="ioc-close" data-ioc-close aria-label="Close editor">×</button>
+        <header class="ioc-dialog-head"><span class="ioc-eyebrow">Court listing</span><h2 id="iocEditorTitle" data-ioc-title>Add Sport</h2><p>Update the sport, its units, rates, photos, and availability together.</p></header>
+        <div class="ioc-editor-scroll">
+            <section class="ioc-editor-section" aria-labelledby="iocListingTitle">
+                <div class="ioc-section-title"><div><h3 id="iocListingTitle">Sport details</h3><p>Enter the name customers should see.</p></div></div>
+                <label class="ioc-field"><span>Sport name</span><input class="admin-input" type="text" maxlength="100" required placeholder="e.g. Badminton" data-ioc-name></label>
+                <label class="ioc-field"><span>Description</span><textarea class="admin-input" rows="2" maxlength="500" placeholder="A short description of this facility" data-ioc-description></textarea></label>
+                <div class="ioc-photo-feature">
+                    <div class="ioc-photo-preview" data-ioc-cover-preview><span>Cover photo preview</span></div>
+                    <div class="ioc-photo-controls"><strong>Landing page cover photo</strong><p>Use a clear landscape photo. The preview keeps the image’s proportions.</p><label class="ioc-button ioc-button-secondary" for="ioc-cover-file">Choose cover photo</label><input class="ioc-file-input" id="ioc-cover-file" type="file" accept="image/jpeg,image/png,image/webp" data-ioc-cover-file></div>
                 </div>
-            </div>
-            <form class="admin-unit-add" data-admin-unit-add>
-                <label class="admin-form-group">
-                    <span class="admin-form-label">Add one unit</span>
-                    <input class="admin-input" type="text" maxlength="80" required placeholder="Court 3, Lane 9, or Table 2" data-admin-unit-label>
-                </label>
-                <input type="hidden" data-admin-unit-court>
-                <button class="admin-btn-primary" type="submit">Add unit</button>
-            </form>
-            <div class="admin-unit-card-list" data-admin-resource-rows aria-live="polite">
-                <p class="admin-form-hint">Loading this sport’s units…</p>
-            </div>
-        </section>
-
-        <!-- Photos — Revision A2 (implementation_plan.md, decision B6).
-             Replaces the old single Image URL + Upload row: a Cover photo
-             slot plus one slot per unit once Quantity above is > 1, both
-             rendered by includes/owner_dashboard.js's
-             renderCourtPhotoSlots() and re-derived live whenever
-             Quantity/Unit change (deriveCourtPhotoUnits()). Each slot's
-             Upload opens includes/imageTools.js's openCropEditor() (a
-             fixed 16:10 frame, drag-to-pan, 1×–4× zoom) before the result
-             reaches uploadToMedia(). The URL field is a collapsed fallback
-             for pasting an already-hosted https:// cover photo instead of
-             uploading a file. -->
-        <div class="admin-form-group">
-            <span class="admin-form-label">Photos</span>
-            <div class="admin-photo-grid" data-admin-court-photo-grid></div>
-            <details class="admin-photo-url-fallback">
-                <summary>or paste an https:// URL for the cover photo</summary>
-                <input type="url" class="admin-input" placeholder="https://…" data-admin-court-image-url>
-            </details>
-            <input type="file" accept="image/jpeg,image/png,image/webp" class="admin-visually-hidden" data-admin-court-photo-file>
+            </section>
+            <section class="ioc-editor-section" aria-labelledby="iocUnitsTitle">
+                <div class="ioc-section-title"><div><h3 id="iocUnitsTitle">Bookable units</h3><p>Rates and photos belong to each court, lane, or table.</p></div><span class="ioc-count" data-ioc-unit-count>0 units</span></div>
+                <div class="ioc-unit-kind-row"><label class="ioc-field"><span>Unit type</span><select class="admin-select" data-ioc-unit-kind><option value="courts">Courts</option><option value="lanes">Lanes</option><option value="tables">Tables</option></select></label><div class="ioc-add-unit-group"><label class="ioc-field"><span>New unit label</span><input class="admin-input" maxlength="80" placeholder="Court 3" data-ioc-new-unit-label></label><button type="button" class="ioc-button ioc-button-secondary" data-ioc-add-unit>Add unit</button></div></div>
+                <div class="ioc-units" data-ioc-units></div>
+            </section>
+            <section class="ioc-editor-section" aria-labelledby="iocConnectionsTitle">
+                <div class="ioc-section-title"><div><h3 id="iocConnectionsTitle">Availability connections</h3><p>Choose shared physical spaces that should block together.</p></div></div>
+                <label class="ioc-field"><span>Search spaces</span><input class="admin-input" type="search" placeholder="Search by sport or court…" data-ioc-resource-search></label>
+                <div class="ioc-resource-groups" data-ioc-resources></div>
+            </section>
         </div>
+        <footer class="ioc-savebar" data-ioc-savebar>
+            <button type="button" class="ioc-savebar-reveal" data-ioc-reveal aria-label="Show save actions">↑</button>
+            <button type="button" class="ioc-button ioc-button-danger" data-ioc-archive hidden>Archive Sport</button>
+            <button type="button" class="ioc-button ioc-button-ghost" data-ioc-cancel>Cancel</button>
+            <button type="button" class="ioc-button ioc-button-primary" data-ioc-save>Save Changes</button>
+        </footer>
+    </section>
+</div>
 
-        <div class="admin-form-actions">
-            <button type="button" class="admin-btn-secondary is-danger" data-admin-court-archive hidden>Archive Sport</button>
-            <button type="button" class="admin-btn-ghost" data-admin-court-modal-close>Cancel</button>
-            <button type="button" class="admin-btn-save" data-admin-court-submit>Add Sport</button>
-        </div>
-    </div>
+<div class="ioc-overlay" data-ioc-cutoff-overlay hidden>
+    <section class="ioc-dialog ioc-small-dialog" role="dialog" aria-modal="true" aria-labelledby="iocCutoffModalTitle" tabindex="-1" data-ioc-cutoff-dialog>
+        <button type="button" class="ioc-close" data-ioc-cutoff-close aria-label="Close">×</button>
+        <header class="ioc-dialog-head"><span class="ioc-eyebrow">Pricing rule</span><h2 id="iocCutoffModalTitle">Edit night rate cutoff</h2><p>Leave blank when day and night rates are the same.</p></header>
+        <label class="ioc-field"><span>Night rate starts at <small>Asia/Manila</small></span><input class="admin-input" type="time" data-ioc-cutoff-input></label>
+        <div class="ioc-modal-actions"><button type="button" class="ioc-button ioc-button-ghost" data-ioc-cutoff-close>Cancel</button><button type="button" class="ioc-button ioc-button-primary" data-ioc-cutoff-save>Save cutoff</button></div>
+    </section>
 </div>
 
 <!-- Script for theme management -->
@@ -1028,11 +943,10 @@
 <script src="../includes/imageTools.js"></script>
 
 <div class="admin-modal-overlay" data-admin-slide-modal hidden>
-    <div class="admin-modal admin-slide-modal" role="dialog" aria-modal="true" aria-label="Edit slideshow slide" tabindex="-1" data-admin-slide-dialog>
+    <div class="admin-modal admin-slide-modal owner-media-modal" role="dialog" aria-modal="true" aria-labelledby="ownerMediaModalTitle" tabindex="-1" data-admin-slide-dialog>
         <button type="button" class="admin-modal-close" data-admin-slide-modal-close aria-label="Close slide editor">×</button>
-        <h3>Edit slide</h3>
+        <h3 id="ownerMediaModalTitle" data-admin-slide-modal-title>Edit slide</h3>
         <div data-admin-slide-editor></div>
-        <button type="button" class="admin-btn-ghost" data-admin-slide-modal-close>Close</button>
     </div>
 </div>
 
@@ -1080,7 +994,10 @@
 </div>
 
 <!-- Script for owner dashboard functionality -->
+<script src="../includes/owner-ui.js"></script>
 <script src="../includes/owner_dashboard.js"></script>
+<script src="../includes/owner-courts.js"></script>
+<script src="../includes/owner-media.js"></script>
 
 <!-- Chart configuration for the Booking Trends graph (Weekly / Monthly toggle) -->
 <script src="../event/chart.js"></script>

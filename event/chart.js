@@ -74,20 +74,11 @@ async function loadChartData() {
     const earliest = new Date(now.getFullYear(), now.getMonth() - 7, 1);
     const yearStart = new Date(now.getFullYear(), 0, 1);
     const from = earliest < yearStart ? earliest : yearStart;
-    const rows = [];
-    for (let offset = 0; ; offset += 1000) {
-        const { data, error } = await window.sb.from('booking')
-            .select('time_date')
-            .gte('time_date', from.toISOString())
-            .order('time_date', { ascending: true })
-            .range(offset, offset + 999);
-        if (error || !data) {
-            console.error('[admin-chart] failed to load bookings', error);
-            return;
-        }
-        rows.push(...data);
-        if (data.length < 1000) break;
-    }
+    // Online and walk-in reservations share reporting as well as availability.
+    const { data: rows, error } = await window.sb.rpc('admin_booking_overview', {
+        p_from_at: from.toISOString(), p_to_at: new Date(now.getFullYear() + 1, 0, 1).toISOString(),
+    });
+    if (error || !rows) { console.error('[admin-chart] failed to load reservations', error); return; }
     CHART_DATA = { week: aggregateWeek(rows), month: aggregateMonth(rows), year: aggregateYear(rows) };
 }
 
