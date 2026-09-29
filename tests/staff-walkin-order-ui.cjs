@@ -2,6 +2,7 @@
 // mock only; no production/test payment account, inserts, or network writes.
 const assert = require('node:assert/strict');
 const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
+const previewBaseUrl = process.env.INIGOSYNC_PREVIEW_URL || 'http://127.0.0.1:4178';
 
 const courts = [
     { id: 'listing-badminton', name: 'Badminton', sportName: 'Badminton', bookableUnits: [{ id: 'unit-b1', label: 'Court 1', rateDay: 100, rateUnit: '/hr' }] },
@@ -116,6 +117,7 @@ function fixture(config) {
         functions: { invoke: async (name, options) => {
             qa.calls.push({ kind: 'function', name, options });
             if (window.__qaRecord) await window.__qaRecord({ kind: 'function', name, options });
+            if (name === 'payment-health') return { data: { online_ready: config.onlineReady !== false }, error: null };
             if (name === 'validate-contact-phone') {
                 if (config.phoneValidationError) return { data: null, error: config.phoneValidationError };
                 const local = String(options.body.phone || '').replace(/[^0-9]/g, '');
@@ -124,7 +126,7 @@ function fixture(config) {
             }
             qa.checkoutAttempts += 1;
             if (config.failCheckoutOnce && qa.checkoutAttempts === 1) return { data: null, error: { message: 'Temporary checkout error' } };
-            return { data: { order_id: options.body.order_id, attempt_id: 'qa-attempt', checkout_url: 'https://checkout.paymongo.com/qa-walkin', session_id: 'qa-session' }, error: null };
+            return { data: { order_id: options.body.order_id || 'a25dc45b-40ba-4b5b-96d6-4487dbe7a526', attempt_id: 'qa-attempt', checkout_url: 'https://checkout.paymongo.com/qa-walkin', session_id: 'qa-session' }, error: null };
         } },
         auth: {
             getSession: async () => ({ data: { session: { user: { id: 'qa-staff', email: 'staff@example.test' } } } }),
@@ -154,7 +156,7 @@ async function openStaffPage(browser, { timezoneId, now, config = {}, query = ''
     await page.route('**/includes/authGuard.js', route => route.fulfill({ contentType: 'application/javascript', body: `window.inigosyncProfile={id:'qa-staff',role:'staff',status:'active',full_name:'QA Staff',email:'staff@example.test'};document.addEventListener('DOMContentLoaded',()=>{window.InigoLoading?.hide();document.documentElement.classList.remove('inigo-auth-pending');document.dispatchEvent(new CustomEvent('inigosync:profile-ready',{detail:window.inigosyncProfile}));});` }));
     await page.route('**/includes/appSettings.js', route => route.fulfill({ contentType: 'application/javascript', body: `window.InigoAppSettings={DEFAULT_SETTINGS:{downpaymentPct:50,cashEnabled:true,cardEnabled:true,gcashEnabled:true},getSettings:async()=>({downpaymentPct:50,cashEnabled:true,cardEnabled:true,gcashEnabled:true,nightRateStartsAt:'18:00'})};` }));
     await page.route('**/includes/courtsData.js', route => route.fulfill({ contentType: 'application/javascript', body: courtsFixture() }));
-    await page.goto(`http://127.0.0.1:4178/Pages/staff_dashboard.html${query}`, { waitUntil: 'domcontentloaded' });
+    await page.goto(`${previewBaseUrl}/Pages/staff_dashboard.html${query}`, { waitUntil: 'domcontentloaded' });
     return { context, page };
 }
 
@@ -215,10 +217,29 @@ async function openStaffPage(browser, { timezoneId, now, config = {}, query = ''
         await online.page.locator('[data-staff-walkin-next]').click();
         await online.page.locator('[data-staff-walkin-save]').click();
         await online.page.waitForURL('https://checkout.paymongo.com/qa-walkin');
-        assert.ok(onlineCalls.some(call => call.kind === 'rpc' && call.name === 'staff_create_walkin_order' && call.args.p_payment_method === 'paymongo'));
-        assert.ok(onlineCalls.some(call => call.kind === 'function' && call.name === 'staff-walkin-checkout' && call.options.body.order_id === 'a25dc45b-40ba-4b5b-96d6-4487dbe7a526'));
+        assert.ok(onlineCalls.some(call => call.kind === 'function' && call.name === 'payment-health'));
+        assert.equal(onlineCalls.some(call => call.kind === 'rpc' && call.name === 'staff_create_walkin_order'), false,
+            'browser must not create online holds directly');
+        assert.ok(onlineCalls.some(call => call.kind === 'function' && call.name === 'staff-walkin-checkout'
+            && call.options.body.guest_name === 'Online Guest' && call.options.body.items.length === 1));
         assert.equal(onlineCalls.some(call => call.kind === 'rpc' && call.name === 'get_walkin_order_acknowledgment'), false, 'online redirect must not fabricate a paid acknowledgment');
         await online.context.close();
+
+        const offline = await openStaffPage(browser, { timezoneId: 'Asia/Manila', now: '2026-09-27T00:00:00Z', config: { onlineReady: false } });
+        await offline.page.locator('[data-staff-nav="walkin"]').click();
+        await offline.page.locator('[data-staff-walkin-name]').fill('Offline Guest');
+        await offline.page.locator('[data-staff-walkin-next]').click();
+        await offline.page.locator('[data-staff-walkin-sport="listing-badminton"]').click();
+        await offline.page.locator('[data-staff-walkin-next]').click();
+        await offline.page.locator('[data-staff-walkin-hour="10"]').click();
+        await offline.page.locator('[data-staff-walkin-next]').click();
+        await offline.page.locator('[data-staff-walkin-online-option]').click();
+        await offline.page.locator('[data-staff-walkin-next]').click();
+        await offline.page.locator('[data-staff-walkin-save]').click();
+        await offline.page.waitForFunction(() => window.__toastMessages?.some(toast => toast.message.includes('No order was saved')));
+        assert.equal(await offline.page.evaluate(() => window.__walkinQa.calls.some(call => call.kind === 'rpc' && call.name === 'staff_create_walkin_order')), false,
+            'missing PayMongo setup must not create an online walk-in hold');
+        await offline.context.close();
 
         const ackItem = [{ sport: 'Badminton', court: 'Badminton', unit: 'Court 1', starts_at: '2026-09-27T01:00:00Z', ends_at: '2026-09-27T02:00:00Z', subtotal_minor: 10000 }];
         const pendingReturn = await openStaffPage(browser, {

@@ -1928,11 +1928,26 @@ document.addEventListener('DOMContentLoaded', async () => {
             window.InigoToast?.show('Cash payment is currently unavailable.', true);
             return;
         }
-        if (walkinState.payment === 'paymongo' && !window.confirm('You will be redirected to PayMongo to complete the online payment. Continue?')) return;
-
         button.disabled = true;
         const originalText = button.textContent;
         button.textContent = 'Checking availability…';
+        if (walkinState.payment === 'paymongo') {
+            let readiness;
+            try { readiness = await window.sb.functions.invoke('payment-health'); }
+            catch (error) { readiness = { error }; }
+            if (readiness?.error || readiness?.data?.online_ready !== true) {
+                button.disabled = false;
+                button.textContent = originalText;
+                window.InigoToast?.show('Online checkout is unavailable. No order was saved. Choose cash or ask the owner to check PayMongo setup.', true);
+                return;
+            }
+            if (!window.confirm('You will be redirected to PayMongo to complete the online payment. Continue?')) {
+                button.disabled = false;
+                button.textContent = originalText;
+                return;
+            }
+        }
+
         const requestedLines = walkinState.items.map((item) => ({ ...item }));
         const rpcItems = requestedLines.map((item) => ({
             listing_id: item.listingId,
@@ -1941,6 +1956,28 @@ document.addEventListener('DOMContentLoaded', async () => {
             ends_at: item.endsAt,
             rate_quantity: item.rateQuantity,
         }));
+        if (walkinState.payment === 'paymongo') {
+            button.textContent = 'Opening PayMongo…';
+            let checkout;
+            try { checkout = await window.sb.functions.invoke('staff-walkin-checkout', { body: {
+                customer_id: walkinState.customerId || null,
+                guest_name: walkinState.customerId ? null : walkinState.name,
+                guest_mobile: walkinState.mobile || null,
+                items: rpcItems,
+            } }); }
+            catch (error) { checkout = { error }; }
+            const checkoutUrl = checkout?.data?.checkout_url;
+            if (checkout?.error || typeof checkoutUrl !== 'string' || !checkoutUrl.startsWith('https://checkout.paymongo.com/')) {
+                button.disabled = false;
+                button.textContent = originalText;
+                window.InigoToast?.show(checkout?.error?.message || 'Could not start PayMongo checkout. If an order was held, retry it from Transactions after checking its status.', true);
+                refreshBookingOverview();
+                refreshTransactions();
+                return;
+            }
+            window.location.assign(checkoutUrl);
+            return;
+        }
         let create;
         try {
             create = await window.sb.rpc('staff_create_walkin_order', {
@@ -1956,24 +1993,6 @@ document.addEventListener('DOMContentLoaded', async () => {
             button.disabled = false;
             button.textContent = originalText;
             window.InigoToast?.show(create?.error?.message || 'Could not create the walk-in order. No reservation was saved.', true);
-            return;
-        }
-
-        if (walkinState.payment === 'paymongo') {
-            button.textContent = 'Opening PayMongo…';
-            let checkout;
-            try { checkout = await window.sb.functions.invoke('staff-walkin-checkout', { body: { order_id: String(order.order_id) } }); }
-            catch (error) { checkout = { error }; }
-            const checkoutUrl = checkout?.data?.checkout_url;
-            if (checkout?.error || typeof checkoutUrl !== 'string' || !checkoutUrl.startsWith('https://checkout.paymongo.com/')) {
-                button.disabled = false;
-                button.textContent = originalText;
-                window.InigoToast?.show(checkout?.error?.message || 'Could not start PayMongo checkout. The order is still pending; retry from Transactions after checking its status.', true);
-                refreshBookingOverview();
-                refreshTransactions();
-                return;
-            }
-            window.location.assign(checkoutUrl);
             return;
         }
 
