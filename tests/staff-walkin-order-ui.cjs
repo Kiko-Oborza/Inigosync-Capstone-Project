@@ -580,6 +580,13 @@ async function openStaffPage(browser, { timezoneId, now, config = {}, query = ''
         const counters = await boundaryDay.page.locator('[data-staff-stat]').evaluateAll(elements => Object.fromEntries(elements.map(el => [el.dataset.staffStat, el.textContent.trim()])));
         assert.equal(counters['bookings-today'], '2');
         assert.equal(counters['walkins-today'], '1');
+        await boundaryDay.page.locator('.staff-sidebar [data-staff-nav="transactions"]').click();
+        await boundaryDay.page.locator('[data-staff-filter-group="transactions"] [data-staff-filter="online"]').click();
+        assert.equal(await boundaryDay.page.locator('[data-staff-table="transactions"] tbody tr:visible').count(), 2,
+            'Online source filter must show the two bookings');
+        await boundaryDay.page.locator('[data-staff-filter-group="transactions"] [data-staff-filter="walkin"]').click();
+        assert.equal(await boundaryDay.page.locator('[data-staff-table="transactions"] tbody tr:visible').count(), 2,
+            'Walk-in source filter must show the confirmed visit and pending checkout');
         assert.equal(await boundaryDay.page.locator('[data-staff-tx-from]').inputValue(), '2026-09-28', 'date controls should initialize to the Manila calendar day');
         await boundaryDay.context.close();
 

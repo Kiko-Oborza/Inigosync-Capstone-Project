@@ -2827,7 +2827,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 : '';
 
             const tr = document.createElement('tr');
-            tr.dataset.status = row.sourceType; // source filter chips (all/online/walkin) key off this
+            tr.dataset.status = row.sourceType === 'walkin' ? 'walkin' : 'online';
             tr.dataset.rowIndex = String(i);
             tr.innerHTML = `
                 <td>${window.escapeHtml(new Date(row.time_date).toLocaleDateString('en-US', { timeZone: STAFF_TIME_ZONE, month: 'short', day: 'numeric', year: 'numeric' }))}</td>
