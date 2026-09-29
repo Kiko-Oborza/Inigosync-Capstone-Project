@@ -40,6 +40,7 @@ function fixture(config) {
                     : table === 'app_settings' ? [{ cash_enabled: true, card_enabled: true, gcash_enabled: true, downpayment_pct: 50, night_rate_starts_at: '18:00:00' }]
                         : [];
         for (const [key, op, value] of query.filters) {
+            if (key === 'status' && op === 'in') rows = rows.filter(row => value.includes(row.status));
             if (key !== 'time_date') continue;
             if (op === 'gte') rows = rows.filter(row => String(row.time_date) >= String(value));
             if (op === 'lt') rows = rows.filter(row => String(row.time_date) < String(value));
@@ -549,11 +550,13 @@ async function openStaffPage(browser, { timezoneId, now, config = {}, query = ''
             { booking_id: 1, customer_id: 'qa-customer', sports: 'Badminton', courts: 'Badminton', time_date: '2026-09-27T14:30:00Z', status: 'confirmed', duration_minutes: 60 },
             { booking_id: 2, customer_id: 'qa-customer', sports: 'Badminton', courts: 'Badminton', time_date: '2026-09-27T15:30:00Z', status: 'confirmed', duration_minutes: 60 },
             { booking_id: 3, customer_id: 'qa-customer', sports: 'Badminton', courts: 'Badminton', time_date: '2026-09-27T16:30:00Z', status: 'confirmed', duration_minutes: 60 },
+            { booking_id: 4, customer_id: 'qa-customer', sports: 'Badminton', courts: 'Badminton', time_date: '2026-09-27T17:30:00Z', status: 'unattended', duration_minutes: 60 },
         ];
         const boundaryWalkins = [
             { id: 1, customer_name: 'Prior day 1', courts: 'Basketball', time_date: '2026-09-27T14:30:00Z', status: 'completed', duration_minutes: 60 },
             { id: 2, customer_name: 'Prior day 2', courts: 'Basketball', time_date: '2026-09-27T15:30:00Z', status: 'completed', duration_minutes: 60 },
             { id: 3, customer_name: 'Today', courts: 'Basketball', time_date: '2026-09-27T16:30:00Z', status: 'confirmed', duration_minutes: 60 },
+            { id: 4, customer_name: 'Pending checkout', courts: 'Basketball', time_date: '2026-09-27T16:45:00Z', status: 'pending', duration_minutes: 60 },
         ];
         const dayContext = await openStaffPage(browser, {
             timezoneId: 'Pacific/Honolulu', now: '2026-09-27T15:59:30Z',
@@ -561,19 +564,21 @@ async function openStaffPage(browser, { timezoneId, now, config = {}, query = ''
         });
         await dayContext.page.waitForFunction(() => document.querySelector('[data-staff-stat="bookings-today"]')?.textContent.trim() === '2');
         await dayContext.page.waitForFunction(() => document.querySelector('[data-staff-stat="walkins-today"]')?.textContent.trim() === '2');
-        await dayContext.page.clock.fastForward(60000);
-        await dayContext.page.waitForFunction(() => document.querySelector('[data-staff-stat="bookings-today"]')?.textContent.trim() === '1');
+        // Advance just beyond 00:00 Manila, before the 60-second poll.
+        await dayContext.page.clock.fastForward(30001);
+        await dayContext.page.waitForFunction(() => document.querySelector('[data-staff-stat="bookings-today"]')?.textContent.trim() === '2');
         await dayContext.page.waitForFunction(() => document.querySelector('[data-staff-stat="walkins-today"]')?.textContent.trim() === '1');
+        assert.match(await dayContext.page.locator('[data-staff-table="overview"]').innerText(), /Unattended/i);
         await dayContext.context.close();
 
         const boundaryDay = await openStaffPage(browser, {
             timezoneId: 'Pacific/Honolulu', now: '2026-09-27T16:30:00Z',
             config: { bookings: boundaryBookings, walkins: boundaryWalkins },
         });
-        await boundaryDay.page.waitForFunction(() => document.querySelector('[data-staff-stat="bookings-today"]')?.textContent.trim() === '1');
+        await boundaryDay.page.waitForFunction(() => document.querySelector('[data-staff-stat="bookings-today"]')?.textContent.trim() === '2');
         await boundaryDay.page.waitForFunction(() => document.querySelector('[data-staff-stat="walkins-today"]')?.textContent.trim() === '1');
         const counters = await boundaryDay.page.locator('[data-staff-stat]').evaluateAll(elements => Object.fromEntries(elements.map(el => [el.dataset.staffStat, el.textContent.trim()])));
-        assert.equal(counters['bookings-today'], '1');
+        assert.equal(counters['bookings-today'], '2');
         assert.equal(counters['walkins-today'], '1');
         assert.equal(await boundaryDay.page.locator('[data-staff-tx-from]').inputValue(), '2026-09-28', 'date controls should initialize to the Manila calendar day');
         await boundaryDay.context.close();

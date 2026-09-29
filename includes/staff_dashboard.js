@@ -554,7 +554,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // ------------------------------------------------------------------
     // Booking Overview — Revision S1, decision S1. Today's + upcoming
-    // bookings (pending/confirmed/completed) merged with today's walk-ins
+    // bookings (pending/confirmed/completed/unattended) merged with today's walk-ins
     // into one list, newest-start-first. Confirm/Decline/Time-Out are gone
     // entirely; the only action is Time-In, and status is always derived
     // (staffDerivedStatus() above), never read straight off `status`.
@@ -575,7 +575,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         const { data, error } = await window.sb
             .from('booking')
             .select('*')
-            .in('status', ['pending', 'confirmed', 'completed'])
+            .in('status', ['pending', 'confirmed', 'completed', 'unattended'])
             .gte('time_date', start.toISOString())
             .order('time_date', { ascending: true });
         if (error) {
@@ -598,7 +598,10 @@ document.addEventListener('DOMContentLoaded', async () => {
             console.error("[staff] failed to load today's walk-ins", error);
             return { ok: false, rows: [] };
         }
-        return { ok: true, rows: data || [] };
+        // Pending PayMongo holds and cancelled attempts belong in Transaction
+        // Records, but they are not arrived or paid walk-ins on today's board.
+        return { ok: true, rows: (data || []).filter((row) =>
+            !['pending', 'cancelled'].includes(String(row.status || '').toLowerCase())) };
     }
 
     // "3:00 PM – 5:00 PM" for today's rows; "Sep 18, 3:00 PM – 5:00 PM" for
@@ -748,9 +751,17 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     refreshBookingOverview();
     document.addEventListener('inigosync:profile-ready', refreshBookingOverview);
-    // Recompute Manila-day cards and derived attendance states while the
-    // dashboard stays open. todayRange() is timezone anchored, so this also
-    // rolls the four counters over after Asia/Manila midnight.
+    // Roll the cards over at Manila midnight even if the next polling request
+    // is slow. Keep the periodic refresh for attendance changes during the day.
+    function scheduleManilaMidnightRefresh() {
+        const delay = Math.max(1, todayRange().end.getTime() - Date.now());
+        window.setTimeout(() => {
+            renderOverviewStats(overviewRows);
+            refreshBookingOverview();
+            scheduleManilaMidnightRefresh();
+        }, delay);
+    }
+    scheduleManilaMidnightRefresh();
     window.setInterval(refreshBookingOverview, 60000);
     document.addEventListener('visibilitychange', () => {
         if (document.visibilityState === 'visible') refreshBookingOverview();
