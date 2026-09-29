@@ -262,7 +262,7 @@ function mockClient(options) {
         await cancelled.close();
 
         const dashboard = await setupDashboard();
-        await dashboard.locator('[data-dash-nav="settings"]').click();
+        await dashboard.locator('[data-dash-nav="settings"]').first().click();
         const mobileInput = dashboard.locator('[data-dash-settings-mobile]');
         await mobileInput.fill('09171234567');
         await dashboard.locator('[data-dash-mobile-validate]').click();
@@ -279,7 +279,7 @@ function mockClient(options) {
         await dashboard.close();
 
         const rejectedDashboard = await setupDashboard({ validationReason: 'inactive' });
-        await rejectedDashboard.locator('[data-dash-nav="settings"]').click();
+        await rejectedDashboard.locator('[data-dash-nav="settings"]').first().click();
         await rejectedDashboard.locator('[data-dash-settings-mobile]').fill('09171234567');
         await rejectedDashboard.locator('[data-dash-mobile-validate]').click();
         await rejectedDashboard.waitForFunction(() => document.querySelector('[data-dash-mobile-status]').textContent.includes('not active'));

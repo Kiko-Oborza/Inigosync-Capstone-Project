@@ -80,6 +80,9 @@ begin
     and (select auth.role()) is distinct from 'service_role' then
     raise exception 'Account identity fields cannot be changed directly' using errcode='42501';
   end if;
+  if new.role is distinct from old.role and (select auth.role()) is distinct from 'service_role' then
+    raise exception 'Account role cannot be changed directly' using errcode='42501';
+  end if;
   if new.position is distinct from old.position and (select auth.role()) is distinct from 'service_role'
     and not internal.is_active_owner((select auth.uid())) then
     raise exception 'Only an active owner can change staff position' using errcode='42501';
