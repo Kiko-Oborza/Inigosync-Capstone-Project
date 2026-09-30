@@ -1,6 +1,7 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.95.0";
 import { hasPaymongoPaidWebhook } from "../_shared/paymongo-readiness.mjs";
+import { enabledPaymongoMethods } from "../_shared/paymongo-methods.mjs";
 
 const appBaseUrl = Deno.env.get("APP_BASE_URL") || "";
 const allowedOrigin = (() => { try { return new URL(appBaseUrl).origin; } catch { return ""; } })();
@@ -72,6 +73,10 @@ Deno.serve(async (req: Request) => {
   if (!await hasPaymongoPaidWebhook({ secretKey,
       webhookSecret: Deno.env.get("PAYMONGO_WEBHOOK_SECRET"), supabaseUrl: url }))
     return json({ message: "Online checkout is unavailable until payment confirmation is configured." }, 503, origin);
+  const { data: settings, error: settingsError } = await admin.from("app_settings")
+    .select("card_enabled,gcash_enabled").eq("id", true).maybeSingle();
+  const methods = settingsError ? [] : enabledPaymongoMethods(settings);
+  if (!methods.length) return json({ message: "Online payment settings are unavailable." }, 503, origin);
 
   let prepared: any;
   let label = "court reservation";
@@ -107,9 +112,6 @@ Deno.serve(async (req: Request) => {
     return json({ attempt_id: id, checkout_url: attempt.checkout_url }, 200, origin);
   if (attempt.status !== "creating") return json({ message: "This checkout needs staff review." }, 409, origin);
 
-  const { data: settings } = await admin.from("app_settings").select("card_enabled,gcash_enabled").eq("id", true).maybeSingle();
-  const methods = [settings?.card_enabled !== false ? "card" : "", settings?.gcash_enabled !== false ? "gcash" : ""].filter(Boolean);
-  if (!methods.length) return json({ message: "Online payment is unavailable." }, 503, origin);
   const success = new URL("/Pages/user_dashboard.html", base);
   success.searchParams.set("paymongo", "success"); success.searchParams.set("attempt", id);
   const cancel = new URL("/Pages/user_dashboard.html", base);

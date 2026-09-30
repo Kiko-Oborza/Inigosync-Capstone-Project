@@ -1,5 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.95.0";
+import { enabledPaymongoMethods } from "../_shared/paymongo-methods.mjs";
 
 const appBaseUrl = Deno.env.get("APP_BASE_URL") || "";
 const allowedOrigin = (() => { try { return new URL(appBaseUrl).origin; } catch { return ""; } })();
@@ -31,6 +32,9 @@ Deno.serve(async (req: Request) => {
     return json({ message: "Active staff access is required." }, 403, origin);
   const { data: last } = await admin.from("payment").select("created_at").eq("payment_method", "PayMongo")
     .gt("paid", 0).order("created_at", { ascending: false }).limit(1).maybeSingle();
+  const { data: settings, error: settingsError } = await admin.from("app_settings")
+    .select("card_enabled,gcash_enabled").eq("id", true).maybeSingle();
+  const methods = settingsError ? [] : enabledPaymongoMethods(settings);
   const key = Deno.env.get("PAYMONGO_SECRET_KEY") || "";
   const keyMode = key.startsWith("sk_test_") ? "test" : key.startsWith("sk_live_") ? "live" : "unknown";
   const webhookSecret = Deno.env.get("PAYMONGO_WEBHOOK_SECRET") || "";
@@ -57,7 +61,7 @@ Deno.serve(async (req: Request) => {
   } else if (!key) {
     apiConnected = false;
   }
-  const onlineReady = Boolean(allowedOrigin && apiConnected === true && webhookConfigured === true);
+  const onlineReady = Boolean(allowedOrigin && methods.length && apiConnected === true && webhookConfigured === true);
   if (profile.role === "staff") return json({ online_ready: onlineReady }, 200, origin);
   return json({ key_mode: keyMode, api_connected: apiConnected, webhook_configured: webhookConfigured,
     online_ready: onlineReady, last_confirmed_payment_at: last?.created_at || null }, 200, origin);

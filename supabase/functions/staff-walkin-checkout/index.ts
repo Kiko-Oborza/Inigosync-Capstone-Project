@@ -1,6 +1,7 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.95.0";
 import { hasPaymongoPaidWebhook } from "../_shared/paymongo-readiness.mjs";
+import { enabledPaymongoMethods } from "../_shared/paymongo-methods.mjs";
 
 const appBaseUrl = Deno.env.get("APP_BASE_URL") || "";
 const allowedOrigin = (() => { try { return new URL(appBaseUrl).origin; } catch { return ""; } })();
@@ -54,6 +55,10 @@ Deno.serve(async (req: Request) => {
     return json({ message: "Active staff access is required." }, 403, origin);
   if (!await hasPaymongoPaidWebhook({ secretKey, webhookSecret, supabaseUrl: url }))
     return json({ message: "Online checkout is unavailable. No new order was saved." }, 503, origin);
+  const { data: settings, error: settingsError } = await admin.from("app_settings")
+    .select("card_enabled,gcash_enabled").eq("id", true).maybeSingle();
+  const methods = settingsError ? [] : enabledPaymongoMethods(settings);
+  if (!methods.length) return json({ message: "Online payment settings are unavailable. No new order was saved." }, 503, origin);
 
   let orderId: string;
   if (retry) {
@@ -81,11 +86,6 @@ Deno.serve(async (req: Request) => {
       currency: "PHP", expires_at: prepared.expires_at }, 200, origin);
   if (prepared.status !== "creating") return json({ message: "This checkout needs staff review.", order_id: orderId }, 409, origin);
 
-  const { data: settings } = await admin.from("app_settings")
-    .select("card_enabled,gcash_enabled").eq("id", true).maybeSingle();
-  const methods = [settings?.card_enabled !== false ? "card" : "",
-    settings?.gcash_enabled !== false ? "gcash" : ""].filter(Boolean);
-  if (!methods.length) return json({ message: "Online payment is unavailable.", order_id: orderId }, 503, origin);
   const success = new URL("/Pages/staff_dashboard.html", base);
   success.searchParams.set("walkin_checkout", "return");
   success.searchParams.set("order", orderId);
