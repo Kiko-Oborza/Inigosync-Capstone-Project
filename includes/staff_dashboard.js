@@ -624,7 +624,15 @@ document.addEventListener('DOMContentLoaded', async () => {
         });
 
         const bookingsToday = todayRows.filter((r) => r.sourceType === 'booking').length;
-        const walkinsToday = todayRows.filter((r) => r.sourceType === 'walkin').length;
+        // One front-desk visit can contain several separately attended slots.
+        // Count its paid order once; older walk-ins have one row per visit.
+        const walkinVisits = new Set(todayRows.filter((r) => r.sourceType === 'walkin').map((r, index) => {
+            const raw = r.raw || {};
+            if (raw.walkin_order_id) return `order:${raw.walkin_order_id}`;
+            const idField = walkinIdField(raw);
+            return `legacy:${idField ? raw[idField] : index}`;
+        }));
+        const walkinsToday = walkinVisits.size;
         const inPlayNow = todayRows.filter((r) => staffDerivedStatus(r) === 'inplay').length;
         const stillToCome = todayRows.filter((r) => staffDerivedStatus(r) === 'booked').length;
 
@@ -2183,6 +2191,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     function renderTimeInModal(row) {
         const info = timeInPaymentInfo(row);
         const fallbackName = row.sourceType === 'walkin' ? 'Walk-in customer' : 'Customer';
+        const alreadyTimedIn = Boolean(row.checked_in_at);
+        const terminalStatus = ['unattended', 'completed', 'cancelled'].includes(staffDerivedStatus(row));
 
         if (timeInCustomerEl) timeInCustomerEl.textContent = row.customerName || fallbackName;
         if (timeInCourtEl) timeInCourtEl.textContent = row.unit ? `${row.courts || '—'} · ${row.unit}` : (row.courts || '—');
@@ -2207,10 +2217,16 @@ document.addEventListener('DOMContentLoaded', async () => {
             const radio = option.querySelector('input[type="radio"]');
             if (radio) radio.checked = false;
         });
-        if (timeInPaymentWrap) timeInPaymentWrap.hidden = !needsPayment;
+        if (timeInPaymentWrap) timeInPaymentWrap.hidden = !needsPayment || alreadyTimedIn || terminalStatus;
 
         if (timeInNoteEl) {
-            if (!knownTotal) {
+            if (alreadyTimedIn) {
+                timeInNoteEl.textContent = 'Time-In was already recorded for this reservation.';
+                timeInNoteEl.hidden = false;
+            } else if (terminalStatus) {
+                timeInNoteEl.textContent = 'This reservation is no longer eligible for Time-In.';
+                timeInNoteEl.hidden = false;
+            } else if (!knownTotal) {
                 timeInNoteEl.textContent = 'Rate TBA — nothing to collect yet.';
                 timeInNoteEl.hidden = false;
             } else if (!needsPayment) {
@@ -2222,7 +2238,10 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
 
         if (timeInConfirmBtn) {
-            if (needsPayment) {
+            if (alreadyTimedIn || terminalStatus) {
+                timeInConfirmBtn.textContent = alreadyTimedIn ? 'Already timed in' : 'Time-In unavailable';
+                timeInConfirmBtn.disabled = true;
+            } else if (needsPayment) {
                 timeInConfirmBtn.textContent = timeInSelectedMethod === 'PayMongo'
                     ? `Pay ${formatStaffPeso(info.balance)} with PayMongo`
                     : `Collect ${formatStaffPeso(info.balance)} & Time-In`;
@@ -2401,6 +2420,13 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
             const row = freshResult.row;
             timeInModalRow = row;
+            if (!staffCanTimeIn(row, staffDerivedStatus(row))) {
+                renderTimeInModal(row);
+                window.InigoToast?.show(row.checked_in_at
+                    ? 'Time-In was already recorded for this reservation.'
+                    : 'This reservation is not eligible for Time-In right now.', true);
+                return;
+            }
             const info = timeInPaymentInfo(row);
             const needsPayment = info.total !== null && info.balance > 0;
             if (needsPayment && !timeInSelectedMethod) {
@@ -3892,9 +3918,12 @@ document.addEventListener('DOMContentLoaded', async () => {
             const result = await fetchBalanceReturnRow(source, id);
             if (result.error) {
                 window.InigoToast?.show(result.error, true);
+            } else if (result.row.checked_in_at && timeInBalanceConfirmed(result.row)) {
+                window.InigoToast?.show('The balance is paid and Time-In was recorded.');
+            } else if (result.row.checked_in_at) {
+                window.InigoToast?.show('Time-In is recorded, but the balance payment is still processing. Review the payment history shortly.', true);
             } else if (timeInBalanceConfirmed(result.row)) {
-                window.InigoToast?.show('PayMongo confirmed the balance. Review the reservation and confirm attendance.');
-                openTimeInModal(result.row);
+                window.InigoToast?.show('The balance was paid, but Time-In was not recorded. Review this reservation with staff.', true);
             } else {
                 window.InigoToast?.show('Payment is still processing. No attendance was recorded. Refresh shortly to check PayMongo confirmation.', true);
             }

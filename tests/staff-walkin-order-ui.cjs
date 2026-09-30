@@ -358,6 +358,16 @@ async function openStaffPage(browser, { timezoneId, now, config = {}, query = ''
         assert.match(await receiptDialog.innerText(), /Remaining balance\s+₱50\.00/);
         assert.match(await receiptDialog.innerText(), /CUSTOMER CHARGED\s+₱52\.50/);
         assert.equal(await transactionPage.locator('.staff-shell').evaluate(el => el.inert), true);
+        await transactionPage.evaluate(() => {
+            window.__reprintTargets = [];
+            window.print = () => { window.__reprintTargets = [...document.querySelectorAll('.staff-receipt-card.is-print-target')]; };
+        });
+        await receiptDialog.locator('[data-staff-receipt-print]').click();
+        assert.equal(await transactionPage.evaluate(() => window.__reprintTargets.length), 1,
+            'reprinting a saved transaction acknowledgment selects exactly one receipt');
+        assert.equal(await transactionPage.evaluate(() => window.__reprintTargets[0] === document.querySelector('[data-staff-receipt-dialog] .staff-receipt-card')), true,
+            'transaction reprint selects the reopened acknowledgment');
+        await receiptDialog.focus();
         await transactionPage.keyboard.press('Shift+Tab');
         assert.equal(await transactionPage.locator('.staff-receipt-card [data-staff-receipt-close]').evaluate(el => el === document.activeElement), true, 'receipt modal Shift+Tab wraps to its last action');
         await transactionPage.keyboard.press('Tab');
@@ -586,8 +596,9 @@ async function openStaffPage(browser, { timezoneId, now, config = {}, query = ''
         const boundaryWalkins = [
             { id: 1, customer_name: 'Prior day 1', courts: 'Basketball', time_date: '2026-09-27T14:30:00Z', status: 'completed', duration_minutes: 60 },
             { id: 2, customer_name: 'Prior day 2', courts: 'Basketball', time_date: '2026-09-27T15:30:00Z', status: 'completed', duration_minutes: 60 },
-            { id: 3, customer_name: 'Today', courts: 'Basketball', time_date: '2026-09-27T16:30:00Z', status: 'confirmed', duration_minutes: 60 },
+            { id: 3, walkin_order_id: 'qa-multi-slot-order', customer_name: 'Today', courts: 'Basketball', time_date: '2026-09-27T16:30:00Z', status: 'confirmed', duration_minutes: 60 },
             { id: 4, customer_name: 'Pending checkout', courts: 'Basketball', time_date: '2026-09-27T16:45:00Z', status: 'pending', duration_minutes: 60 },
+            { id: 5, walkin_order_id: 'qa-multi-slot-order', customer_name: 'Today', courts: 'Badminton', time_date: '2026-09-27T17:30:00Z', status: 'confirmed', duration_minutes: 60 },
         ];
         const dayContext = await openStaffPage(browser, {
             timezoneId: 'Pacific/Honolulu', now: '2026-09-27T15:59:30Z',
@@ -616,8 +627,8 @@ async function openStaffPage(browser, { timezoneId, now, config = {}, query = ''
         assert.equal(await boundaryDay.page.locator('[data-staff-table="transactions"] tbody tr:visible').count(), 2,
             'Online source filter must show the two bookings');
         await boundaryDay.page.locator('[data-staff-filter-group="transactions"] [data-staff-filter="walkin"]').click();
-        assert.equal(await boundaryDay.page.locator('[data-staff-table="transactions"] tbody tr:visible').count(), 2,
-            'Walk-in source filter must show the confirmed visit and pending checkout');
+        assert.equal(await boundaryDay.page.locator('[data-staff-table="transactions"] tbody tr:visible').count(), 3,
+            'Walk-in source filter shows both lines of one confirmed visit and its pending checkout');
         assert.equal(await boundaryDay.page.locator('[data-staff-tx-from]').inputValue(), '2026-09-28', 'date controls should initialize to the Manila calendar day');
         await boundaryDay.context.close();
 
@@ -703,36 +714,54 @@ async function openStaffPage(browser, { timezoneId, now, config = {}, query = ''
         await scheduleRace.context.close();
 
         const responsive = await openStaffPage(browser, { timezoneId: 'Asia/Manila', now: '2026-09-27T00:00:00Z' });
-        for (const width of [360, 768, 1280]) {
-            await responsive.page.setViewportSize({ width, height: 900 });
-            const dimensions = await responsive.page.evaluate(() => ({ viewport: innerWidth, document: document.documentElement.scrollWidth }));
-            assert.ok(dimensions.document <= dimensions.viewport, `page should not overflow horizontally at ${width}px (${dimensions.document}px)`);
-            const titleSize = await responsive.page.evaluate(() => {
-                const title = document.querySelector('.staff-topbar-title h1');
-                const probe = document.createElement('span');
-                probe.style.fontSize = 'var(--fs-xl)';
-                document.body.append(probe);
-                const expected = getComputedStyle(probe).fontSize;
-                probe.remove();
-                return { actual: title ? getComputedStyle(title).fontSize : '', expected };
-            });
-            assert.equal(titleSize.actual, titleSize.expected, `staff title matches owner --fs-xl token at ${width}px`);
-            await responsive.page.locator('[data-staff-notif-trigger]').click();
-            await responsive.page.waitForFunction(() => {
-                const menu = document.querySelector('[data-staff-notif-menu]');
-                return menu && getComputedStyle(menu).opacity === '1' && getComputedStyle(menu).pointerEvents === 'auto';
-            });
-            const menuBounds = await responsive.page.locator('[data-staff-notif-menu]').evaluate(menu => {
-                const rect = menu.getBoundingClientRect();
-                return { left: rect.left, right: rect.right, width: rect.width, viewport: innerWidth };
-            });
-            assert.ok(menuBounds.left >= 0 && menuBounds.right <= menuBounds.viewport,
-                `notification menu stays inside ${width}px viewport (${JSON.stringify(menuBounds)})`);
-            if (width === 360 && process.env.STAFF_HEADER_SCREENSHOT) {
-                await responsive.page.screenshot({ path: process.env.STAFF_HEADER_SCREENSHOT, clip: { x: 0, y: 0, width, height: 600 } });
+        const themeBackgrounds = new Map();
+        for (const theme of ['dark', 'light']) {
+            await responsive.page.evaluate(value => window.ThemeController.set(value), theme);
+            const themeState = await responsive.page.evaluate(() => ({
+                active: document.documentElement.getAttribute('data-theme'),
+                saved: localStorage.getItem('inigosync-theme'),
+                pressed: document.querySelector('[data-theme-toggle]').getAttribute('aria-pressed'),
+                background: getComputedStyle(document.body).backgroundColor,
+            }));
+            assert.equal(themeState.active, theme);
+            assert.equal(themeState.saved, theme);
+            assert.equal(themeState.pressed, String(theme === 'light'));
+            themeBackgrounds.set(theme, themeState.background);
+            for (const width of [360, 768, 1280]) {
+                await responsive.page.setViewportSize({ width, height: 900 });
+                const dimensions = await responsive.page.evaluate(() => ({ viewport: innerWidth, document: document.documentElement.scrollWidth }));
+                assert.ok(dimensions.document <= dimensions.viewport, `${theme} page should not overflow horizontally at ${width}px (${dimensions.document}px)`);
+                const titleSize = await responsive.page.evaluate(() => {
+                    const title = document.querySelector('.staff-topbar-title h1');
+                    const probe = document.createElement('span');
+                    probe.style.fontSize = 'var(--fs-xl)';
+                    document.body.append(probe);
+                    const expected = getComputedStyle(probe).fontSize;
+                    probe.remove();
+                    return { actual: title ? getComputedStyle(title).fontSize : '', expected };
+                });
+                assert.equal(titleSize.actual, titleSize.expected, `${theme} staff title matches owner --fs-xl token at ${width}px`);
+                await responsive.page.locator('[data-staff-notif-trigger]').click();
+                await responsive.page.waitForFunction(() => {
+                    const menu = document.querySelector('[data-staff-notif-menu]');
+                    return menu && getComputedStyle(menu).opacity === '1' && getComputedStyle(menu).pointerEvents === 'auto';
+                });
+                const menuBounds = await responsive.page.locator('[data-staff-notif-menu]').evaluate(menu => {
+                    const rect = menu.getBoundingClientRect();
+                    return { left: rect.left, right: rect.right, width: rect.width, viewport: innerWidth };
+                });
+                assert.ok(menuBounds.left >= 0 && menuBounds.right <= menuBounds.viewport,
+                    `${theme} notification menu stays inside ${width}px viewport (${JSON.stringify(menuBounds)})`);
+                if (theme === 'light' && width === 360 && process.env.STAFF_HEADER_SCREENSHOT) {
+                    await responsive.page.screenshot({ path: process.env.STAFF_HEADER_SCREENSHOT, clip: { x: 0, y: 0, width, height: 600 } });
+                }
+                await responsive.page.locator('[data-staff-notif-trigger]').click();
             }
-            await responsive.page.locator('[data-staff-notif-trigger]').click();
         }
+        assert.notEqual(themeBackgrounds.get('dark'), themeBackgrounds.get('light'), 'staff theme changes the rendered page background');
+        await responsive.page.locator('[data-theme-toggle]').focus();
+        await responsive.page.keyboard.press('Enter');
+        assert.equal(await responsive.page.locator('html').getAttribute('data-theme'), 'dark', 'keyboard activates the staff theme toggle');
         const thermalPageSize = await responsive.page.evaluate(() => {
             for (const sheet of Array.from(document.styleSheets)) {
                 let rules;
@@ -750,7 +779,7 @@ async function openStaffPage(browser, { timezoneId, now, config = {}, query = ''
         assert.equal(thermalPageSize, '80mm 300mm', 'receipt print page must parse as a valid 80mm thermal format');
         assert.deepEqual(errors, [], 'walk-in browser console must have no uncaught page errors');
         await responsive.context.close();
-        console.log('PASS staff walk-in UI: atomic multi-line order, Manila date boundary, schedule races and inventory refresh, and 360/768/1280 widths');
+        console.log('PASS staff walk-in UI: atomic multi-line order, Manila date boundary, schedule races and inventory refresh, and 360/768/1280 widths in both themes with keyboard toggle');
     } finally {
         await browser.close();
     }
