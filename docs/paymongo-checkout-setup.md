@@ -22,7 +22,7 @@ Register a PayMongo endpoint at `https://xrlwtnwamboucihsamrr.supabase.co/functi
 
 The default deposit is 50%; the owner may change it and enable Cash, Card, and GCash. At least one online method must stay enabled. New checkouts snapshot their total and deposit charge, so later settings or court-rate edits cannot reprice them. Bowling uses `/set`: each set costs one set rate and reserves one hour on the selected lane.
 
-Staff may collect a deposit booking's remaining balance in Cash through the authenticated check-in action. For PayMongo, staff start a separate balance checkout. A verified paid webhook records the balance and Time-In together when the reservation is still eligible. A payment that settles after the grace period is retained for review without Time-In. Neither a successful browser redirect nor an unverified payment may increase `amount_paid`.
+Staff may collect a deposit booking's remaining balance in Cash through the authenticated check-in action. For PayMongo, staff start a separate balance checkout. A verified paid webhook records the balance and Time-In together when the reservation is still eligible. A checkout opened before the grace deadline keeps the slot held while PayMongo resolves it; settlement after that deadline may still record Time-In if the reservation has not ended. A late or invalid settlement is retained for review without Time-In. Neither a successful browser redirect nor an unverified payment may increase `amount_paid`.
 
 ## Rollout checks
 
