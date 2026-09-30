@@ -275,11 +275,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     // ------------------------------------------------------------------
-    // Revision S1, decision S1 — status is DERIVED, never written (besides
-    // checked_in_at itself):
-    //   Booked      - not checked in, still within the 30-minute grace
-    //                 window of time_date (covers both "hasn't started yet"
-    //                 and "just started, hasn't been walked over to yet").
+    // Attendance labels reflect the stored server status and check-in data:
+    //   Booked      - not checked in and not released by the server.
     //   In play     - checked in, now < end (rowWindow's end).
     //   Completed   - checked in, now >= end or the server has stored an
     //                 exit at the scheduled end.

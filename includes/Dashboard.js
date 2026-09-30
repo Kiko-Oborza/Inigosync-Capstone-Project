@@ -24,15 +24,9 @@
 //   R2 — the courts sort <select> defaults to grouping-by-sport
 //        (overviewSortMode), with "Available first"/"Price: Low to High"
 //        retained as alternatives that sort *within* each sport group.
-//   R3 — My Bookings drops cancellation entirely (no Cancel control
-//        anywhere) in favor of the real no-cancellation/no-refund/
-//        30-minute-"Unattended" policy stated in
-//        Pages/user_dashboard.html's two policy notices.
-//   R4 — "Unattended" is DERIVED for display only, never written to the
-//        database — see displayStatusFor() further below for the full
-//        reasoning (booking.status's CHECK constraint, the 23514 error
-//        branch on the booking INSERT below, and why this can't safely be
-//        persisted from this repo).
+//   R3 — My Bookings has no customer cancellation control.
+//   The server applies the owner-set attendance grace period and stores
+//   the resulting status; the customer view displays that stored status.
 //   R5 — Receipts renders one real card per booking (every booking, not
 //        just ones with a payment_id) instead of a hardcoded empty state —
 //        see renderReceipts() further below.
@@ -1123,6 +1117,15 @@ document.addEventListener('DOMContentLoaded', () => {
     // pickers and their checkout preflight. The server revalidates every
     // checkout, but the customer should see the same daily window first.
     let bookingRules = null;
+    const bookingGraceNotice = document.querySelector('[data-dash-booking-grace-notice]');
+    function renderBookingGraceNotice(rules) {
+        if (!bookingGraceNotice) return;
+        const minutes = Number(rules?.graceMinutes);
+        const period = rules?.authoritative && Number.isInteger(minutes) && minutes >= 0
+            ? `${minutes}-minute check-in grace period`
+            : 'owner-set check-in grace period';
+        bookingGraceNotice.textContent = `You cannot cancel a booking yourself. If you miss the ${period} for your booking date, the reservation is marked Unattended and the court may become available again. Payments follow the agreed terms.`;
+    }
     // Bumped on every refreshTimePickers() call so a slow, now-superseded
     // fetch (rapid court/date/unit changes) can detect it's stale and drop
     // its own result instead of overwriting a newer render. Both this and
@@ -1457,6 +1460,7 @@ document.addEventListener('DOMContentLoaded', () => {
     async function refreshTimePickers(forceRules = false) {
         if (!bookFromSelect || !bookToSelect) return;
         const mySeq = ++slotGridRequestSeq;
+        renderBookingGraceNotice(null);
 
         if (!bookingState.court || !bookingState.date) {
             renderTimePickers();
@@ -1489,6 +1493,7 @@ document.addEventListener('DOMContentLoaded', () => {
         // instead of flashing outdated availability.
         if (mySeq !== slotGridRequestSeq) return;
         bookingRules = rules;
+        renderBookingGraceNotice(rules);
         slotGridBookings = { ok: result.ok, rows: result.rows.filter((row) => row.source === 'online') };
         // Maintenance shares the same occupancy snapshot and blocks selection
         // exactly like either reservation channel.
@@ -2577,55 +2582,10 @@ document.addEventListener('DOMContentLoaded', () => {
         return `${startLabel} – ${endLabel}`;
     }
 
-    // ------------------------------------------------------------------
-    // Derived "Unattended" status (Revision 2, R4 — implementation_plan.md).
-    // A booking DISPLAYS as Unattended once ALL of: it is more than 30
-    // minutes past its start time (booking.time_date), nobody checked it in
-    // (booking.checked_in_at is null/absent —
-    // database/schema/004_staff_module.sql), and its stored status is still
-    // 'pending' or 'confirmed' (a booking already 'completed' or 'cancelled'
-    // keeps that real, later-stage status — Unattended never overrides one).
-    //
-    // This is NEVER written back to the database. booking.status has a CHECK
-    // constraint that only accepts 'pending' | 'confirmed' | 'cancelled' |
-    // 'completed' — see the big comment above the booking INSERT further up
-    // this file and its own 23514 error branch. Writing 'unattended' there
-    // would fail the exact same way. Nothing in this project runs a
-    // scheduled job either (no cron this repo can see, and no visibility
-    // into `booking`'s real triggers/RLS — database/schema/
-    // 004_staff_module.sql's header note), so a WRITTEN status would need
-    // server-side automation this repo cannot safely add blind. Deriving it
-    // here instead means the rule is visibly enforced the moment it becomes
-    // true, with zero migration risk and nothing fabricated — and it can
-    // never drift out of sync between panels, since both My Bookings
-    // (refreshMyBookings() below) and Receipts (normalizeReceipt() further
-    // below) call this SAME function rather than reading booking.status
-    // directly.
-    //
-    // database/schema/010_booking_unattended_status.sql (optional, NOT
-    // applied — no Supabase admin access here) extends that CHECK
-    // constraint so a later staff/automation feature COULD persist
-    // 'unattended' for real; this function behaves identically whether or
-    // not that migration has been run. Existing historical 'cancelled' rows
-    // still display exactly as stored — this function only ever touches a
-    // still-open pending/confirmed booking.
-    // ------------------------------------------------------------------
-    const UNATTENDED_GRACE_MINUTES = 30;
-
+    // The server applies the owner-set grace period, including any active
+    // checkout. Local time cannot establish when a slot has been released.
     function displayStatusFor(booking) {
-        const rawStatus = String(booking.status || '').toLowerCase();
-        // Only a still-open booking can ever be "missed" — one that's
-        // already cancelled/completed keeps that real status.
-        if (rawStatus !== 'pending' && rawStatus !== 'confirmed') return rawStatus;
-        // Staff already timed this customer in — they showed up, however
-        // late; not Unattended.
-        if (booking.checked_in_at) return rawStatus;
-
-        const start = new Date(booking.time_date);
-        if (Number.isNaN(start.getTime())) return rawStatus; // defensive — time_date is required, never seen live
-
-        const graceDeadline = start.getTime() + UNATTENDED_GRACE_MINUTES * 60000;
-        return Date.now() > graceDeadline ? 'unattended' : rawStatus;
+        return String(booking.status || '').toLowerCase();
     }
 
     // Profile panel's Total bookings / Completed / Cancelled tiles
@@ -2633,9 +2593,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // handled separately in renderProfile() via the auth session).
     // Computed from the exact same booking rows refreshMyBookings() already
     // fetches for the My Bookings table below, rather than a second query.
-    // booking.status is CHECK-constrained to pending/confirmed/cancelled/
-    // completed (confirmed live against the database), so those are the
-    // only values ever seen here.
+    // The server can also store unattended after releasing a no-show slot.
     function renderProfileBookingStats(bookings) {
         const metaItems = document.querySelectorAll('[data-dash-panel="profile"] .dash-profile-meta-item');
         const total = bookings.length;
@@ -2648,14 +2606,17 @@ document.addEventListener('DOMContentLoaded', () => {
 
     let activeReviewBookingId = null;
     const bookingReviewModal = document.querySelector('[data-booking-review-modal]');
+    let bookingRefreshGeneration = 0;
     async function refreshMyBookings() {
         if (!bookingsTableBody || !window.sb || !window.inigosyncProfile) return;
+        const generation = ++bookingRefreshGeneration;
 
         const { data, error } = await window.sb
             .from('booking')
             .select('*')
             .eq('customer_id', window.inigosyncProfile.id)
             .order('time_date', { ascending: false });
+        if (generation !== bookingRefreshGeneration) return;
 
         if (error) {
             console.error('[dashboard] failed to load bookings', error);
@@ -2691,6 +2652,7 @@ document.addEventListener('DOMContentLoaded', () => {
         // The safe per-customer view reveals only reviewed booking IDs.
         // Fail closed if it is unavailable: don't invite duplicate submits.
         const reviewResult = await window.sb.from('my_booking_reviews').select('booking_id');
+        if (generation !== bookingRefreshGeneration) return;
         const reviewedBookings = new Set((reviewResult.error ? [] : reviewResult.data || []).map((review) => String(review.booking_id)));
 
         data.forEach((booking) => {
@@ -2702,11 +2664,8 @@ document.addEventListener('DOMContentLoaded', () => {
             // courts is DB content (free text on the booking row) — escaped
             // before touching innerHTML so this renders as literal text in
             // the customer's own session instead of running, same as the
-            // staff/admin tables. Status shown is the DERIVED one
-            // (displayStatusFor(), R4/Revision 2) — never booking.status
-            // directly — so a booking more than 30 minutes past its start
-            // with no check-in reads "Unattended" here without ever writing
-            // that value to the database.
+            // staff/admin tables. The status comes from the server so an
+            // active checkout is never shown as a released no-show.
             const displayStatus = displayStatusFor(booking);
             const courtLabel = window.escapeHtml(booking.courts || '');
             const statusClass = window.escapeHtml(displayStatus);
@@ -2721,15 +2680,8 @@ document.addEventListener('DOMContentLoaded', () => {
             const fullyPaid = Number(booking.amount_total) > 0 && Number(booking.amount_paid || 0) >= Number(booking.amount_total);
             const canReview = booking.status === 'completed' && fullyPaid && !reviewResult.error && !reviewedBookings.has(String(booking.booking_id));
             const reviewButton = canReview ? `<button type="button" class="dash-mini-btn" data-dash-review-booking="${window.escapeHtml(String(booking.booking_id))}">Write a review</button>` : '';
-            // R3/Revision 2 — no Cancel control anywhere (see the policy
-            // notices in Pages/user_dashboard.html): the real rule is no
-            // cancellation, no refunds/cashback, and 30+ minutes late
-            // automatically shows as Unattended above. This cell used to
-            // hold ONLY a conditional Cancel button (nothing for
-            // completed/cancelled rows) — a Receipt shortcut takes its
-            // place instead of leaving the Actions column permanently
-            // blank, matching what the static demo rows above it already
-            // show in this same column.
+            // No customer cancellation control. Keep the receipt shortcut
+            // for every booking, including a server-recorded no-show.
             row.innerHTML = `
                 <td class="dash-cell-main">${courtLabel}</td>
                 <td>${formatBookingDate(booking.time_date)}</td>
@@ -2825,11 +2777,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // use. There is also no `payment` table anywhere in this project, so a
     // receipt card has no payment method/reference to show.
     //
-    // Status shown is the DERIVED one (displayStatusFor(), R4 above) — never
-    // booking.status directly — so a receipt for a booking more than 30
-    // minutes past its start with no check-in reads "Unattended" here too,
-    // exactly matching what My Bookings shows for that same booking; the two
-    // panels can never disagree, since both call the one shared function.
+    // Status comes from the same server booking row as My Bookings.
     //
     // Each card's Download button rasterizes THAT card (not the whole page)
     // to a PNG via html2canvas (CDN <script> in Pages/user_dashboard.html)
@@ -2856,8 +2804,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // "Bowling — Duckpin" booking — see the big booking-insert comment
     // further up this file), `rate` comes from the same getCourtRate()
     // lookup (with the same "Rate TBA" honesty) My Bookings already uses
-    // above, `hours` from receiptHours() below, and `status` is the DERIVED
-    // display status (R4), not the raw stored one.
+    // above, `hours` from receiptHours() below, and server-recorded status.
     function normalizeReceipt(booking) {
         const pricing = getBookingUnitPricing(booking);
         return {

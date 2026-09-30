@@ -574,21 +574,9 @@
                                 </div>
                             </div>
 
-                            <!-- Revision 2, R3 (implementation_plan.md) — the
-                                 real policy: no cancellation, no refunds or
-                                 cashback, and arriving more than 30 minutes
-                                 late automatically marks the booking
-                                 "Unattended" (computed on-screen — see
-                                 includes/Dashboard.js's displayStatusFor(),
-                                 R4). This replaces a stale notice that
-                                 contradicted that rule by claiming a missed
-                                 booking gets auto-cancelled and its payment
-                                 forfeited. Written in plain language for the
-                                 "older, non-tech-savvy users" this redesign
-                                 targets. -->
                             <div class="dash-notice">
                                 <svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.7"/><path d="M12 8v5M12 16h.01" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/></svg>
-                                <span>You cannot cancel a booking yourself. Completed payments are non-refundable. If you have not checked in 30 minutes after your start time, your booking is cancelled as a no-show and the court becomes available again.</span>
+                                <span data-dash-booking-grace-notice>You cannot cancel a booking yourself. If you miss the owner-set check-in grace period for your booking date, the reservation is marked Unattended and the court may become available again. Payments follow the agreed terms.</span>
                             </div>
 
                             <div class="dash-wizard-summary">
@@ -646,17 +634,9 @@
                         </div>
                     </div>
 
-                    <!-- Revision 2, R3 (implementation_plan.md) — the real
-                         policy: no cancellation, no refunds or cashback, and
-                         arriving more than 30 minutes late automatically
-                         marks the booking "Unattended" (computed on-screen
-                         per row below — see includes/Dashboard.js's
-                         displayStatusFor(), R4). Replaces a stale notice
-                         that contradicted this by claiming a missed booking
-                         gets auto-cancelled and its payment forfeited. -->
                     <div class="dash-notice">
                         <svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.7"/><path d="M12 8v5M12 16h.01" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/></svg>
-                        <span>You cannot cancel a booking yourself. Completed payments are non-refundable. If you have not checked in 30 minutes after your start time, your booking is cancelled as a no-show and the court becomes available again.</span>
+                        <span>You cannot cancel a booking yourself. If you miss the owner-set check-in grace period for your booking date, the reservation is marked Unattended and the court may become available again. Payments follow the agreed terms.</span>
                     </div>
 
                     <div class="dash-card">
