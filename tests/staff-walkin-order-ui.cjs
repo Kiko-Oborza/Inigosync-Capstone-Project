@@ -643,6 +643,33 @@ async function openStaffPage(browser, { timezoneId, now, config = {}, query = ''
         assert.match(await schedulePage.locator('[data-staff-schedule-grid] thead').innerText(), /1–2 PM/,
             'late rules for the previous date cannot overwrite the new schedule');
         assert.doesNotMatch(await schedulePage.locator('[data-staff-schedule-grid] thead').innerText(), /10–11 AM/);
+        await schedulePage.evaluate(() => {
+            const original = window.InigoCourtsData.getCourts;
+            window.__qaForcedInventoryReads = 0;
+            window.InigoCourtsData.getCourts = async (options = {}) => {
+                if (options.force) window.__qaForcedInventoryReads += 1;
+                return [...await original(options), { id: 'listing-volleyball', name: 'Volleyball',
+                    sportSlug: 'volleyball', sportName: 'Volleyball', bookableUnits: [
+                        { id: 'unit-v1', label: 'Court 1', rateDay: 100, rateUnit: '/hr' },
+                    ] }];
+            };
+            window.InigoCourtsData.getSports = async () => [{ slug: 'volleyball', name: 'Volleyball' }];
+        });
+        await schedulePage.locator('[data-staff-schedule-search]').fill('');
+        await schedulePage.locator('[data-staff-nav="schedule"]').first().click();
+        await schedulePage.locator('[data-staff-sport="volleyball"]').waitFor();
+        assert.match(await schedulePage.locator('[data-staff-schedule-grid] tbody').innerText(), /Volleyball — Court 1/,
+            'a newly owner-managed sport and unit appear when staff open the schedule');
+        assert.ok(await schedulePage.evaluate(() => window.__qaForcedInventoryReads) > 0,
+            'opening Court Schedule forces a new inventory read');
+        await schedulePage.evaluate(() => {
+            window.InigoCourtsData.getCourts = async () => [{ id: 'fallback-unavailable',
+                name: 'Unavailable inventory', sportName: 'Badminton', bookableUnits: [], inventoryLoadFailed: true }];
+        });
+        await schedulePage.locator('[data-staff-nav="schedule"]').first().click();
+        await schedulePage.waitForFunction(() => document.querySelector('[data-staff-schedule-grid] tbody')?.textContent.includes('Could not verify live availability'));
+        assert.doesNotMatch(await schedulePage.locator('[data-staff-schedule-grid] tbody').innerText(), /Open/,
+            'failed inventory never appears as bookable availability');
         await scheduleRace.context.close();
 
         const responsive = await openStaffPage(browser, { timezoneId: 'Asia/Manila', now: '2026-09-27T00:00:00Z' });
@@ -693,7 +720,7 @@ async function openStaffPage(browser, { timezoneId, now, config = {}, query = ''
         assert.equal(thermalPageSize, '80mm 300mm', 'receipt print page must parse as a valid 80mm thermal format');
         assert.deepEqual(errors, [], 'walk-in browser console must have no uncaught page errors');
         await responsive.context.close();
-        console.log('PASS staff walk-in UI: atomic multi-line order, Manila date boundary, schedule request race, and 360/768/1280 widths');
+        console.log('PASS staff walk-in UI: atomic multi-line order, Manila date boundary, schedule races and inventory refresh, and 360/768/1280 widths');
     } finally {
         await browser.close();
     }

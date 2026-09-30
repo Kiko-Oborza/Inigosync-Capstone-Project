@@ -47,6 +47,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         // same reasoning includes/owner_dashboard.js documents for its own
         // closeAdminNotifMenu.
         closeStaffNotifMenu();
+        if (name === 'schedule') refreshCourtSchedule({ forceInventory: true });
         window.scrollTo({ top: 0, behavior: 'smooth' });
     }
 
@@ -2618,13 +2619,12 @@ document.addEventListener('DOMContentLoaded', async () => {
         }).join('');
     }
 
-    async function renderScheduleSportTabs() {
-        if (!scheduleSportTabs || !window.InigoCourtsData) return;
-        const sports = await window.InigoCourtsData.getSports();
-        const chips = ['<button type="button" class="staff-chip is-active" data-staff-chip data-staff-sport="all">All Courts</button>']
-            .concat(sports.map((s) => `<button type="button" class="staff-chip" data-staff-chip data-staff-sport="${window.escapeHtml(s.slug)}">${window.escapeHtml(s.name)}</button>`));
+    function renderScheduleSportTabs(sports) {
+        if (!scheduleSportTabs) return;
+        if (scheduleActiveSport !== 'all' && !sports.some((sport) => sport.slug === scheduleActiveSport)) scheduleActiveSport = 'all';
+        const chips = [`<button type="button" class="staff-chip${scheduleActiveSport === 'all' ? ' is-active' : ''}" data-staff-chip data-staff-sport="all">All Courts</button>`]
+            .concat(sports.map((s) => `<button type="button" class="staff-chip${s.slug === scheduleActiveSport ? ' is-active' : ''}" data-staff-chip data-staff-sport="${window.escapeHtml(s.slug)}">${window.escapeHtml(s.name)}</button>`));
         scheduleSportTabs.innerHTML = chips.join('');
-        scheduleActiveSport = 'all';
 
         scheduleSportTabs.querySelectorAll('[data-staff-chip]').forEach((chip) => {
             chip.addEventListener('click', () => {
@@ -2636,7 +2636,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         });
     }
 
-    async function refreshCourtSchedule() {
+    async function refreshCourtSchedule({ forceInventory = false } = {}) {
         if (!scheduleTable || !window.sb || !window.InigoCourtsData) return;
 
         const mySeq = ++scheduleRequestSeq;
@@ -2649,12 +2649,16 @@ document.addEventListener('DOMContentLoaded', async () => {
         const dayEnd = new Date(dateBase.getTime() + 24 * 60 * 60 * 1000);
         let courts;
         let occupancyRes;
+        let sports;
+        let rules;
         try {
-            [courts, occupancyRes] = await Promise.all([
-                window.InigoCourtsData.getCourts(),
+            [courts, occupancyRes, sports, rules] = await Promise.all([
+                window.InigoCourtsData.getCourts({ force: forceInventory }),
                 window.sb.rpc('court_occupancy', {
                     from_at: dateBase.toISOString(), to_at: dayEnd.toISOString(),
                 }),
+                window.InigoCourtsData.getSports({ force: forceInventory }),
+                window.InigoBusinessHours?.getForDate(requestedDate) ?? Promise.resolve(null),
             ]);
         } catch (error) {
             console.error('[staff] failed to load court schedule availability', error);
@@ -2670,25 +2674,30 @@ document.addEventListener('DOMContentLoaded', async () => {
         const rows = occupancyRes.error ? [] : (occupancyRes.data || []);
         const bookings = rows.filter((row) => row.source === 'online');
         const walkins = rows.filter((row) => row.source !== 'online');
-        const rules = window.InigoBusinessHours?.getForDate
-            ? await window.InigoBusinessHours.getForDate(requestedDate).catch(() => null)
-            : null;
-        if (mySeq !== scheduleRequestSeq) return;
         scheduleLoading = false;
-        scheduleDataOk = !occupancyRes.error && Boolean(rules?.authoritative);
+        scheduleDataOk = !occupancyRes.error && Boolean(rules?.authoritative)
+            && Array.isArray(courts) && courts.every((court) => !court.inventoryLoadFailed);
         scheduleNameMap = new Map();
         scheduleCourtsCache = courts;
         scheduleRulesCache = rules;
         scheduleBookingsCache = bookings;
         scheduleWalkinsCache = walkins;
+        renderScheduleSportTabs(Array.isArray(sports) ? sports : []);
         renderCourtSchedule(courts, bookings, walkins);
     }
 
-    renderScheduleSportTabs();
     if (scheduleSearchInput) scheduleSearchInput.addEventListener('input', () => renderCourtSchedule(scheduleCourtsCache, scheduleBookingsCache, scheduleWalkinsCache));
     if (scheduleSortSelect) scheduleSortSelect.addEventListener('change', () => renderCourtSchedule(scheduleCourtsCache, scheduleBookingsCache, scheduleWalkinsCache));
     refreshCourtSchedule();
     document.addEventListener('inigosync:profile-ready', refreshCourtSchedule);
+    window.setInterval(() => {
+        if (!document.hidden && document.querySelector('[data-staff-panel="schedule"]')?.classList.contains('is-active'))
+            refreshCourtSchedule({ forceInventory: true });
+    }, 60000);
+    document.addEventListener('visibilitychange', () => {
+        if (!document.hidden && document.querySelector('[data-staff-panel="schedule"]')?.classList.contains('is-active'))
+            refreshCourtSchedule({ forceInventory: true });
+    });
 
     // ------------------------------------------------------------------
     // Transaction Records — Revision S1, decision S6. A time-in log:
