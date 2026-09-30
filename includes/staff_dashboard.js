@@ -1799,6 +1799,14 @@ document.addEventListener('DOMContentLoaded', async () => {
         return data && typeof data === 'object' ? (data.data && !data.order_id ? normalizeRpcRow(data.data) : data) : null;
     }
 
+    async function staffCheckoutErrorMessage(error, fallback) {
+        try {
+            const payload = await error?.context?.json?.();
+            if (typeof payload?.message === 'string' && payload.message.length <= 240) return payload.message;
+        } catch { /* The Edge response may not contain JSON. */ }
+        return error?.message && !/non-2xx status code/i.test(error.message) ? error.message : fallback;
+    }
+
     async function loadWalkinAcknowledgment(orderId) {
         if (!window.sb || !orderId) return { error: 'Order reference is missing.' };
         let result;
@@ -2003,7 +2011,8 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (checkout?.error || typeof checkoutUrl !== 'string' || !checkoutUrl.startsWith('https://checkout.paymongo.com/')) {
                 button.disabled = false;
                 button.textContent = originalText;
-                window.InigoToast?.show(checkout?.error?.message || 'Could not start PayMongo checkout. If an order was held, retry it from Transactions after checking its status.', true);
+                window.InigoToast?.show(await staffCheckoutErrorMessage(checkout?.error,
+                    'Could not start PayMongo checkout. If an order was held, retry it from Transactions after checking its status.'), true);
                 refreshBookingOverview();
                 refreshTransactions();
                 return;
@@ -2901,7 +2910,8 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (checkout?.error || typeof checkoutUrl !== 'string' || !checkoutUrl.startsWith('https://checkout.paymongo.com/')) {
                 retryButton.disabled = false;
                 retryButton.textContent = 'Retry online checkout';
-                window.InigoToast?.show(checkout?.error?.message || 'Could not resume PayMongo checkout. This order remains pending while its reservation hold is active.', true);
+                window.InigoToast?.show(await staffCheckoutErrorMessage(checkout?.error,
+                    'Could not resume PayMongo checkout. This order remains pending while its reservation hold is active.'), true);
                 return;
             }
             window.location.assign(checkoutUrl);

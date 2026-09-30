@@ -126,7 +126,10 @@ function fixture(config) {
                 return { data: config.phoneValidation || { valid: true, normalized, phone_type: 'mobile', line_status: 'active' }, error: null };
             }
             qa.checkoutAttempts += 1;
-            if (config.failCheckoutOnce && qa.checkoutAttempts === 1) return { data: null, error: { message: 'Temporary checkout error' } };
+            if (config.failCheckoutOnce && qa.checkoutAttempts === 1) return { data: null, error: {
+                message: 'Edge Function returned a non-2xx status code',
+                context: { json: async () => ({ message: 'Temporary checkout error' }) },
+            } };
             return { data: { order_id: options.body.order_id || 'a25dc45b-40ba-4b5b-96d6-4487dbe7a526', attempt_id: 'qa-attempt', checkout_url: 'https://checkout.paymongo.com/qa-walkin', session_id: 'qa-session' }, error: null };
         } },
         auth: {
@@ -409,6 +412,7 @@ async function openStaffPage(browser, { timezoneId, now, config = {}, query = ''
         await retryPage.locator('[data-staff-walkin-retry]').click();
         await retryPage.locator('[data-staff-walkin-retry]').waitFor({ state: 'visible' });
         assert.equal(await retryPage.locator('[data-staff-walkin-retry]').isDisabled(), false, 'failed checkout leaves a retryable pending action');
+        await retryPage.waitForFunction(() => window.__toastMessages?.some(toast => toast.message === 'Temporary checkout error'));
         assert.equal(retryCalls.filter(call => call.kind === 'function' && call.name === 'staff-walkin-checkout').length, 1);
         await retryPage.locator('[data-staff-walkin-retry]').click();
         await retryPage.waitForURL('https://checkout.paymongo.com/qa-walkin');
