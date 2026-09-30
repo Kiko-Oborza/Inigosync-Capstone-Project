@@ -44,9 +44,10 @@
 // customer's own `booking` rows (no `notification` table — D6). Feedback
 // writes to the new `feedback` table (database/schema/009_feedback.sql),
 // failing honestly with a toast if that migration hasn't been applied yet.
-// Receipts (Revision 2, R5) render one card per booking, reusing
-// refreshMyBookings()'s own fetch rather than a second query — rate/amount
-// shows "Rate TBA" whenever a unit's price is genuinely unknown. Account Settings' three
+// Receipts render every immutable payment acknowledgment for paid bookings,
+// using refreshMyBookings()'s booking rows plus a customer-scoped history RPC;
+// unpaid bookings retain the summary card and show "Rate TBA" when a unit's
+// price is genuinely unknown. Account Settings' three
 // name boxes read/write profiles.first_name/middle_name/last_name
 // (database/schema/008_profile_name_parts.sql) while keeping full_name — the
 // column the owner/staff dashboards still read — in sync (D3). Everything
@@ -2620,9 +2621,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (error) {
             console.error('[dashboard] failed to load bookings', error);
-            // Receipts (R5, Revision 2) reuses this exact fetch rather than
-            // a second query — see renderReceipts()'s own header comment
-            // below — so a failure here means Receipts can't render either.
+            // Receipts uses this booking list and cannot render booking
+            // acknowledgments if the list itself fails to load.
             // Same fail-safe-not-fabrication convention this file already
             // uses elsewhere (e.g. the Overview peek widget): show the
             // honest empty state, never a stale or fabricated list.
@@ -2636,8 +2636,8 @@ document.addEventListener('DOMContentLoaded', () => {
         // second query against `booking`; see renderNotifications()'s own
         // header comment near the notifications dropdown wiring above.
         renderNotifications(data || []);
-        // Receipts (§7/D8, Revision 2's R5) — same reuse, no second query;
-        // see renderReceipts()'s own header comment below.
+        // Receipts reuses the booking list and separately loads saved payment
+        // acknowledgments through the customer-scoped history RPC.
         renderReceipts(data || []);
 
         bookingsTableBody.innerHTML = '';
@@ -2758,24 +2758,18 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     // ------------------------------------------------------------------
-    // Receipts (Revision 2, R5 — implementation_plan.md). Renders one
-    // .dash-receipt-card per booking from the customer's own real `booking`
-    // rows — EVERY booking, not just ones that carry a payment_id (the old
-    // Phase 2 behavior, §7/D8, under which this panel could only ever show
-    // its hardcoded "No receipts yet" state, since nothing in this project
-    // sets payment_id yet — no PayMongo/e-wallet integration). The ask for
-    // this revision is explicit: every booking made should show a receipt
-    // here. renderReceipts() below is called from refreshMyBookings() with
-    // the SAME data that fetch already retrieved — no second query against
-    // `booking` (R5's explicit instruction).
+    // Receipts render one immutable payment acknowledgment per payment for
+    // every paid booking. Unpaid bookings still get a booking summary card.
+    // renderReceipts() reuses the booking rows fetched by refreshMyBookings()
+    // and reads payment history from a customer-authorized RPC.
     //
     // Amount is shown only where genuinely known: getCourtRate() returns
     // null for every court today (court.rate is NULL in the live DB — see
     // database/seed/002_seed_content.sql), so a card honestly reads
     // "Rate TBA" rather than inventing a peso figure — same convention the
     // booking wizard's own summary and My Bookings' Amount column already
-    // use. There is also no `payment` table anywhere in this project, so a
-    // receipt card has no payment method/reference to show.
+    // use when the saved payment acknowledgment is unavailable for an unpaid
+    // booking.
     //
     // Status comes from the same server booking row as My Bookings.
     //
@@ -2784,7 +2778,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // and canvas.toBlob() + a programmatic <a download> click — the one
     // path that also works on iOS Safari and Android, unlike an <a href>
     // pointed at a data: URL for a large image. This mechanism is unchanged
-    // from Phase 2 — only the empty-forever data source above it changed.
+    // for each acknowledgment card.
     // ------------------------------------------------------------------
     const receiptsGrid = document.querySelector('[data-dash-booking-receipts]');
     const walkinReceiptsGrid = document.querySelector('[data-dash-walkin-receipts]');
@@ -3081,10 +3075,10 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    // Renders every booking's receipt card at once — called from
-    // refreshMyBookings() with the data it already fetched (R5's explicit
-    // "no redundant query" instruction), not a fetcher of its own. Genuinely
-    // empty only when the customer has zero bookings at all; a fetch error
+    // Renders every booking's payment acknowledgments at once — called from
+    // refreshMyBookings() with the rows it already fetched. Paid-booking
+    // snapshots come from the scoped RPC. Genuinely empty only when the
+    // customer has zero bookings at all; a fetch error
     // is handled by the caller (refreshMyBookings() falls back to
     // RECEIPT_EMPTY_HTML itself when its shared query fails, same fail-safe
     // convention Phase 2's refreshReceipts() used to use on its own error
@@ -3100,34 +3094,48 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         receiptsGrid.innerHTML = '<p class="dash-notif-empty">Loading saved payment acknowledgments…</p>';
-        const paidBookings = bookings.filter(booking => Number(booking.amount_paid || 0) > 0);
-        const acknowledgments = new Map();
+        const paidBookings = bookings.filter(booking => Number(booking.amount_paid || 0) > 0
+            || (booking.payment_id !== null && booking.payment_id !== undefined)
+            || (booking.balance_payment_id !== null && booking.balance_payment_id !== undefined));
+        const acknowledgmentsByBooking = new Map();
         const failedAcknowledgments = new Set();
         for (let offset = 0; offset < paidBookings.length; offset += 5) {
             const batch = paidBookings.slice(offset, offset + 5);
             const results = await Promise.all(batch.map(async booking => {
                 const id = String(booking.booking_id);
                 try {
-                    const { data, error } = await window.sb.rpc('get_payment_acknowledgment', { p_source: 'booking', p_id: Number(booking.booking_id) });
+                    const { data, error } = await window.sb.rpc('customer_get_booking_payment_acknowledgments', {
+                        p_booking_id: String(booking.booking_id),
+                    });
                     if (error) throw error;
-                    const acknowledgment = Array.isArray(data) ? data[0] : data;
-                    if (!acknowledgment || !acknowledgment.receipt_id) throw new Error('No saved acknowledgment was returned.');
-                    return [id, acknowledgment, null];
+                    const history = Array.isArray(data) ? data[0] : data;
+                    const payments = Array.isArray(history?.payment_history) ? history.payment_history : null;
+                    if (!payments || payments.length === 0) throw new Error('No saved payment acknowledgments were returned.');
+                    if (payments.some(payment => !payment?.acknowledgment?.receipt_id)) {
+                        throw new Error('A saved payment acknowledgment is missing.');
+                    }
+                    return [id, payments, null];
                 } catch (error) {
                     console.error('[dashboard] saved booking acknowledgment could not be loaded', error);
                     return [id, null, error];
                 }
             }));
             results.forEach(([id, acknowledgment, error]) => {
-                if (acknowledgment) acknowledgments.set(id, acknowledgment);
+                if (acknowledgment) acknowledgmentsByBooking.set(id, acknowledgment);
                 else if (error) failedAcknowledgments.add(id);
             });
         }
         if (generation !== receiptRenderGeneration) return;
         receiptsGrid.innerHTML = bookings.map(booking => {
             const id = String(booking.booking_id);
-            const acknowledgment = acknowledgments.get(id);
-            if (acknowledgment) return renderPaymentAcknowledgment(acknowledgment, id);
+            const payments = acknowledgmentsByBooking.get(id);
+            if (payments) {
+                return payments.map((payment, index) => {
+                    const acknowledgment = payment.acknowledgment;
+                    const key = `${id}-payment-${payment.payment_id || acknowledgment.receipt_id || index + 1}`;
+                    return renderPaymentAcknowledgment(acknowledgment, key);
+                }).join('');
+            }
             if (failedAcknowledgments.has(id)) return renderAcknowledgmentUnavailable(id);
             return renderReceiptCard(normalizeReceipt(booking));
         }).join('');

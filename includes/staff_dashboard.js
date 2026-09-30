@@ -559,6 +559,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     // ------------------------------------------------------------------
     const overviewTableBody = document.querySelector('[data-staff-table="overview"] tbody');
     let overviewRows = [];
+    let overviewUnavailable = false;
 
     // Fetches with select('*') rather than an explicit column list — this
     // table's exact shape (whether database/schema/004_staff_module.sql's
@@ -676,12 +677,22 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (!overviewTableBody || !window.sb) return;
 
         const [bookingsRes, walkinsRes] = await Promise.all([fetchOverviewBookings(), fetchTodayWalkins()]);
-        if (!bookingsRes.ok) {
-            overviewTableBody.innerHTML = '<tr><td colspan="9" class="staff-table-message">Could not load bookings right now.</td></tr>';
+        if (!bookingsRes.ok || !walkinsRes.ok) {
+            // These counts and rows describe the combined booking + walk-in
+            // picture. Leaving either source out would make a query failure
+            // look like a real zero or an incomplete arrivals list.
+            overviewRows = [];
+            overviewUnavailable = true;
+            ['bookings-today', 'walkins-today', 'inplay-now', 'still-to-come'].forEach((key) => setStat(key, '—'));
+            overviewTableBody.innerHTML = '<tr><td colspan="9" class="staff-table-message">Could not load today’s bookings and walk-ins right now.</td></tr>';
+            if (arrivalsTableBody) {
+                arrivalsTableBody.innerHTML = '<tr><td colspan="6" class="staff-table-message">Could not load arrivals right now.</td></tr>';
+            }
             return;
         }
 
-        const merged = mergeBookingRows(bookingsRes.rows, walkinsRes.ok ? walkinsRes.rows : []);
+        const merged = mergeBookingRows(bookingsRes.rows, walkinsRes.rows);
+        overviewUnavailable = false;
         merged.sort((a, b) => new Date(a.time_date) - new Date(b.time_date));
 
         const nameMap = await fetchProfileNamesByIds(merged.filter((r) => r.sourceType === 'booking').map((r) => r.customerId));
@@ -754,7 +765,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     function scheduleManilaMidnightRefresh() {
         const delay = Math.max(1, todayRange().end.getTime() - Date.now());
         window.setTimeout(() => {
-            renderOverviewStats(overviewRows);
+            if (!overviewUnavailable) renderOverviewStats(overviewRows);
             refreshBookingOverview();
             scheduleManilaMidnightRefresh();
         }, delay);
@@ -2802,16 +2813,20 @@ document.addEventListener('DOMContentLoaded', async () => {
             window.sb.from('walk_in_booking').select('*').gte('time_date', rangeStart.toISOString()).lt('time_date', rangeEndExclusive.toISOString()),
         ]);
 
-        if (bookingsRes.error && walkinsRes.error) {
-            console.error('[staff] failed to load transaction records', bookingsRes.error, walkinsRes.error);
+        if (bookingsRes.error) console.error('[staff] failed to load bookings for transactions', bookingsRes.error);
+        if (walkinsRes.error) console.error('[staff] failed to load walk-ins for transactions', walkinsRes.error);
+        if (bookingsRes.error || walkinsRes.error) {
+            // Transaction Records represent the full history for the chosen
+            // range. Do not present one source as the complete history when
+            // its sibling query failed.
+            transactionRows = [];
+            transactionPaymentHistoryCache.clear();
             transactionsTableBody.innerHTML = '<tr><td colspan="13" class="staff-table-message">Could not load transaction records right now.</td></tr>';
             return;
         }
-        if (bookingsRes.error) console.error('[staff] failed to load bookings for transactions', bookingsRes.error);
-        if (walkinsRes.error) console.error('[staff] failed to load walk-ins for transactions', walkinsRes.error);
 
-        const bookings = bookingsRes.error ? [] : (bookingsRes.data || []);
-        const walkins = walkinsRes.error ? [] : (walkinsRes.data || []);
+        const bookings = bookingsRes.data || [];
+        const walkins = walkinsRes.data || [];
         const merged = mergeBookingRows(bookings, walkins);
         const sort = txSortSelect?.value || 'date-desc';
         const nameMap = await fetchProfileNamesByIds(merged.filter((r) => r.sourceType === 'booking').map((r) => r.customerId));

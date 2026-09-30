@@ -45,6 +45,9 @@ function fixture(config) {
             if (op === 'gte') rows = rows.filter(row => String(row.time_date) >= String(value));
             if (op === 'lt') rows = rows.filter(row => String(row.time_date) < String(value));
         }
+        if ((config.failReadTables || []).includes(table)) {
+            return { data: null, error: { message: `${table} read failed in fixture` } };
+        }
         return { data: query.one ? (rows[0] || null) : rows, error: null };
     };
     window.sb = {
@@ -617,6 +620,33 @@ async function openStaffPage(browser, { timezoneId, now, config = {}, query = ''
             'Walk-in source filter must show the confirmed visit and pending checkout');
         assert.equal(await boundaryDay.page.locator('[data-staff-tx-from]').inputValue(), '2026-09-28', 'date controls should initialize to the Manila calendar day');
         await boundaryDay.context.close();
+
+        const failureBookingRows = [
+            { booking_id: 501, customer_id: 'qa-customer', sports: 'Badminton', courts: 'Badminton', time_date: '2026-09-28T01:00:00Z', status: 'confirmed', duration_minutes: 60 },
+        ];
+        const failureWalkinRows = [
+            { id: 502, customer_name: 'Failure Fixture Walk-in', sports: 'Basketball', courts: 'Basketball', time_date: '2026-09-28T01:00:00Z', status: 'confirmed', duration_minutes: 60 },
+        ];
+        for (const failedTable of ['booking', 'walk_in_booking']) {
+            const failedSource = await openStaffPage(browser, {
+                timezoneId: 'Asia/Manila', now: '2026-09-27T16:30:00Z',
+                config: { bookings: failureBookingRows, walkins: failureWalkinRows, failReadTables: [failedTable] },
+            });
+            const failedPage = failedSource.page;
+            await failedPage.locator('[data-staff-table="overview"] tbody tr').filter({ hasText: 'Could not load today’s bookings and walk-ins' }).waitFor();
+            assert.equal(await failedPage.locator('[data-staff-table="overview"] tbody tr[data-row-index]').count(), 0,
+                `${failedTable} failure must suppress otherwise available overview rows`);
+            assert.equal(await failedPage.locator('[data-staff-table="arrivals"] tbody tr').filter({ hasText: 'Could not load arrivals' }).count(), 1,
+                `${failedTable} failure must label the arrivals list as unavailable`);
+            const failedStats = await failedPage.locator('[data-staff-stat]').evaluateAll(elements => elements.map(el => el.textContent.trim()));
+            assert.deepEqual(failedStats, ['—', '—', '—', '—'], `${failedTable} failure must not leave misleading zero or partial counts`);
+
+            await failedPage.locator('[data-staff-nav="transactions"]').click();
+            await failedPage.locator('[data-staff-table="transactions"] tbody tr').filter({ hasText: 'Could not load transaction records' }).waitFor();
+            assert.equal(await failedPage.locator('[data-staff-table="transactions"] tbody tr[data-row-index]').count(), 0,
+                `${failedTable} failure must suppress the successful source's partial transaction history`);
+            await failedSource.context.close();
+        }
 
         const scheduleRace = await openStaffPage(browser, {
             timezoneId: 'Asia/Manila', now: '2026-09-27T00:00:00Z',
