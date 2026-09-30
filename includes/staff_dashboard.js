@@ -1889,6 +1889,18 @@ document.addEventListener('DOMContentLoaded', async () => {
         staffReceiptModalLastFocus = null;
     }
 
+    function printStaffReceipt(card) {
+        if (!card) return;
+        document.querySelectorAll('.staff-receipt-card.is-print-target').forEach((other) =>
+            other.classList.remove('is-print-target'));
+        card.classList.add('is-print-target');
+        window.print();
+    }
+    window.addEventListener('afterprint', () => {
+        document.querySelectorAll('.staff-receipt-card.is-print-target').forEach((card) =>
+            card.classList.remove('is-print-target'));
+    });
+
     if (staffReceiptModal) {
         staffReceiptModal.addEventListener('click', async (event) => {
             if (event.target === staffReceiptModal || event.target.closest('[data-staff-receipt-close]')) {
@@ -1908,7 +1920,8 @@ document.addEventListener('DOMContentLoaded', async () => {
                 if (ok) window.InigoToast?.show('Acknowledgment downloaded.');
                 return;
             }
-            if (event.target.closest('[data-staff-receipt-print]')) window.print();
+            const printBtn = event.target.closest('[data-staff-receipt-print]');
+            if (printBtn) printStaffReceipt(printBtn.closest('.staff-receipt-card'));
         });
         document.addEventListener('keydown', (event) => { if (event.key === 'Escape' && !staffReceiptModal.hidden) closeStaffReceiptModal(); });
     }
@@ -2041,7 +2054,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 return;
             }
             if (printBtn) {
-                window.print();
+                printStaffReceipt(printBtn.closest('.staff-receipt-card'));
                 return;
             }
             if (retryBtn) {

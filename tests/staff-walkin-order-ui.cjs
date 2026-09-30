@@ -200,6 +200,19 @@ async function openStaffPage(browser, { timezoneId, now, config = {}, query = ''
         assert.deepEqual(saved.items.map(item => item.starts_at), ['2026-09-27T01:00:00.000Z', '2026-09-27T04:00:00.000Z'], 'slot timestamps should use Manila wall time even when device timezone is Honolulu');
         assert.equal(saved.ackCalls.length, 1, 'cash receipt is fetched from the canonical acknowledgment RPC');
         assert.deepEqual(saved.writes, [], 'the browser must not write walk_in_booking rows directly');
+        await page.evaluate(() => {
+            const second = document.createElement('div');
+            second.className = 'staff-receipt-card';
+            document.body.append(second);
+            window.__printedTargets = [];
+            window.print = () => {
+                window.__printedTargets = [...document.querySelectorAll('.staff-receipt-card.is-print-target')];
+            };
+        });
+        await page.locator('[data-staff-walkin-receipt] [data-staff-receipt-print]').click();
+        assert.equal(await page.evaluate(() => window.__printedTargets.length), 1,
+            'printing one acknowledgment must not select another visible receipt');
+        assert.equal(await page.evaluate(() => window.__printedTargets[0] === document.querySelector('[data-staff-walkin-receipt] .staff-receipt-card')), true);
         await context.close();
 
         const online = await openStaffPage(browser, { timezoneId: 'Asia/Manila', now: '2026-09-27T00:00:00Z' });

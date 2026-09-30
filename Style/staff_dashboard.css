@@ -1656,8 +1656,8 @@ body.staff-sidebar-open .staff-toggle-bar:nth-child(3) {
 @media print {
     @page { size: 80mm 300mm; margin: 3mm; }
     body * { visibility: hidden; }
-    .staff-receipt-card, .staff-receipt-card * { visibility: visible; }
-    .staff-receipt-card { position: absolute; left: 0; top: 0; width: 74mm; max-width: 74mm; padding: 0; border: 0; border-radius: 0; box-shadow: none; break-inside: avoid; }
+    .staff-receipt-card.is-print-target, .staff-receipt-card.is-print-target * { visibility: visible; }
+    .staff-receipt-card.is-print-target { position: absolute; left: 0; top: 0; width: 74mm; max-width: 74mm; padding: 0; border: 0; border-radius: 0; box-shadow: none; break-inside: avoid; }
     .staff-receipt-item { break-inside: avoid; }
     .staff-receipt-actions { display: none !important; }
 }
