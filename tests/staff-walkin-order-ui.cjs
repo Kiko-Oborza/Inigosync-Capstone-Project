@@ -74,7 +74,7 @@ function fixture(config) {
                 ? { data: null, error: { message: 'rules unavailable in fixture' } }
                 : { data: { open_hour: 8, close_hour: 20, is_closed: false, grace_minutes: config.graceMinutes ?? 30, timezone: 'Asia/Manila' }, error: null };
             if (name === 'court_occupancy') return { data: [], error: null };
-            if (name === 'staff_create_walkin_order') {
+            if (name === 'staff_create_walkin_order_quoted') {
                 qa.createdItems = args.p_items;
                 return { data: { order_id: 'a25dc45b-40ba-4b5b-96d6-4487dbe7a526', status: args.p_payment_method === 'cash' ? 'paid' : 'pending', amount_total: 350 }, error: null };
             }
@@ -187,16 +187,19 @@ async function openStaffPage(browser, { timezoneId, now, config = {}, query = ''
         const lineCount = await reviewRows.count();
         assert.equal(lineCount, 2, 'review should show both reservation lines');
         assert.match(await page.locator('[data-staff-walkin-summary-total]').innerText(), /₱350\.00/);
+        assert.match(await page.locator('[data-staff-walkin-summary-due]').innerText(), /₱350\.00/);
         await page.locator('[data-staff-walkin-save]').click();
         await page.locator('[data-staff-walkin-receipt]').getByText('Payment acknowledgment and entry pass').waitFor();
         const saved = await page.evaluate(() => ({
-            createCalls: window.__walkinQa.calls.filter(call => call.kind === 'rpc' && call.name === 'staff_create_walkin_order'),
+            createCalls: window.__walkinQa.calls.filter(call => call.kind === 'rpc' && call.name === 'staff_create_walkin_order_quoted'),
             ackCalls: window.__walkinQa.calls.filter(call => call.kind === 'rpc' && call.name === 'get_walkin_order_acknowledgment'),
             writes: window.__walkinQa.calls.filter(call => call.table === 'walk_in_booking' && ['insert', 'update'].includes(call.kind)),
             items: window.__walkinQa.createdItems,
         }));
         assert.equal(saved.createCalls.length, 1, 'one atomic RPC must create the whole multi-line order');
         assert.equal(saved.items.length, 2);
+        assert.deepEqual(saved.items.map(item => item.quoted_minor), [20000, 15000],
+            'the server must compare each reviewed line price before committing payment');
         assert.deepEqual(saved.items.map(item => item.starts_at), ['2026-09-27T01:00:00.000Z', '2026-09-27T04:00:00.000Z'], 'slot timestamps should use Manila wall time even when device timezone is Honolulu');
         assert.equal(saved.ackCalls.length, 1, 'cash receipt is fetched from the canonical acknowledgment RPC');
         assert.deepEqual(saved.writes, [], 'the browser must not write walk_in_booking rows directly');
@@ -232,10 +235,11 @@ async function openStaffPage(browser, { timezoneId, now, config = {}, query = ''
         await online.page.locator('[data-staff-walkin-save]').click();
         await online.page.waitForURL('https://checkout.paymongo.com/qa-walkin');
         assert.ok(onlineCalls.some(call => call.kind === 'function' && call.name === 'payment-health'));
-        assert.equal(onlineCalls.some(call => call.kind === 'rpc' && call.name === 'staff_create_walkin_order'), false,
+        assert.equal(onlineCalls.some(call => call.kind === 'rpc' && call.name.startsWith('staff_create_walkin_order')), false,
             'browser must not create online holds directly');
         assert.ok(onlineCalls.some(call => call.kind === 'function' && call.name === 'staff-walkin-checkout'
-            && call.options.body.guest_name === 'Online Guest' && call.options.body.items.length === 1));
+            && call.options.body.guest_name === 'Online Guest' && call.options.body.items.length === 1
+            && call.options.body.items[0].quoted_minor === 10000));
         assert.equal(onlineCalls.some(call => call.kind === 'rpc' && call.name === 'get_walkin_order_acknowledgment'), false, 'online redirect must not fabricate a paid acknowledgment');
         await online.context.close();
 
@@ -251,7 +255,7 @@ async function openStaffPage(browser, { timezoneId, now, config = {}, query = ''
         await offline.page.locator('[data-staff-walkin-next]').click();
         await offline.page.locator('[data-staff-walkin-save]').click();
         await offline.page.waitForFunction(() => window.__toastMessages?.some(toast => toast.message.includes('No order was saved')));
-        assert.equal(await offline.page.evaluate(() => window.__walkinQa.calls.some(call => call.kind === 'rpc' && call.name === 'staff_create_walkin_order')), false,
+        assert.equal(await offline.page.evaluate(() => window.__walkinQa.calls.some(call => call.kind === 'rpc' && call.name.startsWith('staff_create_walkin_order'))), false,
             'missing PayMongo setup must not create an online walk-in hold');
         await offline.context.close();
 

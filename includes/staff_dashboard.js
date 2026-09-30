@@ -820,6 +820,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     const walkinSummaryRate = document.querySelector('[data-staff-walkin-summary-rate]');
     const walkinSummaryPayment = document.querySelector('[data-staff-walkin-summary-payment]');
     const walkinSummaryTotal = document.querySelector('[data-staff-walkin-summary-total]');
+    const walkinSummaryDue = document.querySelector('[data-staff-walkin-summary-due]');
+    const walkinDueLabel = document.querySelector('[data-staff-walkin-due-label]');
     const walkinRateQuantityInput = document.querySelector('[data-staff-rate-quantity]');
 
     const WALKIN_STEP_COUNT = 5;
@@ -1623,6 +1625,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (walkinSummaryMobile) walkinSummaryMobile.textContent = walkinState.mobile || 'Not provided';
         if (walkinSummaryPayment) walkinSummaryPayment.textContent = walkinState.payment === 'paymongo' ? 'PayMongo online' : 'Cash';
         if (walkinSummaryTotal) walkinSummaryTotal.textContent = subtotal === null ? 'Confirm at front desk' : formatStaffPeso(subtotal);
+        if (walkinSummaryDue) walkinSummaryDue.textContent = subtotal === null ? 'Rate unavailable' : formatStaffPeso(subtotal);
+        if (walkinDueLabel) walkinDueLabel.textContent = walkinState.payment === 'paymongo' ? 'Court amount due' : 'Amount due now';
         if (walkinOnlineFeeNote) walkinOnlineFeeNote.hidden = walkinState.payment !== 'paymongo';
         if (walkinSaveBtn) walkinSaveBtn.textContent = walkinState.payment === 'paymongo' ? 'Next · Pay online' : 'Complete cash payment';
         if (walkinReviewLinesEl) {
@@ -1948,6 +1952,10 @@ document.addEventListener('DOMContentLoaded', async () => {
             goToWalkinStep(2);
             return;
         }
+        if (walkinState.items.some((item) => !Number.isFinite(item.subtotal) || item.subtotal <= 0)) {
+            window.InigoToast?.show('A court price is unavailable. Refresh the courts and review this order again.', true);
+            return;
+        }
         if (walkinState.payment === 'cash' && !staffCashEnabled) {
             window.InigoToast?.show('Cash payment is currently unavailable.', true);
             return;
@@ -1979,6 +1987,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             starts_at: item.startsAt,
             ends_at: item.endsAt,
             rate_quantity: item.rateQuantity,
+            quoted_minor: Math.round(item.subtotal * 100),
         }));
         if (walkinState.payment === 'paymongo') {
             button.textContent = 'Opening PayMongo…';
@@ -2004,7 +2013,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
         let create;
         try {
-            create = await window.sb.rpc('staff_create_walkin_order', {
+            create = await window.sb.rpc('staff_create_walkin_order_quoted', {
                 p_customer_id: walkinState.customerId || null,
                 p_guest_name: walkinState.customerId ? null : walkinState.name,
                 p_guest_mobile: walkinState.mobile || null,
