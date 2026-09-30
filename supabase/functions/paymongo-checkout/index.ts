@@ -1,5 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.95.0";
+import { hasPaymongoPaidWebhook } from "../_shared/paymongo-readiness.mjs";
 
 const appBaseUrl = Deno.env.get("APP_BASE_URL") || "";
 const allowedOrigin = (() => { try { return new URL(appBaseUrl).origin; } catch { return ""; } })();
@@ -67,6 +68,10 @@ Deno.serve(async (req: Request) => {
     const current = Array.isArray(fresh) ? fresh[0] : attempt;
     return json({ attempt_id: current.id, status: current.status, item_count: current.item_count || 1 }, 200, origin);
   }
+
+  if (!await hasPaymongoPaidWebhook({ secretKey,
+      webhookSecret: Deno.env.get("PAYMONGO_WEBHOOK_SECRET"), supabaseUrl: url }))
+    return json({ message: "Online checkout is unavailable until payment confirmation is configured." }, 503, origin);
 
   let prepared: any;
   let label = "court reservation";

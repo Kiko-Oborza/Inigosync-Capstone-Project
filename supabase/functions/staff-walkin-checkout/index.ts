@@ -1,5 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.95.0";
+import { hasPaymongoPaidWebhook } from "../_shared/paymongo-readiness.mjs";
 
 const appBaseUrl = Deno.env.get("APP_BASE_URL") || "";
 const allowedOrigin = (() => { try { return new URL(appBaseUrl).origin; } catch { return ""; } })();
@@ -51,23 +52,8 @@ Deno.serve(async (req: Request) => {
     .select("role,status").eq("id", authData.user.id).maybeSingle();
   if (profileError || !profile || !["staff", "admin"].includes(profile.role) || profile.status !== "active")
     return json({ message: "Active staff access is required." }, 403, origin);
-  let webhookReady = false;
-  try {
-    const webhookResponse = await fetch("https://api.paymongo.com/v1/webhooks", {
-      headers: { authorization: `Basic ${btoa(`${secretKey}:`)}` }, signal: AbortSignal.timeout(8000),
-    });
-    if (webhookResponse.ok) {
-      const webhookPayload = await webhookResponse.json();
-      const expectedUrl = `${url}/functions/v1/paymongo-webhook`;
-      webhookReady = (webhookPayload?.data || []).some((entry: { attributes?: {
-        url?: string; status?: string; events?: string[] } }) => {
-        const attrs = entry?.attributes || {};
-        return attrs.url === expectedUrl && attrs.status === "enabled"
-          && (attrs.events || []).includes("checkout_session.payment.paid");
-      });
-    }
-  } catch { /* Payment provider health is unavailable. */ }
-  if (!webhookReady) return json({ message: "Online checkout is unavailable. No new order was saved." }, 503, origin);
+  if (!await hasPaymongoPaidWebhook({ secretKey, webhookSecret, supabaseUrl: url }))
+    return json({ message: "Online checkout is unavailable. No new order was saved." }, 503, origin);
 
   let orderId: string;
   if (retry) {

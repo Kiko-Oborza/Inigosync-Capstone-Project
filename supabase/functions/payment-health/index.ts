@@ -48,7 +48,8 @@ Deno.serve(async (req: Request) => {
         const configured = (payload?.data || []).some((entry: any) => {
           const attrs = entry?.attributes || {};
           return attrs.url === expectedUrl && attrs.status === "enabled"
-            && (attrs.events || []).includes("checkout_session.payment.paid");
+            && attrs.livemode === (keyMode === "live")
+            && Array.isArray(attrs.events) && attrs.events.includes("checkout_session.payment.paid");
         });
         webhookConfigured = Boolean(webhookSecret && configured);
       }
