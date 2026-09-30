@@ -2469,6 +2469,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     let scheduleWalkinsCache = [];
     let scheduleNameMap = new Map();
     let scheduleDataOk = true;
+    let scheduleLoading = false;
     let scheduleRulesCache = null;
     let scheduleRequestSeq = 0;
 
@@ -2593,8 +2594,9 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         thead.innerHTML = `<tr><th>Court / Unit</th>${hours.map((h) => `<th>${window.escapeHtml(window.InigoBusinessHours.formatHourRangeLabelShort(h))}</th>`).join('')}<th>Open hours</th></tr>`;
 
-        if (!scheduleDataOk) {
-            tbody.innerHTML = `<tr><td colspan="${hours.length + 2}" style="text-align:center; color: var(--color-ink-faint);">Could not verify live availability. Please refresh the schedule.</td></tr>`;
+        if (scheduleLoading || !scheduleDataOk) {
+            const message = scheduleLoading ? 'Checking live availability…' : 'Could not verify live availability. Please refresh the schedule.';
+            tbody.innerHTML = `<tr><td colspan="${hours.length + 2}" style="text-align:center; color: var(--color-ink-faint);">${message}</td></tr>`;
             return;
         }
 
@@ -2638,7 +2640,12 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (!scheduleTable || !window.sb || !window.InigoCourtsData) return;
 
         const mySeq = ++scheduleRequestSeq;
-        const dateBase = manilaDateTime(scheduleDate, 0);
+        const requestedDate = scheduleDate;
+        scheduleLoading = true;
+        scheduleDataOk = false;
+        scheduleRulesCache = null;
+        renderCourtSchedule(scheduleCourtsCache, [], []);
+        const dateBase = manilaDateTime(requestedDate, 0);
         const dayEnd = new Date(dateBase.getTime() + 24 * 60 * 60 * 1000);
         let courts;
         let occupancyRes;
@@ -2652,24 +2659,26 @@ document.addEventListener('DOMContentLoaded', async () => {
         } catch (error) {
             console.error('[staff] failed to load court schedule availability', error);
             if (mySeq !== scheduleRequestSeq) return;
+            scheduleLoading = false;
             scheduleDataOk = false;
+            scheduleRulesCache = null;
             renderCourtSchedule(scheduleCourtsCache, [], []);
             return;
         }
         if (mySeq !== scheduleRequestSeq) return;
         if (occupancyRes.error) console.error('[staff] failed to load court schedule availability', occupancyRes.error);
-        scheduleDataOk = !occupancyRes.error;
-        const rows = scheduleDataOk ? (occupancyRes.data || []) : [];
+        const rows = occupancyRes.error ? [] : (occupancyRes.data || []);
         const bookings = rows.filter((row) => row.source === 'online');
         const walkins = rows.filter((row) => row.source !== 'online');
-
-        scheduleNameMap = new Map();
-
-        scheduleCourtsCache = courts;
-        scheduleRulesCache = window.InigoBusinessHours?.getForDate
-            ? await window.InigoBusinessHours.getForDate(scheduleDate).catch(() => null)
+        const rules = window.InigoBusinessHours?.getForDate
+            ? await window.InigoBusinessHours.getForDate(requestedDate).catch(() => null)
             : null;
-        if (!scheduleRulesCache?.authoritative) scheduleDataOk = false;
+        if (mySeq !== scheduleRequestSeq) return;
+        scheduleLoading = false;
+        scheduleDataOk = !occupancyRes.error && Boolean(rules?.authoritative);
+        scheduleNameMap = new Map();
+        scheduleCourtsCache = courts;
+        scheduleRulesCache = rules;
         scheduleBookingsCache = bookings;
         scheduleWalkinsCache = walkins;
         renderCourtSchedule(courts, bookings, walkins);

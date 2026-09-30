@@ -70,9 +70,16 @@ function fixture(config) {
         async rpc(name, args) {
             qa.calls.push({ kind: 'rpc', name, args });
             if (window.__qaRecord) await window.__qaRecord({ kind: 'rpc', name, args });
-            if (name === 'booking_rules_for_date') return config.hoursUnavailable
-                ? { data: null, error: { message: 'rules unavailable in fixture' } }
-                : { data: { open_hour: 8, close_hour: 20, is_closed: false, grace_minutes: config.graceMinutes ?? 30, timezone: 'Asia/Manila' }, error: null };
+            if (name === 'booking_rules_for_date') {
+                const delay = config.rulesDelayByDate?.[args.p_date] || 0;
+                if (delay) await new Promise(resolve => setTimeout(resolve, delay));
+                const rules = config.rulesByDate?.[args.p_date] || {};
+                return config.hoursUnavailable
+                    ? { data: null, error: { message: 'rules unavailable in fixture' } }
+                    : { data: { open_hour: rules.open_hour ?? 8, close_hour: rules.close_hour ?? 20,
+                        is_closed: rules.is_closed ?? false, grace_minutes: config.graceMinutes ?? 30,
+                        timezone: 'Asia/Manila' }, error: null };
+            }
             if (name === 'court_occupancy') return { data: [], error: null };
             if (name === 'staff_create_walkin_order_quoted') {
                 qa.createdItems = args.p_items;
@@ -611,6 +618,33 @@ async function openStaffPage(browser, { timezoneId, now, config = {}, query = ''
         assert.equal(await boundaryDay.page.locator('[data-staff-tx-from]').inputValue(), '2026-09-28', 'date controls should initialize to the Manila calendar day');
         await boundaryDay.context.close();
 
+        const scheduleRace = await openStaffPage(browser, {
+            timezoneId: 'Asia/Manila', now: '2026-09-27T00:00:00Z',
+            config: { rulesDelayByDate: { '2026-09-28': 450 },
+                rulesByDate: { '2026-09-28': { open_hour: 10, close_hour: 12 },
+                    '2026-09-29': { open_hour: 13, close_hour: 15 } } },
+        });
+        const schedulePage = scheduleRace.page;
+        await schedulePage.locator('[data-staff-nav="schedule"]').first().click();
+        await schedulePage.locator('[data-staff-schedule-grid] tbody tr').first().waitFor();
+        await schedulePage.locator('[data-staff-schedule-date]').fill('2026-09-28');
+        await schedulePage.locator('[data-staff-schedule-date]').dispatchEvent('change');
+        await schedulePage.waitForFunction(() => window.__walkinQa.calls.some(call => call.name === 'booking_rules_for_date' && call.args.p_date === '2026-09-28'));
+        await schedulePage.locator('[data-staff-schedule-search]').fill('Badminton');
+        assert.match(await schedulePage.locator('[data-staff-schedule-grid] tbody').innerText(), /Checking live availability/,
+            'date changes never show the previous date as open while rules are pending');
+        await schedulePage.locator('[data-staff-schedule-date]').fill('2026-09-29');
+        await schedulePage.locator('[data-staff-schedule-date]').dispatchEvent('change');
+        await schedulePage.waitForFunction(() => {
+            const head = document.querySelector('[data-staff-schedule-grid] thead');
+            return head?.querySelectorAll('th').length === 4 && head.textContent.includes('1–2 PM');
+        });
+        await new Promise(resolve => setTimeout(resolve, 550));
+        assert.match(await schedulePage.locator('[data-staff-schedule-grid] thead').innerText(), /1–2 PM/,
+            'late rules for the previous date cannot overwrite the new schedule');
+        assert.doesNotMatch(await schedulePage.locator('[data-staff-schedule-grid] thead').innerText(), /10–11 AM/);
+        await scheduleRace.context.close();
+
         const responsive = await openStaffPage(browser, { timezoneId: 'Asia/Manila', now: '2026-09-27T00:00:00Z' });
         for (const width of [360, 768, 1280]) {
             await responsive.page.setViewportSize({ width, height: 900 });
@@ -659,7 +693,7 @@ async function openStaffPage(browser, { timezoneId, now, config = {}, query = ''
         assert.equal(thermalPageSize, '80mm 300mm', 'receipt print page must parse as a valid 80mm thermal format');
         assert.deepEqual(errors, [], 'walk-in browser console must have no uncaught page errors');
         await responsive.context.close();
-        console.log('PASS staff walk-in UI: atomic multi-line order, Manila date boundary, and 360/768/1280 widths');
+        console.log('PASS staff walk-in UI: atomic multi-line order, Manila date boundary, schedule request race, and 360/768/1280 widths');
     } finally {
         await browser.close();
     }
