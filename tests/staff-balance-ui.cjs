@@ -68,30 +68,35 @@ function fixture(row) {
     };
 }
 
+async function openBalancePage(browser, row, { query = '', onRecord } = {}) {
+    const context = await browser.newContext({ timezoneId: 'Asia/Manila', viewport: { width: 390, height: 844 } });
+    const page = await context.newPage();
+    page.setDefaultTimeout(12000);
+    if (onRecord) await page.exposeFunction('__qaRecordBalance', onRecord);
+    await page.clock.install({ time: new Date('2026-09-27T09:00:00+08:00') });
+    const errors = [];
+    page.on('pageerror', error => errors.push(error.message));
+    await page.route(/^https:\/\//, route => route.abort());
+    await page.route('**/includes/loadingOverlay.js', route => route.fulfill({ contentType: 'application/javascript',
+        body: `window.__qaToasts=[];window.InigoLoading={show(){},hide(){}};window.InigoToast={show:(message,isError)=>window.__qaToasts.push({message,isError})};` }));
+    await page.route('**/Config/supabaseClient.js', route => route.fulfill({ contentType: 'application/javascript',
+        body: `(${fixture})(${JSON.stringify(row)});` }));
+    await page.route('**/includes/authGuard.js', route => route.fulfill({ contentType: 'application/javascript',
+        body: `window.inigosyncProfile={id:'qa-staff',role:'staff',status:'active',full_name:'QA Staff'};document.addEventListener('DOMContentLoaded',()=>{window.InigoLoading?.hide();document.documentElement.classList.remove('inigo-auth-pending');document.dispatchEvent(new CustomEvent('inigosync:profile-ready',{detail:window.inigosyncProfile}));});` }));
+    await page.route('**/includes/appSettings.js', route => route.fulfill({ contentType: 'application/javascript',
+        body: `window.InigoAppSettings={DEFAULT_SETTINGS:{downpaymentPct:50,cashEnabled:true,cardEnabled:true,gcashEnabled:true},getSettings:async()=>({downpaymentPct:50,cashEnabled:true,cardEnabled:true,gcashEnabled:true,nightRateStartsAt:'18:00'})};` }));
+    await page.route('**/includes/courtsData.js', route => route.fulfill({ contentType: 'application/javascript',
+        body: `window.InigoCourtsData={getCourts:async()=>[],getSports:async()=>[],resolveCourtUnits:()=>({units:[]}),invalidateCourts(){},monogramFor:()=>'',slugify:s=>s};` }));
+    await page.goto(`http://127.0.0.1:4178/Pages/staff_dashboard.html${query}`, { waitUntil: 'domcontentloaded' });
+    return { context, page, errors };
+}
+
 (async () => {
     const browser = await chromium.launch({ channel: 'msedge', headless: true });
     try {
         for (const method of ['Cash', 'PayMongo']) {
-            const context = await browser.newContext({ timezoneId: 'Asia/Manila', viewport: { width: 390, height: 844 } });
-            const page = await context.newPage();
-            page.setDefaultTimeout(12000);
             const calls = [];
-            await page.exposeFunction('__qaRecordBalance', call => calls.push(call));
-            await page.clock.install({ time: new Date('2026-09-27T09:00:00+08:00') });
-            const errors = [];
-            page.on('pageerror', error => errors.push(error.message));
-            await page.route(/^https:\/\//, route => route.abort());
-            await page.route('**/includes/loadingOverlay.js', route => route.fulfill({ contentType: 'application/javascript',
-                body: `window.__qaToasts=[];window.InigoLoading={show(){},hide(){}};window.InigoToast={show:(message,isError)=>window.__qaToasts.push({message,isError})};` }));
-            await page.route('**/Config/supabaseClient.js', route => route.fulfill({ contentType: 'application/javascript',
-                body: `(${fixture})(${JSON.stringify(booking)});` }));
-            await page.route('**/includes/authGuard.js', route => route.fulfill({ contentType: 'application/javascript',
-                body: `window.inigosyncProfile={id:'qa-staff',role:'staff',status:'active',full_name:'QA Staff'};document.addEventListener('DOMContentLoaded',()=>{window.InigoLoading?.hide();document.documentElement.classList.remove('inigo-auth-pending');document.dispatchEvent(new CustomEvent('inigosync:profile-ready',{detail:window.inigosyncProfile}));});` }));
-            await page.route('**/includes/appSettings.js', route => route.fulfill({ contentType: 'application/javascript',
-                body: `window.InigoAppSettings={DEFAULT_SETTINGS:{downpaymentPct:50,cashEnabled:true,cardEnabled:true,gcashEnabled:true},getSettings:async()=>({downpaymentPct:50,cashEnabled:true,cardEnabled:true,gcashEnabled:true,nightRateStartsAt:'18:00'})};` }));
-            await page.route('**/includes/courtsData.js', route => route.fulfill({ contentType: 'application/javascript',
-                body: `window.InigoCourtsData={getCourts:async()=>[],getSports:async()=>[],resolveCourtUnits:()=>({units:[]}),invalidateCourts(){},monogramFor:()=>'',slugify:s=>s};` }));
-            await page.goto('http://127.0.0.1:4178/Pages/staff_dashboard.html', { waitUntil: 'domcontentloaded' });
+            const { context, page, errors } = await openBalancePage(browser, booking, { onRecord: call => calls.push(call) });
             const timeIn = page.locator('[data-staff-table="overview"] [data-staff-action="timein"]').first();
             await timeIn.waitFor();
             await timeIn.click();
@@ -114,7 +119,40 @@ function fixture(row) {
             assert.deepEqual(errors, [], `${method} browser errors`);
             await context.close();
         }
-        console.log('PASS staff balance UI: Cash RPC and PayMongo checkout remain separate');
+
+        for (const scenario of [
+            { row: { ...booking, amount_paid: 100, checked_in_at: '2026-09-27T01:01:00Z', balance_payment_method: 'PayMongo' },
+                expected: 'The balance is paid and Time-In was recorded.' },
+            { row: { ...booking, amount_paid: 100, status: 'unattended', balance_payment_method: 'PayMongo' },
+                expected: 'The balance was paid, but Time-In was not recorded.' },
+        ]) {
+            const returned = await openBalancePage(browser, scenario.row,
+                { query: '?balance_checkout=return&source=booking&id=42' });
+            await returned.page.waitForFunction(expected => window.__qaToasts.some(toast => toast.message.includes(expected)), scenario.expected);
+            assert.equal(await returned.page.locator('[data-staff-timein-modal]').isHidden(), true,
+                'returning from balance checkout must not reopen Time-In');
+            assert.equal(await returned.page.evaluate(() => window.__balanceQa.calls.some(call => call.name === 'staff_collect_cash_and_check_in')), false,
+                'return handling does not attempt a second Time-In');
+            assert.deepEqual(returned.errors, [], 'balance return browser errors');
+            await returned.context.close();
+        }
+
+        const stale = await openBalancePage(browser, booking);
+        await stale.page.locator('[data-staff-table="overview"] [data-staff-action="timein"]').first().click();
+        await stale.page.locator('[data-staff-timein-balance]').getByText('₱50.00').waitFor();
+        await stale.page.locator('[data-staff-timein-method="Cash"]').check();
+        await stale.page.evaluate(() => {
+            window.__balanceQa.booking = { ...window.__balanceQa.booking, amount_paid: 100,
+                checked_in_at: '2026-09-27T01:01:00Z' };
+        });
+        await stale.page.locator('[data-staff-timein-confirm]').click();
+        await stale.page.waitForFunction(() => window.__qaToasts.some(toast => toast.message.includes('Time-In was already recorded')));
+        assert.equal(await stale.page.locator('[data-staff-timein-confirm]').isDisabled(), true,
+            'a stale modal cannot submit a second Time-In');
+        assert.equal(await stale.page.evaluate(() => window.__balanceQa.calls.some(call => call.name === 'staff_collect_cash_and_check_in')), false);
+        assert.deepEqual(stale.errors, [], 'stale modal browser errors');
+        await stale.context.close();
+        console.log('PASS staff balance UI: Cash and PayMongo, verified return states, and stale Time-In prevention');
     } finally {
         await browser.close();
     }

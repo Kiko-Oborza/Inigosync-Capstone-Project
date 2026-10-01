@@ -74,6 +74,8 @@ function clientFixture(options) {
             return { data: query.one ? courts[0] || null : courts, error: null };
         }
         if (ownerData && table === 'app_settings' && query.one) return { data: { night_rate_starts_at: '18:30:00' }, error: null };
+        if (table === 'booking') return { data: data.filter(row => row.source === 'online'), error: null };
+        if (table === 'walk_in_booking') return { data: data.filter(row => row.source === 'walkin'), error: null };
         return { data: [], error: null };
     };
     const from = table => {
@@ -102,6 +104,8 @@ function clientFixture(options) {
         from,
         rpc: async (name, args) => {
             calls.push({ kind: 'rpc', name, args });
+            if (name === 'booking_rules_for_date') return { data: [{ open_hour: 8, close_hour: 20,
+                grace_minutes: options.graceMinutes ?? 30, is_closed: false, timezone: 'Asia/Manila' }], error: null };
             if (name !== 'court_occupancy') return { data: [], error: null };
             const start = Date.parse(args.from_at), end = Date.parse(args.to_at);
             const snapshot = data.filter(row => ['pending', 'confirmed'].includes(row.status)
@@ -193,7 +197,7 @@ function courtDataFixture(options = {}) {
 (async () => {
     const browser = await chromium.launch({ channel: 'msedge', headless: true });
     try {
-        async function setup(role, rows, insertError = null, inventoryUnavailable = false, rates = false, sets = false, authoritativeAmountTotal = undefined, insertErrorAfter = undefined, insertDelayMs = 0, insertErrorOnce = false, ownerData = null, emptyPickleballInventory = false) {
+        async function setup(role, rows, insertError = null, inventoryUnavailable = false, rates = false, sets = false, authoritativeAmountTotal = undefined, insertErrorAfter = undefined, insertDelayMs = 0, insertErrorOnce = false, ownerData = null, emptyPickleballInventory = false, graceMinutes = 30) {
             const context = await browser.newContext({ timezoneId: 'Asia/Manila', viewport: { width: 1280, height: 900 } });
             const page = await context.newPage();
             page.setDefaultTimeout(12000);
@@ -206,7 +210,7 @@ function courtDataFixture(options = {}) {
             await page.route('**/includes/loadingOverlay.js', route => route.fulfill({ contentType: 'application/javascript',
                 body: `window.__qaToasts=[];window.InigoLoading={show(){},hide(){}};window.InigoToast={show:(message,isError)=>window.__qaToasts.push({message,isError:!!isError})};` }));
             await page.route('**/Config/supabaseClient.js', route => route.fulfill({ contentType: 'application/javascript',
-                body: `(${clientFixture})(${JSON.stringify({ rows, insertError, insertErrorAfter, insertDelayMs, insertErrorOnce, authoritativeAmountTotal, owner: ownerData })});` }));
+                body: `(${clientFixture})(${JSON.stringify({ rows, insertError, insertErrorAfter, insertDelayMs, insertErrorOnce, authoritativeAmountTotal, owner: ownerData, graceMinutes })});` }));
             await page.route('**/includes/authGuard.js', route => route.fulfill({ contentType: 'application/javascript',
                 body: `window.inigosyncProfile={id:'qa-user',role:${JSON.stringify(role)},status:'active',full_name:'QA User',email:'qa@example.test'};document.addEventListener('DOMContentLoaded',()=>{window.InigoLoading?.hide();document.documentElement.classList.remove('inigo-auth-pending');document.dispatchEvent(new CustomEvent('inigosync:profile-ready',{detail:window.inigosyncProfile}));});` }));
             await page.route('**/includes/courtsData.js', route => route.fulfill({ contentType: 'application/javascript', body: `(${courtDataFixture})(${JSON.stringify({ inventoryUnavailable, rates, sets, emptyPickleballInventory })});` }));
@@ -362,7 +366,42 @@ function courtDataFixture(options = {}) {
             assert.deepEqual(errors, [], 'bowling set browser errors');
             await context.close();
         }
-        console.log('PASS reservation QA UI: physical availability, one PayMongo cart checkout, no unpaid customer booking, bowling set duration');
+        // A past start does not prove no-show: the server may have a longer
+        // grace period or an unresolved checkout. Only its stored status can.
+        {
+            const start = '2026-09-24T08:00:00+08:00';
+            const end = '2026-09-24T09:00:00+08:00';
+            const rows = ['confirmed', 'unattended'].map((status, index) => ({
+                source: 'online', booking_id: index + 1, customer_id: 'qa-user',
+                courts: 'Basketball', sports: 'Basketball', court_unit: 'Court 1',
+                time_date: start, end_at: end, duration_minutes: 60, status,
+                amount_total: 100, amount_paid: 0,
+            }));
+            const { page, context, errors } = await setup('customer', rows);
+            const bookingStatuses = page.locator('[data-dash-panel="bookings"] tbody .dash-status');
+            await bookingStatuses.first().waitFor({ state: 'attached' });
+            assert.deepEqual(await bookingStatuses.allTextContents(), ['Confirmed', 'Unattended'],
+                'My Bookings must display persisted statuses after the former 30-minute cutoff');
+            const acknowledgmentStatuses = page.locator('[data-dash-booking-receipts] .dash-status');
+            await acknowledgmentStatuses.first().waitFor({ state: 'attached' });
+            assert.deepEqual(await acknowledgmentStatuses.allTextContents(), ['Confirmed', 'Unattended'],
+                'booking summary cards must use the same persisted statuses');
+            assert.deepEqual(errors, [], 'customer persisted status browser errors');
+            await context.close();
+        }
+        {
+            const { page, context, errors } = await setup('customer', [], null, false, false,
+                false, undefined, undefined, 0, false, null, false, 90);
+            await page.locator('[data-dash-nav="booking"]').first().click();
+            await page.locator('[data-dash-book-unit-select] option').first().waitFor({ state: 'attached' });
+            await page.locator('[data-dash-book-unit-select]').selectOption({ label: 'Court 2' });
+            await page.locator('[data-dash-book-next]').click();
+            await page.locator('[data-dash-booking-grace-notice]').first().waitFor({ state: 'attached' });
+            await page.waitForFunction(() => document.querySelector('[data-dash-booking-grace-notice]')?.textContent.includes('90-minute'));
+            assert.deepEqual(errors, [], 'date-specific customer grace notice browser errors');
+            await context.close();
+        }
+        console.log('PASS reservation QA UI: physical availability, one PayMongo cart checkout, no unpaid customer booking, bowling set duration, server-owned no-show status, date-specific grace notice');
     } finally {
         await browser.close();
     }

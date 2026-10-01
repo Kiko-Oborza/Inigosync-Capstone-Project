@@ -304,26 +304,6 @@ document.addEventListener('DOMContentLoaded', () => {
         return `${dateLabel}, ${timeLabel}`;
     }
 
-    // Derived "Unattended" status — same 30-minute-grace rule
-    // includes/Dashboard.js's displayStatusFor() uses (Revision 2, R4):
-    // more than 30 minutes past time_date, no checked_in_at, and still
-    // pending/confirmed. Duplicated rather than shared (this file has no
-    // dependency on Dashboard.js and never loads it) — see
-    // isSchemaMismatchError's own comment above for why every helper here
-    // is self-contained.
-    const ADMIN_UNATTENDED_GRACE_MINUTES = 30;
-    function adminDisplayStatusFor(booking) {
-        const rawStatus = String(booking.status || '').toLowerCase();
-        if (rawStatus !== 'pending' && rawStatus !== 'confirmed') return rawStatus;
-        if (booking.checked_in_at) return rawStatus;
-
-        const start = new Date(booking.time_date);
-        if (Number.isNaN(start.getTime())) return rawStatus;
-
-        const graceDeadline = start.getTime() + ADMIN_UNATTENDED_GRACE_MINUTES * 60000;
-        return Date.now() > graceDeadline ? 'unattended' : rawStatus;
-    }
-
     // Shared by Recent bookings (customer_id → name) and Notifications
     // (customer_id → name) — no PostgREST embed, since a real FK from
     // booking.customer_id to profiles.id isn't confirmed in this

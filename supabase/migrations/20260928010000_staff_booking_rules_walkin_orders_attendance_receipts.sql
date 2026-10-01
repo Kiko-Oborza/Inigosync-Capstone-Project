@@ -570,6 +570,27 @@ $$;
 revoke all on function public.customer_list_walkin_acknowledgments(integer,integer) from public,anon;
 grant execute on function public.customer_list_walkin_acknowledgments(integer,integer) to authenticated;
 
+-- The older authoritative-price trigger always marked a new walk-in paid.
+-- Online order lines must keep their authoritative price while awaiting a
+-- verified PayMongo settlement.
+create or replace function internal.set_walkin_authoritative_amount()
+returns trigger language plpgsql security definer set search_path = '' as $$
+begin
+  new.rate_unit_snapshot := internal.authoritative_reservation_rate_unit(
+    new.court_listing_id,new.court_unit_inventory_id);
+  new.amount_total := internal.authoritative_reservation_amount(
+    new.court_listing_id,new.court_unit_inventory_id,new.time_date,
+    new.end_at,new.duration_minutes,new.rate_quantity);
+  new.amount_paid := case
+    when new.walkin_order_id is not null and new.status='pending'
+      and new.payment_id is null then 0
+    else coalesce(new.amount_total,0)
+  end;
+  return new;
+end;
+$$;
+revoke all on function internal.set_walkin_authoritative_amount() from public,anon,authenticated,service_role;
+
 create or replace function internal.guard_new_walkin_payment()
 returns trigger language plpgsql security definer set search_path = '' as $$
 declare v_actor uuid:=(select auth.uid()); v_order_staff uuid; v_order_status text;
@@ -609,6 +630,26 @@ begin
 end;
 $$;
 revoke all on function internal.guard_new_walkin_payment() from public,anon,authenticated;
+
+-- Online orders are created only by the authenticated Edge checkout path,
+-- after it confirms the PayMongo key and webhook are ready. The whole order
+-- RPC rolls back if a browser attempts its online branch directly.
+create or replace function internal.guard_online_walkin_service()
+returns trigger language plpgsql security definer set search_path = '' as $$
+begin
+  if new.walkin_order_id is not null
+      and exists(select 1 from internal.staff_walkin_orders o
+        where o.id=new.walkin_order_id and o.status='awaiting_payment')
+      and (select auth.role()) is distinct from 'service_role' then
+    raise exception 'Create online walk-ins through the verified checkout service' using errcode='42501';
+  end if;
+  return new;
+end;
+$$;
+revoke all on function internal.guard_online_walkin_service() from public,anon,authenticated;
+drop trigger if exists zzzzz_walkin_online_service_guard on public.walk_in_booking;
+create trigger zzzzz_walkin_online_service_guard before insert on public.walk_in_booking
+  for each row execute function internal.guard_online_walkin_service();
 
 create or replace function public.staff_create_walkin_order(
   p_customer_id uuid,p_guest_name text,p_guest_mobile text,p_items jsonb,p_payment_method text
@@ -763,6 +804,29 @@ end;
 $$;
 revoke all on function public.staff_create_walkin_order(uuid,text,text,jsonb,text) from public,anon;
 grant execute on function public.staff_create_walkin_order(uuid,text,text,jsonb,text) to authenticated;
+
+-- Only a service-role Edge Function may supply the staff identity here. The
+-- inner RPC and reservation triggers still verify that this account is active.
+create or replace function public.staff_create_walkin_order_service(
+  p_staff_id uuid,p_customer_id uuid,p_guest_name text,p_guest_mobile text,
+  p_items jsonb,p_payment_method text
+) returns jsonb language plpgsql security definer set search_path = '' as $$
+declare v_prior_sub text:=current_setting('request.jwt.claim.sub',true); v_result jsonb;
+begin
+  if (select auth.role()) is distinct from 'service_role' or p_staff_id is null then
+    raise exception 'Service access is required' using errcode='42501';
+  end if;
+  perform set_config('request.jwt.claim.sub',p_staff_id::text,true);
+  v_result:=public.staff_create_walkin_order(
+    p_customer_id,p_guest_name,p_guest_mobile,p_items,p_payment_method);
+  perform set_config('request.jwt.claim.sub',coalesce(v_prior_sub,''),true);
+  return v_result;
+end;
+$$;
+revoke all on function public.staff_create_walkin_order_service(uuid,uuid,text,text,jsonb,text)
+  from public,anon,authenticated;
+grant execute on function public.staff_create_walkin_order_service(uuid,uuid,text,text,jsonb,text)
+  to service_role;
 
 create or replace function public.prepare_staff_walkin_checkout(p_order_id uuid,p_staff_id uuid)
 returns jsonb language plpgsql security definer set search_path = '' as $$

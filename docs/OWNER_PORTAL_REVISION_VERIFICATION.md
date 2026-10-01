@@ -1,6 +1,6 @@
 # Owner portal revision verification
 
-The owner portal revision is implemented in this workspace and its database/payment migrations and Edge Functions are deployed to Supabase project `xrlwtnwamboucihsamrr`. The customer and staff frontend is still a local workspace change. Live PayMongo checkout requires a provider test key, webhook secret, and public HTTPS `APP_BASE_URL`; these are server secrets, not owner-page settings. The cron worker currently returns `503 Worker is not configured`, so the revised customer frontend must remain unpublished until setup and provider testing are complete.
+The owner portal revision is implemented in this workspace and its database/payment migrations and Edge Functions are deployed to Supabase project `xrlwtnwamboucihsamrr`. A frontend is already public at `https://inigossportcenter.com` and uses that same project. On 2026-10-01, a source comparison found that the public customer and staff scripts differ from this reviewed branch; the final frontend changes are not fully deployed. PayMongo checkout still needs credentials, a webhook, and an end-to-end provider test. The last worker log checked returned `503 Worker is not configured`; this is not proof of a current secret value.
 
 ## Verified behavior
 
@@ -18,4 +18,4 @@ The live database had zero unpaid pending bookings and zero open checkout intent
 
 ## Remaining live rollout gate
 
-Configure `PAYMONGO_SECRET_KEY`, `PAYMONGO_WEBHOOK_SECRET`, and `APP_BASE_URL` as described in [PayMongo checkout setup](paymongo-checkout-setup.md). Then complete a PayMongo **test-mode** end-to-end run for payment confirmation, cancellation, provider expiry, duplicate webhooks, and both balance methods before publishing the revised frontend. A redirect alone is never treated as payment confirmation.
+The project manager confirmed that `https://inigossportcenter.com` is a thesis demo using PayMongo **test mode only**, with no real customer payments. Run the test-mode end-to-end checks on its connected Supabase project: payment confirmation, cancellation, provider expiry, duplicate webhooks, and both balance methods. Its `APP_BASE_URL` is `https://inigossportcenter.com`; allowed-origin preflights returned HTTP 200 after the user saved it. The public frontend's eight differing files matched `origin/main` byte for byte at the 2026-10-01 audit. Hostinger is connected to the GitHub repository, so the intended release path is to merge the reviewed PR into `main` after the release gates, then verify Hostinger's deployment. A manual ZIP upload is unnecessary when the connected Git deployment succeeds. A redirect alone is never treated as payment confirmation. See [PayMongo checkout setup](paymongo-checkout-setup.md).

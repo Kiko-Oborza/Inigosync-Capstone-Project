@@ -2,6 +2,7 @@
 // mock only; no production/test payment account, inserts, or network writes.
 const assert = require('node:assert/strict');
 const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
+const previewBaseUrl = process.env.INIGOSYNC_PREVIEW_URL || 'http://127.0.0.1:4178';
 
 const courts = [
     { id: 'listing-badminton', name: 'Badminton', sportName: 'Badminton', bookableUnits: [{ id: 'unit-b1', label: 'Court 1', rateDay: 100, rateUnit: '/hr' }] },
@@ -39,9 +40,13 @@ function fixture(config) {
                     : table === 'app_settings' ? [{ cash_enabled: true, card_enabled: true, gcash_enabled: true, downpayment_pct: 50, night_rate_starts_at: '18:00:00' }]
                         : [];
         for (const [key, op, value] of query.filters) {
+            if (key === 'status' && op === 'in') rows = rows.filter(row => value.includes(row.status));
             if (key !== 'time_date') continue;
             if (op === 'gte') rows = rows.filter(row => String(row.time_date) >= String(value));
             if (op === 'lt') rows = rows.filter(row => String(row.time_date) < String(value));
+        }
+        if ((config.failReadTables || []).includes(table)) {
+            return { data: null, error: { message: `${table} read failed in fixture` } };
         }
         return { data: query.one ? (rows[0] || null) : rows, error: null };
     };
@@ -68,11 +73,18 @@ function fixture(config) {
         async rpc(name, args) {
             qa.calls.push({ kind: 'rpc', name, args });
             if (window.__qaRecord) await window.__qaRecord({ kind: 'rpc', name, args });
-            if (name === 'booking_rules_for_date') return config.hoursUnavailable
-                ? { data: null, error: { message: 'rules unavailable in fixture' } }
-                : { data: { open_hour: 8, close_hour: 20, is_closed: false, grace_minutes: config.graceMinutes ?? 30, timezone: 'Asia/Manila' }, error: null };
+            if (name === 'booking_rules_for_date') {
+                const delay = config.rulesDelayByDate?.[args.p_date] || 0;
+                if (delay) await new Promise(resolve => setTimeout(resolve, delay));
+                const rules = config.rulesByDate?.[args.p_date] || {};
+                return config.hoursUnavailable
+                    ? { data: null, error: { message: 'rules unavailable in fixture' } }
+                    : { data: { open_hour: rules.open_hour ?? 8, close_hour: rules.close_hour ?? 20,
+                        is_closed: rules.is_closed ?? false, grace_minutes: config.graceMinutes ?? 30,
+                        timezone: 'Asia/Manila' }, error: null };
+            }
             if (name === 'court_occupancy') return { data: [], error: null };
-            if (name === 'staff_create_walkin_order') {
+            if (name === 'staff_create_walkin_order_quoted') {
                 qa.createdItems = args.p_items;
                 return { data: { order_id: 'a25dc45b-40ba-4b5b-96d6-4487dbe7a526', status: args.p_payment_method === 'cash' ? 'paid' : 'pending', amount_total: 350 }, error: null };
             }
@@ -116,6 +128,7 @@ function fixture(config) {
         functions: { invoke: async (name, options) => {
             qa.calls.push({ kind: 'function', name, options });
             if (window.__qaRecord) await window.__qaRecord({ kind: 'function', name, options });
+            if (name === 'payment-health') return { data: { online_ready: config.onlineReady !== false }, error: null };
             if (name === 'validate-contact-phone') {
                 if (config.phoneValidationError) return { data: null, error: config.phoneValidationError };
                 const local = String(options.body.phone || '').replace(/[^0-9]/g, '');
@@ -123,8 +136,11 @@ function fixture(config) {
                 return { data: config.phoneValidation || { valid: true, normalized, phone_type: 'mobile', line_status: 'active' }, error: null };
             }
             qa.checkoutAttempts += 1;
-            if (config.failCheckoutOnce && qa.checkoutAttempts === 1) return { data: null, error: { message: 'Temporary checkout error' } };
-            return { data: { order_id: options.body.order_id, attempt_id: 'qa-attempt', checkout_url: 'https://checkout.paymongo.com/qa-walkin', session_id: 'qa-session' }, error: null };
+            if (config.failCheckoutOnce && qa.checkoutAttempts === 1) return { data: null, error: {
+                message: 'Edge Function returned a non-2xx status code',
+                context: { json: async () => ({ message: 'Temporary checkout error' }) },
+            } };
+            return { data: { order_id: options.body.order_id || 'a25dc45b-40ba-4b5b-96d6-4487dbe7a526', attempt_id: 'qa-attempt', checkout_url: 'https://checkout.paymongo.com/qa-walkin', session_id: 'qa-session' }, error: null };
         } },
         auth: {
             getSession: async () => ({ data: { session: { user: { id: 'qa-staff', email: 'staff@example.test' } } } }),
@@ -154,7 +170,7 @@ async function openStaffPage(browser, { timezoneId, now, config = {}, query = ''
     await page.route('**/includes/authGuard.js', route => route.fulfill({ contentType: 'application/javascript', body: `window.inigosyncProfile={id:'qa-staff',role:'staff',status:'active',full_name:'QA Staff',email:'staff@example.test'};document.addEventListener('DOMContentLoaded',()=>{window.InigoLoading?.hide();document.documentElement.classList.remove('inigo-auth-pending');document.dispatchEvent(new CustomEvent('inigosync:profile-ready',{detail:window.inigosyncProfile}));});` }));
     await page.route('**/includes/appSettings.js', route => route.fulfill({ contentType: 'application/javascript', body: `window.InigoAppSettings={DEFAULT_SETTINGS:{downpaymentPct:50,cashEnabled:true,cardEnabled:true,gcashEnabled:true},getSettings:async()=>({downpaymentPct:50,cashEnabled:true,cardEnabled:true,gcashEnabled:true,nightRateStartsAt:'18:00'})};` }));
     await page.route('**/includes/courtsData.js', route => route.fulfill({ contentType: 'application/javascript', body: courtsFixture() }));
-    await page.goto(`http://127.0.0.1:4178/Pages/staff_dashboard.html${query}`, { waitUntil: 'domcontentloaded' });
+    await page.goto(`${previewBaseUrl}/Pages/staff_dashboard.html${query}`, { waitUntil: 'domcontentloaded' });
     return { context, page };
 }
 
@@ -184,19 +200,35 @@ async function openStaffPage(browser, { timezoneId, now, config = {}, query = ''
         const lineCount = await reviewRows.count();
         assert.equal(lineCount, 2, 'review should show both reservation lines');
         assert.match(await page.locator('[data-staff-walkin-summary-total]').innerText(), /₱350\.00/);
+        assert.match(await page.locator('[data-staff-walkin-summary-due]').innerText(), /₱350\.00/);
         await page.locator('[data-staff-walkin-save]').click();
         await page.locator('[data-staff-walkin-receipt]').getByText('Payment acknowledgment and entry pass').waitFor();
         const saved = await page.evaluate(() => ({
-            createCalls: window.__walkinQa.calls.filter(call => call.kind === 'rpc' && call.name === 'staff_create_walkin_order'),
+            createCalls: window.__walkinQa.calls.filter(call => call.kind === 'rpc' && call.name === 'staff_create_walkin_order_quoted'),
             ackCalls: window.__walkinQa.calls.filter(call => call.kind === 'rpc' && call.name === 'get_walkin_order_acknowledgment'),
             writes: window.__walkinQa.calls.filter(call => call.table === 'walk_in_booking' && ['insert', 'update'].includes(call.kind)),
             items: window.__walkinQa.createdItems,
         }));
         assert.equal(saved.createCalls.length, 1, 'one atomic RPC must create the whole multi-line order');
         assert.equal(saved.items.length, 2);
+        assert.deepEqual(saved.items.map(item => item.quoted_minor), [20000, 15000],
+            'the server must compare each reviewed line price before committing payment');
         assert.deepEqual(saved.items.map(item => item.starts_at), ['2026-09-27T01:00:00.000Z', '2026-09-27T04:00:00.000Z'], 'slot timestamps should use Manila wall time even when device timezone is Honolulu');
         assert.equal(saved.ackCalls.length, 1, 'cash receipt is fetched from the canonical acknowledgment RPC');
         assert.deepEqual(saved.writes, [], 'the browser must not write walk_in_booking rows directly');
+        await page.evaluate(() => {
+            const second = document.createElement('div');
+            second.className = 'staff-receipt-card';
+            document.body.append(second);
+            window.__printedTargets = [];
+            window.print = () => {
+                window.__printedTargets = [...document.querySelectorAll('.staff-receipt-card.is-print-target')];
+            };
+        });
+        await page.locator('[data-staff-walkin-receipt] [data-staff-receipt-print]').click();
+        assert.equal(await page.evaluate(() => window.__printedTargets.length), 1,
+            'printing one acknowledgment must not select another visible receipt');
+        assert.equal(await page.evaluate(() => window.__printedTargets[0] === document.querySelector('[data-staff-walkin-receipt] .staff-receipt-card')), true);
         await context.close();
 
         const online = await openStaffPage(browser, { timezoneId: 'Asia/Manila', now: '2026-09-27T00:00:00Z' });
@@ -215,10 +247,30 @@ async function openStaffPage(browser, { timezoneId, now, config = {}, query = ''
         await online.page.locator('[data-staff-walkin-next]').click();
         await online.page.locator('[data-staff-walkin-save]').click();
         await online.page.waitForURL('https://checkout.paymongo.com/qa-walkin');
-        assert.ok(onlineCalls.some(call => call.kind === 'rpc' && call.name === 'staff_create_walkin_order' && call.args.p_payment_method === 'paymongo'));
-        assert.ok(onlineCalls.some(call => call.kind === 'function' && call.name === 'staff-walkin-checkout' && call.options.body.order_id === 'a25dc45b-40ba-4b5b-96d6-4487dbe7a526'));
+        assert.ok(onlineCalls.some(call => call.kind === 'function' && call.name === 'payment-health'));
+        assert.equal(onlineCalls.some(call => call.kind === 'rpc' && call.name.startsWith('staff_create_walkin_order')), false,
+            'browser must not create online holds directly');
+        assert.ok(onlineCalls.some(call => call.kind === 'function' && call.name === 'staff-walkin-checkout'
+            && call.options.body.guest_name === 'Online Guest' && call.options.body.items.length === 1
+            && call.options.body.items[0].quoted_minor === 10000));
         assert.equal(onlineCalls.some(call => call.kind === 'rpc' && call.name === 'get_walkin_order_acknowledgment'), false, 'online redirect must not fabricate a paid acknowledgment');
         await online.context.close();
+
+        const offline = await openStaffPage(browser, { timezoneId: 'Asia/Manila', now: '2026-09-27T00:00:00Z', config: { onlineReady: false } });
+        await offline.page.locator('[data-staff-nav="walkin"]').click();
+        await offline.page.locator('[data-staff-walkin-name]').fill('Offline Guest');
+        await offline.page.locator('[data-staff-walkin-next]').click();
+        await offline.page.locator('[data-staff-walkin-sport="listing-badminton"]').click();
+        await offline.page.locator('[data-staff-walkin-next]').click();
+        await offline.page.locator('[data-staff-walkin-hour="10"]').click();
+        await offline.page.locator('[data-staff-walkin-next]').click();
+        await offline.page.locator('[data-staff-walkin-online-option]').click();
+        await offline.page.locator('[data-staff-walkin-next]').click();
+        await offline.page.locator('[data-staff-walkin-save]').click();
+        await offline.page.waitForFunction(() => window.__toastMessages?.some(toast => toast.message.includes('No order was saved')));
+        assert.equal(await offline.page.evaluate(() => window.__walkinQa.calls.some(call => call.kind === 'rpc' && call.name.startsWith('staff_create_walkin_order'))), false,
+            'missing PayMongo setup must not create an online walk-in hold');
+        await offline.context.close();
 
         const ackItem = [{ sport: 'Badminton', court: 'Badminton', unit: 'Court 1', starts_at: '2026-09-27T01:00:00Z', ends_at: '2026-09-27T02:00:00Z', subtotal_minor: 10000 }];
         const pendingReturn = await openStaffPage(browser, {
@@ -306,6 +358,16 @@ async function openStaffPage(browser, { timezoneId, now, config = {}, query = ''
         assert.match(await receiptDialog.innerText(), /Remaining balance\s+₱50\.00/);
         assert.match(await receiptDialog.innerText(), /CUSTOMER CHARGED\s+₱52\.50/);
         assert.equal(await transactionPage.locator('.staff-shell').evaluate(el => el.inert), true);
+        await transactionPage.evaluate(() => {
+            window.__reprintTargets = [];
+            window.print = () => { window.__reprintTargets = [...document.querySelectorAll('.staff-receipt-card.is-print-target')]; };
+        });
+        await receiptDialog.locator('[data-staff-receipt-print]').click();
+        assert.equal(await transactionPage.evaluate(() => window.__reprintTargets.length), 1,
+            'reprinting a saved transaction acknowledgment selects exactly one receipt');
+        assert.equal(await transactionPage.evaluate(() => window.__reprintTargets[0] === document.querySelector('[data-staff-receipt-dialog] .staff-receipt-card')), true,
+            'transaction reprint selects the reopened acknowledgment');
+        await receiptDialog.focus();
         await transactionPage.keyboard.press('Shift+Tab');
         assert.equal(await transactionPage.locator('.staff-receipt-card [data-staff-receipt-close]').evaluate(el => el === document.activeElement), true, 'receipt modal Shift+Tab wraps to its last action');
         await transactionPage.keyboard.press('Tab');
@@ -370,6 +432,7 @@ async function openStaffPage(browser, { timezoneId, now, config = {}, query = ''
         await retryPage.locator('[data-staff-walkin-retry]').click();
         await retryPage.locator('[data-staff-walkin-retry]').waitFor({ state: 'visible' });
         assert.equal(await retryPage.locator('[data-staff-walkin-retry]').isDisabled(), false, 'failed checkout leaves a retryable pending action');
+        await retryPage.waitForFunction(() => window.__toastMessages?.some(toast => toast.message === 'Temporary checkout error'));
         assert.equal(retryCalls.filter(call => call.kind === 'function' && call.name === 'staff-walkin-checkout').length, 1);
         await retryPage.locator('[data-staff-walkin-retry]').click();
         await retryPage.waitForURL('https://checkout.paymongo.com/qa-walkin');
@@ -528,11 +591,14 @@ async function openStaffPage(browser, { timezoneId, now, config = {}, query = ''
             { booking_id: 1, customer_id: 'qa-customer', sports: 'Badminton', courts: 'Badminton', time_date: '2026-09-27T14:30:00Z', status: 'confirmed', duration_minutes: 60 },
             { booking_id: 2, customer_id: 'qa-customer', sports: 'Badminton', courts: 'Badminton', time_date: '2026-09-27T15:30:00Z', status: 'confirmed', duration_minutes: 60 },
             { booking_id: 3, customer_id: 'qa-customer', sports: 'Badminton', courts: 'Badminton', time_date: '2026-09-27T16:30:00Z', status: 'confirmed', duration_minutes: 60 },
+            { booking_id: 4, customer_id: 'qa-customer', sports: 'Badminton', courts: 'Badminton', time_date: '2026-09-27T17:30:00Z', status: 'unattended', duration_minutes: 60 },
         ];
         const boundaryWalkins = [
             { id: 1, customer_name: 'Prior day 1', courts: 'Basketball', time_date: '2026-09-27T14:30:00Z', status: 'completed', duration_minutes: 60 },
             { id: 2, customer_name: 'Prior day 2', courts: 'Basketball', time_date: '2026-09-27T15:30:00Z', status: 'completed', duration_minutes: 60 },
-            { id: 3, customer_name: 'Today', courts: 'Basketball', time_date: '2026-09-27T16:30:00Z', status: 'confirmed', duration_minutes: 60 },
+            { id: 3, walkin_order_id: 'qa-multi-slot-order', customer_name: 'Today', courts: 'Basketball', time_date: '2026-09-27T16:30:00Z', status: 'confirmed', duration_minutes: 60 },
+            { id: 4, customer_name: 'Pending checkout', courts: 'Basketball', time_date: '2026-09-27T16:45:00Z', status: 'pending', duration_minutes: 60 },
+            { id: 5, walkin_order_id: 'qa-multi-slot-order', customer_name: 'Today', courts: 'Badminton', time_date: '2026-09-27T17:30:00Z', status: 'confirmed', duration_minutes: 60 },
         ];
         const dayContext = await openStaffPage(browser, {
             timezoneId: 'Pacific/Honolulu', now: '2026-09-27T15:59:30Z',
@@ -540,54 +606,162 @@ async function openStaffPage(browser, { timezoneId, now, config = {}, query = ''
         });
         await dayContext.page.waitForFunction(() => document.querySelector('[data-staff-stat="bookings-today"]')?.textContent.trim() === '2');
         await dayContext.page.waitForFunction(() => document.querySelector('[data-staff-stat="walkins-today"]')?.textContent.trim() === '2');
-        await dayContext.page.clock.fastForward(60000);
-        await dayContext.page.waitForFunction(() => document.querySelector('[data-staff-stat="bookings-today"]')?.textContent.trim() === '1');
+        // Advance just beyond 00:00 Manila, before the 60-second poll.
+        await dayContext.page.clock.fastForward(30001);
+        await dayContext.page.waitForFunction(() => document.querySelector('[data-staff-stat="bookings-today"]')?.textContent.trim() === '2');
         await dayContext.page.waitForFunction(() => document.querySelector('[data-staff-stat="walkins-today"]')?.textContent.trim() === '1');
+        assert.match(await dayContext.page.locator('[data-staff-table="overview"]').innerText(), /Unattended/i);
         await dayContext.context.close();
 
         const boundaryDay = await openStaffPage(browser, {
             timezoneId: 'Pacific/Honolulu', now: '2026-09-27T16:30:00Z',
             config: { bookings: boundaryBookings, walkins: boundaryWalkins },
         });
-        await boundaryDay.page.waitForFunction(() => document.querySelector('[data-staff-stat="bookings-today"]')?.textContent.trim() === '1');
+        await boundaryDay.page.waitForFunction(() => document.querySelector('[data-staff-stat="bookings-today"]')?.textContent.trim() === '2');
         await boundaryDay.page.waitForFunction(() => document.querySelector('[data-staff-stat="walkins-today"]')?.textContent.trim() === '1');
         const counters = await boundaryDay.page.locator('[data-staff-stat]').evaluateAll(elements => Object.fromEntries(elements.map(el => [el.dataset.staffStat, el.textContent.trim()])));
-        assert.equal(counters['bookings-today'], '1');
+        assert.equal(counters['bookings-today'], '2');
         assert.equal(counters['walkins-today'], '1');
+        await boundaryDay.page.locator('.staff-sidebar [data-staff-nav="transactions"]').click();
+        await boundaryDay.page.locator('[data-staff-filter-group="transactions"] [data-staff-filter="online"]').click();
+        assert.equal(await boundaryDay.page.locator('[data-staff-table="transactions"] tbody tr:visible').count(), 2,
+            'Online source filter must show the two bookings');
+        await boundaryDay.page.locator('[data-staff-filter-group="transactions"] [data-staff-filter="walkin"]').click();
+        assert.equal(await boundaryDay.page.locator('[data-staff-table="transactions"] tbody tr:visible').count(), 3,
+            'Walk-in source filter shows both lines of one confirmed visit and its pending checkout');
         assert.equal(await boundaryDay.page.locator('[data-staff-tx-from]').inputValue(), '2026-09-28', 'date controls should initialize to the Manila calendar day');
         await boundaryDay.context.close();
 
-        const responsive = await openStaffPage(browser, { timezoneId: 'Asia/Manila', now: '2026-09-27T00:00:00Z' });
-        for (const width of [360, 768, 1280]) {
-            await responsive.page.setViewportSize({ width, height: 900 });
-            const dimensions = await responsive.page.evaluate(() => ({ viewport: innerWidth, document: document.documentElement.scrollWidth }));
-            assert.ok(dimensions.document <= dimensions.viewport, `page should not overflow horizontally at ${width}px (${dimensions.document}px)`);
-            const titleSize = await responsive.page.evaluate(() => {
-                const title = document.querySelector('.staff-topbar-title h1');
-                const probe = document.createElement('span');
-                probe.style.fontSize = 'var(--fs-xl)';
-                document.body.append(probe);
-                const expected = getComputedStyle(probe).fontSize;
-                probe.remove();
-                return { actual: title ? getComputedStyle(title).fontSize : '', expected };
+        const failureBookingRows = [
+            { booking_id: 501, customer_id: 'qa-customer', sports: 'Badminton', courts: 'Badminton', time_date: '2026-09-28T01:00:00Z', status: 'confirmed', duration_minutes: 60 },
+        ];
+        const failureWalkinRows = [
+            { id: 502, customer_name: 'Failure Fixture Walk-in', sports: 'Basketball', courts: 'Basketball', time_date: '2026-09-28T01:00:00Z', status: 'confirmed', duration_minutes: 60 },
+        ];
+        for (const failedTable of ['booking', 'walk_in_booking']) {
+            const failedSource = await openStaffPage(browser, {
+                timezoneId: 'Asia/Manila', now: '2026-09-27T16:30:00Z',
+                config: { bookings: failureBookingRows, walkins: failureWalkinRows, failReadTables: [failedTable] },
             });
-            assert.equal(titleSize.actual, titleSize.expected, `staff title matches owner --fs-xl token at ${width}px`);
-            await responsive.page.locator('[data-staff-notif-trigger]').click();
-            await responsive.page.waitForFunction(() => {
-                const menu = document.querySelector('[data-staff-notif-menu]');
-                return menu && getComputedStyle(menu).opacity === '1' && getComputedStyle(menu).pointerEvents === 'auto';
-            });
-            const menuBounds = await responsive.page.locator('[data-staff-notif-menu]').evaluate(menu => {
-                const rect = menu.getBoundingClientRect();
-                return { left: rect.left, right: rect.right, width: rect.width, viewport: innerWidth };
-            });
-            assert.ok(menuBounds.left >= 0 && menuBounds.right <= menuBounds.viewport,
-                `notification menu stays inside ${width}px viewport (${JSON.stringify(menuBounds)})`);
-            if (width === 360 && process.env.STAFF_HEADER_SCREENSHOT) {
-                await responsive.page.screenshot({ path: process.env.STAFF_HEADER_SCREENSHOT, clip: { x: 0, y: 0, width, height: 600 } });
-            }
-            await responsive.page.locator('[data-staff-notif-trigger]').click();
+            const failedPage = failedSource.page;
+            await failedPage.locator('[data-staff-table="overview"] tbody tr').filter({ hasText: 'Could not load today’s bookings and walk-ins' }).waitFor();
+            assert.equal(await failedPage.locator('[data-staff-table="overview"] tbody tr[data-row-index]').count(), 0,
+                `${failedTable} failure must suppress otherwise available overview rows`);
+            assert.equal(await failedPage.locator('[data-staff-table="arrivals"] tbody tr').filter({ hasText: 'Could not load arrivals' }).count(), 1,
+                `${failedTable} failure must label the arrivals list as unavailable`);
+            const failedStats = await failedPage.locator('[data-staff-stat]').evaluateAll(elements => elements.map(el => el.textContent.trim()));
+            assert.deepEqual(failedStats, ['—', '—', '—', '—'], `${failedTable} failure must not leave misleading zero or partial counts`);
+
+            await failedPage.locator('[data-staff-nav="transactions"]').click();
+            await failedPage.locator('[data-staff-table="transactions"] tbody tr').filter({ hasText: 'Could not load transaction records' }).waitFor();
+            assert.equal(await failedPage.locator('[data-staff-table="transactions"] tbody tr[data-row-index]').count(), 0,
+                `${failedTable} failure must suppress the successful source's partial transaction history`);
+            await failedSource.context.close();
         }
+
+        const scheduleRace = await openStaffPage(browser, {
+            timezoneId: 'Asia/Manila', now: '2026-09-27T00:00:00Z',
+            config: { rulesDelayByDate: { '2026-09-28': 450 },
+                rulesByDate: { '2026-09-28': { open_hour: 10, close_hour: 12 },
+                    '2026-09-29': { open_hour: 13, close_hour: 15 } } },
+        });
+        const schedulePage = scheduleRace.page;
+        await schedulePage.locator('[data-staff-nav="schedule"]').first().click();
+        await schedulePage.locator('[data-staff-schedule-grid] tbody tr').first().waitFor();
+        await schedulePage.locator('[data-staff-schedule-date]').fill('2026-09-28');
+        await schedulePage.locator('[data-staff-schedule-date]').dispatchEvent('change');
+        await schedulePage.waitForFunction(() => window.__walkinQa.calls.some(call => call.name === 'booking_rules_for_date' && call.args.p_date === '2026-09-28'));
+        await schedulePage.locator('[data-staff-schedule-search]').fill('Badminton');
+        assert.match(await schedulePage.locator('[data-staff-schedule-grid] tbody').innerText(), /Checking live availability/,
+            'date changes never show the previous date as open while rules are pending');
+        await schedulePage.locator('[data-staff-schedule-date]').fill('2026-09-29');
+        await schedulePage.locator('[data-staff-schedule-date]').dispatchEvent('change');
+        await schedulePage.waitForFunction(() => {
+            const head = document.querySelector('[data-staff-schedule-grid] thead');
+            return head?.querySelectorAll('th').length === 4 && head.textContent.includes('1–2 PM');
+        });
+        await new Promise(resolve => setTimeout(resolve, 550));
+        assert.match(await schedulePage.locator('[data-staff-schedule-grid] thead').innerText(), /1–2 PM/,
+            'late rules for the previous date cannot overwrite the new schedule');
+        assert.doesNotMatch(await schedulePage.locator('[data-staff-schedule-grid] thead').innerText(), /10–11 AM/);
+        await schedulePage.evaluate(() => {
+            const original = window.InigoCourtsData.getCourts;
+            window.__qaForcedInventoryReads = 0;
+            window.InigoCourtsData.getCourts = async (options = {}) => {
+                if (options.force) window.__qaForcedInventoryReads += 1;
+                return [...await original(options), { id: 'listing-volleyball', name: 'Volleyball',
+                    sportSlug: 'volleyball', sportName: 'Volleyball', bookableUnits: [
+                        { id: 'unit-v1', label: 'Court 1', rateDay: 100, rateUnit: '/hr' },
+                    ] }];
+            };
+            window.InigoCourtsData.getSports = async () => [{ slug: 'volleyball', name: 'Volleyball' }];
+        });
+        await schedulePage.locator('[data-staff-schedule-search]').fill('');
+        await schedulePage.locator('[data-staff-nav="schedule"]').first().click();
+        await schedulePage.locator('[data-staff-sport="volleyball"]').waitFor();
+        assert.match(await schedulePage.locator('[data-staff-schedule-grid] tbody').innerText(), /Volleyball — Court 1/,
+            'a newly owner-managed sport and unit appear when staff open the schedule');
+        assert.ok(await schedulePage.evaluate(() => window.__qaForcedInventoryReads) > 0,
+            'opening Court Schedule forces a new inventory read');
+        await schedulePage.evaluate(() => {
+            window.InigoCourtsData.getCourts = async () => [{ id: 'fallback-unavailable',
+                name: 'Unavailable inventory', sportName: 'Badminton', bookableUnits: [], inventoryLoadFailed: true }];
+        });
+        await schedulePage.locator('[data-staff-nav="schedule"]').first().click();
+        await schedulePage.waitForFunction(() => document.querySelector('[data-staff-schedule-grid] tbody')?.textContent.includes('Could not verify live availability'));
+        assert.doesNotMatch(await schedulePage.locator('[data-staff-schedule-grid] tbody').innerText(), /Open/,
+            'failed inventory never appears as bookable availability');
+        await scheduleRace.context.close();
+
+        const responsive = await openStaffPage(browser, { timezoneId: 'Asia/Manila', now: '2026-09-27T00:00:00Z' });
+        const themeBackgrounds = new Map();
+        for (const theme of ['dark', 'light']) {
+            await responsive.page.evaluate(value => window.ThemeController.set(value), theme);
+            const themeState = await responsive.page.evaluate(() => ({
+                active: document.documentElement.getAttribute('data-theme'),
+                saved: localStorage.getItem('inigosync-theme'),
+                pressed: document.querySelector('[data-theme-toggle]').getAttribute('aria-pressed'),
+                background: getComputedStyle(document.body).backgroundColor,
+            }));
+            assert.equal(themeState.active, theme);
+            assert.equal(themeState.saved, theme);
+            assert.equal(themeState.pressed, String(theme === 'light'));
+            themeBackgrounds.set(theme, themeState.background);
+            for (const width of [360, 768, 1280]) {
+                await responsive.page.setViewportSize({ width, height: 900 });
+                const dimensions = await responsive.page.evaluate(() => ({ viewport: innerWidth, document: document.documentElement.scrollWidth }));
+                assert.ok(dimensions.document <= dimensions.viewport, `${theme} page should not overflow horizontally at ${width}px (${dimensions.document}px)`);
+                const titleSize = await responsive.page.evaluate(() => {
+                    const title = document.querySelector('.staff-topbar-title h1');
+                    const probe = document.createElement('span');
+                    probe.style.fontSize = 'var(--fs-xl)';
+                    document.body.append(probe);
+                    const expected = getComputedStyle(probe).fontSize;
+                    probe.remove();
+                    return { actual: title ? getComputedStyle(title).fontSize : '', expected };
+                });
+                assert.equal(titleSize.actual, titleSize.expected, `${theme} staff title matches owner --fs-xl token at ${width}px`);
+                await responsive.page.locator('[data-staff-notif-trigger]').click();
+                await responsive.page.waitForFunction(() => {
+                    const menu = document.querySelector('[data-staff-notif-menu]');
+                    return menu && getComputedStyle(menu).opacity === '1' && getComputedStyle(menu).pointerEvents === 'auto';
+                });
+                const menuBounds = await responsive.page.locator('[data-staff-notif-menu]').evaluate(menu => {
+                    const rect = menu.getBoundingClientRect();
+                    return { left: rect.left, right: rect.right, width: rect.width, viewport: innerWidth };
+                });
+                assert.ok(menuBounds.left >= 0 && menuBounds.right <= menuBounds.viewport,
+                    `${theme} notification menu stays inside ${width}px viewport (${JSON.stringify(menuBounds)})`);
+                if (theme === 'light' && width === 360 && process.env.STAFF_HEADER_SCREENSHOT) {
+                    await responsive.page.screenshot({ path: process.env.STAFF_HEADER_SCREENSHOT, clip: { x: 0, y: 0, width, height: 600 } });
+                }
+                await responsive.page.locator('[data-staff-notif-trigger]').click();
+            }
+        }
+        assert.notEqual(themeBackgrounds.get('dark'), themeBackgrounds.get('light'), 'staff theme changes the rendered page background');
+        await responsive.page.locator('[data-theme-toggle]').focus();
+        await responsive.page.keyboard.press('Enter');
+        assert.equal(await responsive.page.locator('html').getAttribute('data-theme'), 'dark', 'keyboard activates the staff theme toggle');
         const thermalPageSize = await responsive.page.evaluate(() => {
             for (const sheet of Array.from(document.styleSheets)) {
                 let rules;
@@ -605,7 +779,7 @@ async function openStaffPage(browser, { timezoneId, now, config = {}, query = ''
         assert.equal(thermalPageSize, '80mm 300mm', 'receipt print page must parse as a valid 80mm thermal format');
         assert.deepEqual(errors, [], 'walk-in browser console must have no uncaught page errors');
         await responsive.context.close();
-        console.log('PASS staff walk-in UI: atomic multi-line order, Manila date boundary, and 360/768/1280 widths');
+        console.log('PASS staff walk-in UI: atomic multi-line order, Manila date boundary, schedule races and inventory refresh, and 360/768/1280 widths in both themes with keyboard toggle');
     } finally {
         await browser.close();
     }
